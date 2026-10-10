@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 /* Arena Red on Ink — colours sampled from the logo */
+/* devices with a real hover (mouse / trackpad). Touch screens skip "reveal on hover" styling and
+   just show the finished look: full-colour photos, visible captions. */
+@custom-variant can-hover (@media (hover: hover) and (pointer: fine));
+
 @theme {
   --color-ink: #0a0a0a;
   --color-carbon: #121212;

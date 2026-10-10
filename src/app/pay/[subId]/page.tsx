@@ -15,7 +15,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
   const { supabase } = await requireUser(`/pay/${subId}`);
   const { data: sub } = await supabase
     .from("subscriptions")
-    .select("id,status,amount_paise,ends_on,plans(*),profiles!subscriptions_user_id_fkey(full_name)")
+    .select("*,plans(*),profiles!subscriptions_user_id_fkey(full_name)") // * so admission_paise shows up once 0010 has run
     .eq("id", subId)
     .maybeSingle();
   if (!sub) notFound();
@@ -45,6 +45,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
         ) : (
           <>
             <p className="font-display text-6xl">{inr(sub.amount_paise)}</p>
+            {sub.admission_paise > 0 && <p className="-mt-3 text-sm text-ash">includes {inr(sub.admission_paise)} one-time admission</p>}
             {qr ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={qr} alt={`UPI QR for ${inr(sub.amount_paise)}`} width={280} height={280} className="rounded-lg border-8 border-chalk" />

@@ -29,6 +29,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
     supabase.from("showcase_feed").select("user_id").order("streak", { ascending: false }),
     getNotices(),
   ]);
+  const photo = await photoUrl(profile.photo_path);
   const homeOnly = (await getSettings()).branch_access === "home" && !!profile.home_branch_id;
   const checkInBranches = ((branches.data ?? []) as Branch[]).filter((b) => !homeOnly || b.id === profile.home_branch_id);
 
@@ -76,6 +77,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             streak={(streak.data as number) ?? 0}
             todaySessions={todaySessions}
             nowSession={nowSession}
+            photo={photo}
+            name={profile.full_name}
             hasPlan={!!active}
             week={last7}
           />
@@ -137,7 +140,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
         <section className="card p-6">
           <p className="label mb-4">Profile</p>
           <div className="mb-6 border-b border-line pb-6">
-            <PhotoForm url={await photoUrl(profile.photo_path)} changesLeft={profile.photo_path ? 2 - profile.photo_changes : 2} />
+            <PhotoForm url={photo} changesLeft={profile.photo_path ? 2 - profile.photo_changes : 2} />
           </div>
           <ProfileForm profile={profile} branches={(branches.data ?? []) as Branch[]} />
         </section>

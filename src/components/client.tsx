@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Lenis from "lenis";
-import { bestOffer, discounted, DURATIONS, GENDERS, gymDate, inr, itemImage, openState, TRACKS, videoEmbed, type Branch, type Holiday, type MemberDetails, type Offer, type Plan, type SiteItem, type Track } from "@/lib/gym";
+import { bestOffer, discounted, DURATIONS, GENDERS, gymDate, inr, itemImage, openState, prettyDay, TRACKS, videoEmbed, type Branch, type Holiday, type MemberDetails, type Offer, type Plan, type SiteItem, type Track } from "@/lib/gym";
 
 /** Inertia scrolling + fade-up reveal for [data-reveal]. Both off when the visitor prefers reduced motion. */
 export function SmoothScroll() {
@@ -55,14 +55,15 @@ export function OpenStatus({ branch, holidays = [], withHours = false }: { branc
   );
 }
 
-const MEMBERSHIP_TRACKS: Track[] = ["strength", "strength_cardio", "personal_training"];
+const MEMBERSHIP_TRACKS: Track[] = ["strength", "strength_cardio", "couples", "personal_training"];
 const PERKS: Record<string, string[]> = {
   strength: ["Free weights & machines", "Daily check-in & streaks", "Streak Wall profile"],
   strength_cardio: ["Everything in Strength", "Cardio zone access", "Any branch"],
+  couples: ["Strength + Cardio for two", "Train together, save more", "Daily check-in & streaks"],
   personal_training: ["Everything in Strength + Cardio", "1:1 coach", "Personal program"],
 };
 
-export function PlanPicker({ plans, offers }: { plans: Plan[]; offers: Offer[] }) {
+export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[]; offers: Offer[]; admissionPaise?: number }) {
   const [days, setDays] = useState<number>(30);
   const per = DURATIONS.find((d) => d.days === days)!.per;
 
@@ -96,7 +97,7 @@ export function PlanPicker({ plans, offers }: { plans: Plan[]; offers: Offer[] }
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {MEMBERSHIP_TRACKS.map((track, i) => {
           const plan = plans.find((p) => p.track === track && p.duration_days === days);
           const offer = bestOffer(offers, track);
@@ -106,7 +107,7 @@ export function PlanPicker({ plans, offers }: { plans: Plan[]; offers: Offer[] }
               key={track}
               data-reveal
               style={{ transitionDelay: `${i * 80}ms` }}
-              className={`lift relative flex flex-col gap-6 rounded-md border p-8 ${featured ? "border-red bg-redwash" : "border-line bg-carbon"}`}
+              className={`lift relative flex flex-col gap-6 rounded-md border p-7 ${featured ? "border-red bg-redwash" : "border-line bg-carbon"}`}
             >
               {featured && (
                 <span className="absolute -top-px right-6 rounded-b bg-red px-3 py-1.5 font-label text-[13px] font-bold uppercase tracking-[0.18em] text-white">
@@ -114,10 +115,10 @@ export function PlanPicker({ plans, offers }: { plans: Plan[]; offers: Offer[] }
                 </span>
               )}
               <p className="label">Track 0{i + 1}</p>
-              <h3 className="font-display text-[40px] leading-none uppercase">{TRACKS[track]}</h3>
+              <h3 className="font-display text-[36px] leading-none uppercase xl:min-h-[2em]">{TRACKS[track]}</h3>
               <div>
                 <span key={days} className="inline-block animate-rise [animation-duration:.5s]">
-                  {plan ? <Price paise={plan.price_paise} offer={offer} size="text-[52px]" /> : <span className="font-display text-[52px]">—</span>}
+                  {plan ? <Price paise={plan.price_paise} offer={offer} size="text-[48px]" /> : <span className="font-display text-[48px]">—</span>}
                 </span>
                 <p className="mt-1.5 text-[15px] text-ash">per {per}</p>
               </div>
@@ -141,6 +142,10 @@ export function PlanPicker({ plans, offers }: { plans: Plan[]; offers: Offer[] }
           );
         })}
       </div>
+      <p className="-mt-6 text-sm text-ash">
+        {admissionPaise > 0 && <>+ {inr(admissionPaise)} one-time admission with your first membership. </>}
+        Fees are non-refundable and non-transferable.
+      </p>
     </div>
   );
 }
@@ -150,6 +155,30 @@ export function Check({ className = "text-red" }: { className?: string }) {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`shrink-0 ${className}`}>
       <path d="M5 12l5 5L20 7" />
     </svg>
+  );
+}
+
+/** Heads-up at check-in: closures between today and Sunday. Renders nothing in a normal week. */
+export function WeekHolidays({ holidays }: { holidays: Holiday[] }) {
+  if (!holidays.length) return null;
+  const today = gymDate();
+  return (
+    <div role="note" className="flex gap-3 rounded-lg border border-red/50 bg-redwash px-4 py-3 text-left">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="mt-0.5 shrink-0 text-red">
+        <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" />
+      </svg>
+      <div className="min-w-0">
+        <p className="font-label text-sm font-bold tracking-[0.14em] text-red uppercase">This week</p>
+        <ul className="mt-0.5 text-sm text-chalk">
+          {holidays.map((h) => (
+            <li key={h.id}>
+              Closed <b>{h.day === today ? "today" : prettyDay(h.day)}</b>{h.note && ` — ${h.note}`}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-1 text-xs text-ash">Your streak is safe on holidays.</p>
+      </div>
+    </div>
   );
 }
 
@@ -222,7 +251,7 @@ export function Gallery({ items }: { items: SiteItem[] }) {
                   <img src={img} alt={item.title} loading="lazy" className="w-full transition-transform duration-700 ease-lift group-hover:scale-105" />
                 </button>
               ) : null}
-              {item.title && <figcaption className="dark-zone pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-ink/90 to-transparent p-4 pt-10 font-label text-sm font-bold tracking-[0.14em] uppercase opacity-0 transition-opacity group-hover:opacity-100">{item.title}</figcaption>}
+              {item.title && <figcaption className="dark-zone pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-ink/90 to-transparent p-4 pt-10 font-label text-sm font-bold tracking-[0.14em] uppercase can-hover:opacity-0 transition-opacity group-hover:opacity-100">{item.title}</figcaption>}
             </figure>
           );
         })}
@@ -283,25 +312,37 @@ export function BeforeAfter({ before, after, name }: { before: string | null; af
 }
 
 /** Top-bar status that cycles through every branch ("Open now · Mandadam closes 21:00" → Tadepalli …). Pauses on hover. */
-export function BranchTicker({ branches, holidays }: { branches: Branch[]; holidays: Holiday[] }) {
+/**
+ * The homepage's top bar: rotates each branch's live status, then any upcoming holiday and running offer.
+ * (A separate notice strip would sit hidden behind the fixed header, especially on phones.)
+ */
+export function BranchTicker({ branches, holidays, offers = [] }: { branches: Branch[]; holidays: Holiday[]; offers?: Offer[] }) {
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
+  const where = (h: Holiday) => (h.branch_id ? branches.find((b) => b.id === h.branch_id)?.name ?? "One branch" : "All branches");
+  const items = [
+    ...branches.map((b) => ({ key: b.id, node: <OpenStatus branch={b} holidays={holidays} withHours /> })),
+    ...holidays.map((h) => ({
+      key: h.id,
+      node: <><span className="text-red">Holiday</span> · Closed {prettyDay(h.day)}{h.note && ` · ${h.note}`} · {where(h)}</>,
+    })),
+    ...offers.map((o) => ({ key: o.id, node: <><span className="text-red">{o.percent_off}% off</span> · {o.title} · till {prettyDay(o.ends_on)}</> })),
+  ];
   useEffect(() => {
-    if (branches.length < 2 || paused) return;
-    const id = setInterval(() => setI((n) => (n + 1) % branches.length), 4000);
+    if (items.length < 2 || paused) return;
+    const id = setInterval(() => setI((n) => (n + 1) % items.length), 4000);
     return () => clearInterval(id);
-  }, [branches.length, paused]);
-  if (!branches.length) return <span />;
+  }, [items.length, paused]);
+  if (!items.length) return <span />;
+  const cur = items[i % items.length];
   return (
-    <span className="flex items-center gap-3" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      <span className="relative flex h-5 items-center overflow-hidden">
-        <span key={branches[i].id} className="ticker-in">
-          <OpenStatus branch={branches[i]} holidays={holidays} withHours />
-        </span>
+    <span className="flex min-w-0 items-center gap-3" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
+      <span className="relative flex h-5 min-w-0 items-center overflow-hidden">
+        <span key={cur.key} className="ticker-in block truncate">{cur.node}</span>
       </span>
-      {branches.length > 1 && (
-        <span aria-hidden="true" className="flex gap-1">
-          {branches.map((b, n) => <span key={b.id} className={`h-1 rounded-full transition-all duration-500 ${n === i ? "w-4 bg-red" : "w-1.5 bg-chalk/25"}`} />)}
+      {items.length > 1 && (
+        <span aria-hidden="true" className="flex shrink-0 gap-1">
+          {items.map((it, n) => <span key={it.key} className={`h-1 rounded-full transition-all duration-500 ${n === i % items.length ? "w-4 bg-red" : "w-1.5 bg-chalk/25"}`} />)}
         </span>
       )}
     </span>

@@ -60,6 +60,10 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   if (!planId) return done(existing ? "Member already exists — updated." : "Member added. They can sign in with Google or an email link.");
 
   const pay = s(form, "payment"); // "cash" | "upi_paid" | "qr"
+  // negotiated at the desk: staff can set the plan price and the admission fee (blank = standard)
+  const price = s(form, "price") === "" ? null : Number(s(form, "price"));
+  const admission = s(form, "admission") === "" ? null : Number(s(form, "admission"));
+  if ([price, admission].some((v) => v !== null && (!Number.isFinite(v) || v < 0))) return { error: "Prices must be zero or more." };
   const { data: sub, error } = await supabase.rpc("create_pending_subscription", {
     p_plan: planId,
     p_branch: s(form, "branch_id") || null,
@@ -67,6 +71,17 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
     p_user: userId,
   });
   if (error) return { error: error.message };
+  if (price !== null || admission !== null) {
+    const fee = (sub.admission_paise as number | undefined) ?? 0; // the database only adds it on a first membership
+    const planPart = price !== null ? Math.round(price * 100) : sub.amount_paise - fee;
+    const adm = fee > 0 ? (admission !== null ? Math.round(admission * 100) : fee) : 0;
+    // service key: staff-only path (requireAdmin above), and it doesn't depend on column grants
+    const { error: e } = await adminDb()
+      .from("subscriptions")
+      .update({ amount_paise: planPart + adm, ...(fee > 0 && { admission_paise: adm }) })
+      .eq("id", sub.id);
+    if (e) return { error: e.message };
+  }
   if (pay === "qr") redirect(`/pay/${sub.id}`);
   const act = await supabase.rpc("activate_subscription", { p_sub: sub.id });
   if (act.error) return { error: act.error.message };
@@ -104,6 +119,41 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
 }
 
 /** Saves every plan's price and on/off switch from the pricing grid. */
+/** Staff retake a member's photo (doesn't use up the member's own two changes). */
+export async function adminChangePhoto(_: Result, form: FormData): Promise<Result> {
+  const { supabase } = await requireAdmin();
+  const userId = s(form, "id");
+  const photo = formPhoto(form);
+  if (photo.error) return { error: photo.error };
+  if (!photo.file) return { error: "Take or upload a photo first." };
+  const path = await uploadPhoto(userId, photo.file);
+  const { data: old, error } = await supabase.rpc("admin_set_photo", { p_user: userId, p_path: path });
+  if (error) {
+    await removePhoto(path);
+    return { error: error.message };
+  }
+  await removePhoto(old as string | null);
+  revalidatePath(`/admin/members/${userId}`);
+  return { ok: "Photo updated" };
+}
+
+/** Staff edit a member's details and home branch. */
+export async function adminSaveMember(_: Result, form: FormData): Promise<Result> {
+  const { supabase } = await requireAdmin();
+  const read = readMemberDetails(form);
+  if ("error" in read) return read;
+  const full_name = s(form, "full_name");
+  if (!full_name) return { error: "Name is required." };
+  const userId = s(form, "id");
+  const { error } = await supabase
+    .from("profiles")
+    .update({ full_name, ...read.details, home_branch_id: s(form, "home_branch_id") || null })
+    .eq("id", userId);
+  if (error) return { error: error.message };
+  revalidatePath(`/admin/members/${userId}`);
+  return { ok: "Saved" };
+}
+
 /** Can members check in at every branch, or only their home branch? */
 export async function saveBranchAccess(_: Result, form: FormData): Promise<Result> {
   const { supabase } = await requireAdmin();
@@ -146,6 +196,24 @@ export async function savePrices(_: Result, form: FormData): Promise<Result> {
   );
   const failed = results.find((r) => r.error);
   return failed?.error ? { error: failed.error.message } : done("Prices saved — live on the website now.");
+}
+
+/** Staff change what a pending order will cost (a price agreed at the desk). Admission stays as it was. */
+export async function setOrderPrice(id: string, rupees: number): Promise<Result> {
+  const { supabase } = await requireAdmin();
+  if (!Number.isFinite(rupees) || rupees < 0) return { error: "Enter 0 or more." };
+  const { data: sub } = await supabase.from("subscriptions").select("*").eq("id", id).eq("status", "pending").maybeSingle();
+  if (!sub) return { error: "That order isn't awaiting payment any more." };
+  const { error } = await adminDb().from("subscriptions").update({ amount_paise: Math.round(rupees * 100) + (sub.admission_paise ?? 0) }).eq("id", id).eq("status", "pending");
+  return error ? { error: error.message } : done("Price updated");
+}
+
+export async function saveAdmission(_: Result, form: FormData): Promise<Result> {
+  const { supabase } = await requireAdmin();
+  const rupees = Number(s(form, "admission"));
+  if (!Number.isFinite(rupees) || rupees < 0) return { error: "Enter 0 or more." };
+  const { error } = await supabase.from("site_settings").update({ admission_fee_paise: Math.round(rupees * 100) }).eq("id", 1);
+  return error ? { error: error.message } : done(rupees ? "Admission fee saved" : "Admission fee switched off");
 }
 
 /** Closes one branch (or all) on a date. Members see it on the site and dashboard; optionally emailed too. */

@@ -69,7 +69,7 @@ export function TrainerCard({ t, i = 0 }: { t: SiteItem; i?: number }) {
   return (
     <article className="group lift flex flex-col overflow-hidden rounded-md border border-line bg-carbon" data-reveal style={{ transitionDelay: `${(i % 3) * 80}ms` }}>
       <div className="relative h-[440px] overflow-hidden">
-        <ItemPhoto item={t} className="size-full grayscale transition-[filter,transform] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
+        <ItemPhoto item={t} className="size-full can-hover:grayscale transition-[filter,transform] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
         <div className="absolute inset-0 bg-linear-to-t from-carbon via-transparent to-transparent" />
         <h3 className="absolute bottom-4 left-5 font-display text-5xl leading-none uppercase dark-shadow">{t.title}</h3>
       </div>

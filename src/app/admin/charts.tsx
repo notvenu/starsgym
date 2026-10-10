@@ -126,10 +126,11 @@ export function Heatmap({ cells }: { cells: { dow: number; h: number; v: number 
 
   return (
     <div>
-      <div className="overflow-x-auto">
-        <table className="border-separate border-spacing-[2px] text-[11px]">
+      {/* cells stretch to the width available (and cap at 24px), so the whole week fits on a phone */}
+      <div className="max-w-2xl">
+        <table className="w-full table-fixed border-separate border-spacing-[2px] text-[11px]">
           <thead>
-            <tr><th />{range.map((h) => <th key={h} className="w-6 font-normal text-ash">{h % 2 === 0 ? h : ""}</th>)}</tr>
+            <tr><th className="w-9" />{range.map((h) => <th key={h} className="font-normal text-ash">{h % 2 === 0 ? h : ""}</th>)}</tr>
           </thead>
           <tbody>
             {order.map((dow, row) => (
@@ -148,7 +149,7 @@ export function Heatmap({ cells }: { cells: { dow: number; h: number; v: number 
                         onFocus={() => setHover(key)}
                         onBlur={() => setHover(null)}
                         aria-label={`${DAYS[row]} ${hh(h)}: ${v} check-ins`}
-                        className={`block size-6 cursor-default rounded-[4px] outline-none ${hover === key ? "ring-2 ring-chalk" : ""}`}
+                        className={`block aspect-square w-full max-w-6 cursor-default rounded-[3px] outline-none ${hover === key ? "ring-2 ring-chalk" : ""}`}
                         style={{ background: v ? `rgb(227 20 28 / ${step})` : "#1a1a1a" }}
                       />
                       {hover === key && (

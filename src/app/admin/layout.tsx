@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/site";
 import { requireAdmin } from "@/lib/supabase";
 import { signOut } from "../login/actions";
-import { AdminNav, type NavGroup } from "./nav";
+import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
 
 export const metadata = { title: "Admin — Stars Gym" };
 
@@ -44,10 +44,21 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
     { label: "Inbox", items: [{ href: "/admin/enquiries", label: "Enquiries", icon: "enquiries", badge: enquiries.count ?? 0 }] },
   ];
 
+  const footer = (
+    <div className="flex flex-col gap-1">
+      <Link href="/" className="rounded px-3 py-2.5 text-sm text-ash hover:bg-steel hover:text-chalk">View website ↗</Link>
+      <Link href="/dashboard" className="rounded px-3 py-2.5 text-sm text-ash hover:bg-steel hover:text-chalk">My dashboard</Link>
+      <form action={signOut}>
+        <button className="w-full cursor-pointer rounded px-3 py-2.5 text-left text-sm text-ash hover:bg-steel hover:text-chalk">Sign out</button>
+      </form>
+    </div>
+  );
+
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[260px_1fr]">
-      <aside className="border-line bg-panel max-lg:border-b lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto lg:border-r">
-        <div className="flex flex-col gap-6 px-4 py-4 lg:min-h-full lg:py-6">
+      <AdminMobileNav groups={groups} logo={<Logo size={40} />} footer={footer} />
+      <aside className="border-r border-line bg-panel max-lg:hidden lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
+        <div className="flex min-h-full flex-col gap-6 px-4 py-6">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Logo size={52} />
@@ -56,21 +67,13 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
                 <p className="max-w-[140px] truncate text-xs text-ash">{profile.full_name || profile.email}</p>
               </div>
             </div>
-            <div className="flex gap-1.5 lg:hidden">
-              <Link href="/" className="btn-ghost min-h-10 px-3 text-xs">Site</Link>
-            </div>
           </div>
           <AdminNav groups={groups} />
-          <div className="mt-auto flex flex-col gap-1 border-t border-line pt-4 max-lg:hidden">
-            <Link href="/" className="rounded px-3 py-2 text-sm text-ash hover:bg-steel hover:text-chalk">View website ↗</Link>
-            <Link href="/dashboard" className="rounded px-3 py-2 text-sm text-ash hover:bg-steel hover:text-chalk">My dashboard</Link>
-            <form action={signOut}>
-              <button className="w-full cursor-pointer rounded px-3 py-2 text-left text-sm text-ash hover:bg-steel hover:text-chalk">Sign out</button>
-            </form>
-          </div>
+          <div className="mt-auto border-t border-line pt-4">{footer}</div>
         </div>
       </aside>
-      <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-8 px-4 py-8 sm:px-8 lg:py-10">{children}</main>
+      {/* bottom padding on phones keeps content clear of the tab bar */}
+      <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 max-lg:pb-28 sm:gap-8 sm:px-8 lg:py-10">{children}</main>
     </div>
   );
 }

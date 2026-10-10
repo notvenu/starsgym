@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
-import { Field, MemberDetailsFields, Price } from "@/components/client";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { Field, MemberDetailsFields } from "@/components/client";
 import { PhotoCapture } from "@/components/photo";
-import { bestOffer, DAY_NAMES, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
-import { addHoliday, addMember, cancelSub, deleteHoliday, markPaid, replaceDoorKey, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
+import type { Profile } from "@/lib/supabase";
+import { bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
+import { addHoliday, addMember, adminChangePhoto, adminSaveMember, cancelSub, deleteHoliday, markPaid, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
 
 function Status({ state }: { state: Result }) {
   if (state?.error) return <p role="alert" className="text-sm text-red">{state.error}</p>;
@@ -12,17 +13,71 @@ function Status({ state }: { state: Result }) {
   return null;
 }
 
+/** A button that opens its content in a pop-up (a sheet from the bottom on phones). `startOpen` for deep links like ?new=1. */
+export function AdminModal({ label, title, className = "btn-red", startOpen, children }: { label: React.ReactNode; title: string; className?: string; startOpen?: boolean; children: React.ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (startOpen) ref.current?.showModal();
+  }, [startOpen]);
+  return (
+    <>
+      <button type="button" onClick={() => ref.current?.showModal()} className={className}>{label}</button>
+      <dialog
+        ref={ref}
+        aria-label={title}
+        onClick={(e) => e.target === e.currentTarget && ref.current?.close()} // tap outside to close
+        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-carbon p-0 text-chalk backdrop:bg-black/75 backdrop:backdrop-blur-sm max-sm:mt-auto max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none sm:m-auto"
+      >
+        <div className="flex max-h-[90dvh] flex-col">
+          <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+            <h2 className="font-display text-2xl uppercase">{title}</h2>
+            <button type="button" onClick={() => ref.current?.close()} aria-label="Close" className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line hover:border-red">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+          <div className="overflow-y-auto overscroll-contain p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">{children}</div>
+        </div>
+      </dialog>
+    </>
+  );
+}
+
 export function PendingRow({ id, title, meta }: { id: string; title: string; meta: string }) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<Result>();
+  const [editing, setEditing] = useState(false);
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center">
       <div className="min-w-0 flex-1">
         <p className="font-bold">{title}</p>
         <p className="text-sm text-ash">{meta}</p>
+        {editing ? (
+          // agreed a different price at the desk (admission, if any, stays on top)
+          <form
+            className="mt-2 flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const rupees = Number(new FormData(e.currentTarget).get("rupees"));
+              start(async () => {
+                const r = await setOrderPrice(id, rupees);
+                setState(r);
+                if (!r?.error) setEditing(false);
+              });
+            }}
+          >
+            <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
+              <span className="pl-3 text-ash">₹</span>
+              <input name="rupees" type="number" inputMode="decimal" min="0" step="any" required autoFocus placeholder="Plan price" className="min-h-10 w-32 bg-transparent px-2 font-bold text-chalk outline-none" />
+            </span>
+            <button disabled={pending} className="btn-red min-h-10 px-4 text-xs">Save</button>
+            <button type="button" onClick={() => setEditing(false)} className="btn-ghost min-h-10 px-3 text-xs">Close</button>
+          </form>
+        ) : (
+          <button type="button" onClick={() => setEditing(true)} className="mt-1 cursor-pointer text-sm font-bold text-red hover:text-chalk">Change price</button>
+        )}
         <Status state={state} />
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex shrink-0 gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
         <a href={`/pay/${id}`} className="btn-ghost min-h-10 px-3.5 text-xs">QR</a>
         <button disabled={pending} onClick={() => confirm("Cancel this order?") && start(async () => setState(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>
         <button disabled={pending} onClick={() => start(async () => setState(await markPaid(id)))} className="btn-red min-h-10 px-4 text-xs">Mark paid</button>
@@ -38,10 +93,10 @@ const KINDS: [Kind, string, string][] = [
   ["trial", "Trial day", "First visit"],
   ["none", "Account only", "Sell later"],
 ];
-const MEMBERSHIPS: Track[] = ["strength", "strength_cardio", "personal_training"];
+const MEMBERSHIPS: Track[] = ["strength", "strength_cardio", "couples", "personal_training"];
 
 /** Desk onboarding: details → pass → payment, then straight to the member's ticket. */
-export function AddMemberForm({ branches, plans, offers }: { branches: Branch[]; plans: Plan[]; offers: Offer[] }) {
+export function AddMemberForm({ branches, plans, offers, admissionPaise = 0 }: { branches: Branch[]; plans: Plan[]; offers: Offer[]; admissionPaise?: number }) {
   const [state, action, pending] = useActionState(addMember, undefined);
   const [kind, setKind] = useState<Kind>("membership");
   const [track, setTrack] = useState<Track>("strength");
@@ -77,9 +132,12 @@ export function AddMemberForm({ branches, plans, offers }: { branches: Branch[];
           </div>
         )}
         {plan && (
-          <p className="flex flex-wrap items-center gap-3 text-ash">
-            Price <Price paise={plan.price_paise} offer={bestOffer(offers, plan.track)} />
-          </p>
+          <NegotiatedPrice
+            key={plan.id}
+            standard={discounted(plan.price_paise, bestOffer(offers, plan.track))}
+            list={plan.price_paise}
+            admission={MEMBERSHIPS.includes(plan.track) ? admissionPaise : null}
+          />
         )}
         {kind !== "none" && !plan && <p className="text-red">That plan isn&apos;t available.</p>}
         <input type="hidden" name="plan_id" value={plan?.id ?? ""} />
@@ -109,6 +167,37 @@ export function AddMemberForm({ branches, plans, offers }: { branches: Branch[];
   );
 }
 
+/** Desk pricing: starts at the standard price (offer applied) and admission; staff can change either after negotiating. */
+function NegotiatedPrice({ standard, list, admission }: { standard: number; list: number; admission: number | null }) {
+  const [price, setPrice] = useState(String(standard / 100));
+  const [fee, setFee] = useState(admission !== null ? String(admission / 100) : "0");
+  const changed = Math.round(Number(price) * 100) !== standard;
+  const total = (Number(price) || 0) + (admission !== null ? Number(fee) || 0 : 0);
+  const money = (label: string, name: string, value: string, set: (v: string) => void, hint: React.ReactNode) => (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="label">{label}</span>
+      <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
+        <span className="pl-3 text-ash">₹</span>
+        <input name={name} type="number" inputMode="decimal" min="0" step="any" value={value} onChange={(e) => set(e.target.value)} className="min-h-11 w-full min-w-0 bg-transparent px-2 font-bold text-chalk outline-none" />
+      </span>
+      <span className="text-xs text-ash">{hint}</span>
+    </label>
+  );
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-line bg-panel p-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        {money("Plan price", "price", price, setPrice, changed ? <span className="text-red">Negotiated · standard {inr(standard)}</span> : standard < list ? <>Offer applied · list {inr(list)}</> : "Change it if you've agreed a different price")}
+        {admission !== null && money("Admission", "admission", fee, setFee, "Only charged on their first membership · 0 = waived")}
+      </div>
+      <p className="flex items-baseline justify-between border-t border-line pt-3">
+        <span className="label">To collect</span>
+        <span className="font-display text-3xl">{inr(Math.round(total * 100))}</span>
+      </p>
+      {admission !== null && <p className="-mt-2 text-xs text-ash">If they&apos;ve had a membership before, admission is skipped automatically.</p>}
+    </div>
+  );
+}
+
 function Step({ n, title, children }: { n: string; title: string; children: React.ReactNode }) {
   return (
     <fieldset className="flex flex-col gap-4">
@@ -133,14 +222,15 @@ function Choice({ label, sub, checked, ...input }: { label: string; sub: string;
 
 function Segmented({ label, options, value, onChange }: { label: string; options: [string, string][]; value: string; onChange: (v: string) => void }) {
   return (
-    <div role="group" aria-label={label} className="flex flex-wrap gap-1 rounded-md border border-line bg-panel p-1">
+    // phones: an even 2-column grid (an odd last option spans both) instead of ragged wrapping
+    <div role="group" aria-label={label} className="grid grid-cols-2 gap-1 rounded-md border border-line bg-panel p-1 sm:flex sm:flex-wrap [&>*:last-child:nth-child(odd)]:col-span-2">
       {options.map(([v, l]) => (
         <button
           key={v}
           type="button"
           aria-pressed={v === value}
           onClick={() => onChange(v)}
-          className={`min-h-11 flex-1 cursor-pointer rounded px-3 font-label text-sm font-bold uppercase tracking-[0.1em] ${v === value ? "bg-red text-white" : "text-ash hover:text-chalk"}`}
+          className={`min-h-11 flex-1 cursor-pointer rounded px-2 font-label text-xs font-bold uppercase tracking-[0.08em] sm:px-3 sm:text-sm sm:tracking-[0.1em] ${v === value ? "bg-red text-white" : "text-ash hover:text-chalk"}`}
         >
           {l}
         </button>
@@ -208,6 +298,46 @@ export function LadiesHoursForm({ branch: b }: { branch: Branch }) {
   );
 }
 
+/** Member page: staff retake the photo with the camera (or upload). */
+export function MemberPhotoForm({ id, url }: { id: string; url: string | null }) {
+  const [state, action, pending] = useActionState(adminChangePhoto, undefined);
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <input type="hidden" name="id" value={id} />
+      <PhotoCapture current={url} label="Retake photo" />
+      <div className="flex items-center gap-3">
+        <button disabled={pending} className="btn-ghost min-h-10 px-4 text-sm">{pending ? "Saving…" : "Save photo"}</button>
+        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
+        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+      </div>
+    </form>
+  );
+}
+
+/** Member page: edit details and home branch. */
+export function MemberEditForm({ member, branches }: { member: Profile; branches: Branch[] }) {
+  const [state, action, pending] = useActionState(adminSaveMember, undefined);
+  return (
+    <form action={action} className="grid gap-4 sm:grid-cols-2">
+      <input type="hidden" name="id" value={member.id} />
+      <Field label="Full name" name="full_name" defaultValue={member.full_name} required />
+      <label className="flex flex-col gap-1.5">
+        <span className="label">Home branch</span>
+        <select name="home_branch_id" defaultValue={member.home_branch_id ?? ""} className="field">
+          <option value="">—</option>
+          {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </label>
+      <MemberDetailsFields d={member} />
+      <div className="flex items-center gap-4 sm:col-span-2">
+        <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Save details"}</button>
+        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
+        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+      </div>
+    </form>
+  );
+}
+
 export function BranchAccessForm({ mode }: { mode: "any" | "home" }) {
   const [state, action, pending] = useActionState(saveBranchAccess, undefined);
   const options: ["any" | "home", string, string][] = [
@@ -241,7 +371,7 @@ export function ReplaceDoorKey({ branchId }: { branchId: string }) {
   const [state, setState] = useState<Result>();
   return (
     <div className="flex flex-col gap-1">
-      <button disabled={pending} onClick={() => confirm("Replace this code? The printed QR at the entrance stops working until you put up the new one.") && start(async () => setState(await replaceDoorKey(branchId)))} className="btn-ghost min-h-10 px-4 text-xs">
+      <button disabled={pending} onClick={() => confirm("Replace this code? The printed QR at the entrance stops working until you put up the new one.") && start(async () => setState(await replaceDoorKey(branchId)))} className="btn-ghost min-h-11 w-full px-3 text-xs whitespace-nowrap">
         {pending ? "…" : "Replace code"}
       </button>
       {state?.error && <p role="alert" className="text-xs text-red">{state.error}</p>}
@@ -303,9 +433,27 @@ export function OfferRow({ offer }: { offer: Offer }) {
   );
 }
 
-const GRID_TRACKS: Track[] = ["strength", "strength_cardio", "personal_training"];
+const GRID_TRACKS: Track[] = ["strength", "strength_cardio", "couples", "personal_training"];
 
 /** Pricing grid: tracks × plan lengths, plus trial and day pass. Each price has an on/off switch. */
+/** One-time admission fee, added automatically to a member's first membership. */
+export function AdmissionForm({ paise }: { paise: number }) {
+  const [state, action, pending] = useActionState(saveAdmission, undefined);
+  return (
+    <form action={action} className="flex flex-wrap items-end gap-3">
+      <label className="flex flex-col gap-1.5">
+        <span className="label">Admission fee (₹)</span>
+        <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
+          <span className="pl-3 text-ash">₹</span>
+          <input name="admission" type="number" inputMode="numeric" min="0" step="1" defaultValue={paise / 100} className="min-h-11 w-32 bg-transparent px-2 font-bold text-chalk outline-none" />
+        </span>
+      </label>
+      <button disabled={pending} className="btn-red min-h-11">{pending ? "Saving…" : "Save"}</button>
+      <Status state={state} />
+    </form>
+  );
+}
+
 export function PriceForm({ plans }: { plans: Plan[] }) {
   const [state, action, pending] = useActionState(savePrices, undefined);
   const initial = Object.fromEntries(plans.map((p) => [p.id, { rupees: String(p.price_paise / 100), active: p.active }]));
@@ -355,45 +503,44 @@ export function PriceForm({ plans }: { plans: Plan[] }) {
 
   return (
     <form action={action} className="flex flex-col gap-6">
-      <div className="-mx-5 overflow-x-auto px-5">
-        <table className="w-full min-w-[720px] border-separate border-spacing-x-3 border-spacing-y-0 text-left">
-          <thead>
-            <tr>
-              <th className="w-48 pb-3" />
+      {/* one set of inputs, laid out by CSS: a row per track on desktop, a 2×2 card per track on phones */}
+      <div>
+        <div className="hidden gap-3 pb-3 md:grid md:grid-cols-[11rem_repeat(4,minmax(0,1fr))]">
+          <span />
+          {DURATIONS.map((d) => (
+            <span key={d.days} className="font-label text-sm font-bold tracking-[0.14em] text-ash uppercase">{d.label}</span>
+          ))}
+        </div>
+        {GRID_TRACKS.map((t) => {
+          const monthly = Number(values[find(t, 30)?.id ?? ""]?.rupees) || undefined;
+          return (
+            <div key={t} className="grid grid-cols-2 gap-x-3 gap-y-4 border-t border-line py-4 md:grid-cols-[11rem_repeat(4,minmax(0,1fr))]">
+              <p className="col-span-2 font-display text-2xl leading-none uppercase md:col-span-1">{TRACKS[t]}</p>
               {DURATIONS.map((d) => (
-                <th key={d.days} className="pb-3 font-label text-sm font-bold tracking-[0.14em] text-ash uppercase">{d.label}</th>
+                <div key={d.days} className="min-w-0">
+                  <p className="label mb-1.5 md:hidden">{d.label}</p>
+                  {cell(find(t, d.days), d.days === 30 ? undefined : monthly)}
+                </div>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {GRID_TRACKS.map((t) => {
-              const monthly = Number(values[find(t, 30)?.id ?? ""]?.rupees) || undefined;
-              return (
-                <tr key={t}>
-                  <th scope="row" className="border-t border-line py-4 pr-2 align-top font-display text-2xl leading-none uppercase">{TRACKS[t]}</th>
-                  {DURATIONS.map((d) => (
-                    <td key={d.days} className="border-t border-line py-4 align-top">{cell(find(t, d.days), d.days === 30 ? undefined : monthly)}</td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+            </div>
+          );
+        })}
       </div>
 
       <div className="grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
         {(["trial", "day_pass"] as Track[]).map((t) => (
           <div key={t} className="flex items-start justify-between gap-4 rounded-md border border-line bg-ink/50 p-4">
-            <div>
+            <div className="min-w-0">
               <p className="font-display text-2xl uppercase">{TRACKS[t]}</p>
               <p className="text-xs text-ash">{t === "trial" ? "First visit, once per person" : "One day, any branch"}</p>
             </div>
-            <div className="w-40">{cell(find(t, 1))}</div>
+            <div className="w-32 shrink-0 sm:w-40">{cell(find(t, 1))}</div>
           </div>
         ))}
       </div>
 
-      <div className={`sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 transition-colors ${dirty ? "border-red bg-redwash" : "border-line bg-carbon"}`}>
+      {/* sits above the phone tab bar */}
+      <div className={`sticky bottom-20 z-10 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 transition-colors lg:bottom-4 ${dirty ? "border-red bg-redwash" : "border-line bg-carbon"}`}>
         <span className="text-sm" role="status">
           {state?.error ? <span className="text-red">{state.error}</span> : dirty ? "You have unsaved price changes." : state?.ok ?? "All prices saved."}
         </span>
@@ -410,8 +557,9 @@ export function BranchForm({ branch }: { branch?: Branch }) {
   const [state, action, pending] = useActionState(saveBranch, undefined);
   const b = branch;
   return (
-    <form action={action} className={`flex flex-col gap-4 rounded-md border p-6 ${b ? "border-line bg-carbon" : "border-dashed border-strong"}`}>
-      <h3 className="font-display text-2xl uppercase">{b ? b.name : "New branch"}</h3>
+    // a new branch is added from a pop-up, which already has the title and frame
+    <form action={action} className={`flex flex-col gap-4 ${b ? "rounded-md border border-line bg-carbon p-4 sm:p-6" : ""}`}>
+      {b && <h3 className="font-display text-2xl uppercase">{b.name}</h3>}
       {b && <input type="hidden" name="id" value={b.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Name" name="name" defaultValue={b?.name} required />

@@ -15,7 +15,7 @@ export type DoorResult = {
   monthVisits?: number;
   plan?: string | null;
   endsOn?: string | null;
-  photo?: string | null; // only for a signed-in member checking themself in
+  photo?: string | null; // so staff at the door can match the face, however they checked in
   at?: string; // ISO time of the check-in
 };
 

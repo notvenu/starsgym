@@ -30,7 +30,7 @@ export type Gender = "female" | "male" | "other";
 export const GENDERS: [Gender, string][] = [["female", "Female"], ["male", "Male"], ["other", "Other"]];
 export type Session = "morning" | "evening" | "ladies";
 
-export type Track = "strength" | "strength_cardio" | "personal_training" | "trial" | "day_pass";
+export type Track = "strength" | "strength_cardio" | "couples" | "personal_training" | "trial" | "day_pass";
 
 export type Plan = { id: string; track: Track; duration_days: number; price_paise: number; active: boolean };
 
@@ -57,9 +57,13 @@ export function bestOffer(offers: Offer[], track: Track, today = gymDate()) {
 export const discounted = (paise: number, offer?: Offer) =>
   offer ? Math.round((paise * (100 - offer.percent_off)) / 100) : paise;
 
+/** Tracks that are memberships (and so carry the one-time admission fee on the first one). */
+export const MEMBERSHIP: Track[] = ["strength", "strength_cardio", "couples", "personal_training"];
+
 export const TRACKS: Record<Track, string> = {
   strength: "Strength",
   strength_cardio: "Strength + Cardio",
+  couples: "Couples",
   personal_training: "Personal Training",
   trial: "Trial Day",
   day_pass: "Day Pass",
@@ -99,6 +103,9 @@ export function gymClock(now = new Date()) {
 
 /** Gym-local calendar date, "YYYY-MM-DD" (matches checkins.day). */
 export const gymDate = (d = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: GYM_TZ }).format(d);
+
+/** Gym-local date n days from now (negative = ago). */
+export const gymDateIn = (days: number) => gymDate(new Date(Date.now() + days * 864e5));
 
 /** The last n gym-local dates, oldest first; the last one is today. */
 export const recentGymDates = (n: number, now = Date.now()) =>
@@ -145,6 +152,15 @@ export function sessionNow(b: Hours, female: boolean, now = new Date()): Session
   if (evening && inWindow(time, ...evening, g)) return "evening";
   if (female && ladies.some(([a, c]) => inWindow(time, a, c, g))) return "ladies";
   return null;
+}
+
+/** Holidays for a branch from today through Sunday — the "this week" heads-up shown at check-in. */
+export function weekHolidays(holidays: Holiday[], branchId: string, now = new Date()) {
+  const today = gymDate(now);
+  const sunday = gymDate(new Date(now.getTime() + ((7 - gymClock(now).dow) % 7) * 864e5));
+  return holidays
+    .filter((h) => h.day >= today && h.day <= sunday && (!h.branch_id || h.branch_id === branchId))
+    .sort((a, b) => a.day.localeCompare(b.day));
 }
 
 export const holidayFor = (holidays: Holiday[], branchId: string, day: string) =>
@@ -220,6 +236,7 @@ export type Settings = {
   phone: string | null;
   email: string | null;
   branch_access?: "any" | "home"; // "home" = members check in only at their home branch
+  admission_fee_paise?: number; // one-time, added to a member's first membership
 };
 
 /** Item photos are either uploads in the "site" bucket or full URLs. */

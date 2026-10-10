@@ -4,7 +4,7 @@ import { doorUrl } from "@/lib/pass";
 import { emailEnabled } from "@/lib/email";
 import { gymDate, type Branch, type Holiday } from "@/lib/gym";
 import { Empty, PageHeader, Panel } from "../kit";
-import { BranchAccessForm, BranchForm, HolidayForm, HolidayRow, LadiesHoursForm, ReplaceDoorKey } from "../ui";
+import { AdminModal, BranchAccessForm, BranchForm, HolidayForm, HolidayRow, LadiesHoursForm, ReplaceDoorKey } from "../ui";
 
 export const metadata = { title: "Branches & holidays — Stars Gym admin" };
 
@@ -22,7 +22,7 @@ export default async function BranchesPage() {
     b.filter((x) => x.active).map(async (x) => {
       const key = keys.data?.find((k) => k.branch_id === x.id)?.key as string | undefined;
       const url = key ? await doorUrl(key) : null;
-      return { branch: x, url, qr: url ? await QRCode.toDataURL(url, { margin: 2, width: 1000, color: { dark: "#0a0a0a", light: "#ffffff" } }) : null };
+      return { branch: x, url, qr: url ? await QRCode.toDataURL(url, { margin: 1, width: 600, color: { dark: "#0a0a0a", light: "#ffffff" } }) : null };
     }),
   );
 
@@ -56,17 +56,17 @@ export default async function BranchesPage() {
       </Panel>
 
       <Panel id="entrance" title="Entrance check-in QR" intro="Print one at each branch entrance. Scanning it checks members in without location permission — signed in, or with their phone / bill number.">
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-6">
           {doors.map(({ branch, url, qr }) => (
-            <div key={branch.id} className="flex flex-col items-center gap-3 rounded-md border border-line bg-panel p-5 text-center">
+            <div key={branch.id} className="flex min-w-0 flex-col items-center gap-4 rounded-xl border border-line bg-panel p-4 text-center sm:p-6">
               <p className="font-display text-3xl uppercase">{branch.name}</p>
               {qr ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={qr} alt={`Check-in QR for ${branch.name}`} width={200} height={200} className="size-50 rounded bg-white" />
-                  <p className="max-w-full truncate text-xs text-faint">{url}</p>
-                  <div className="flex flex-wrap items-start justify-center gap-2">
-                    <a href={qr} download={`stars-gym-checkin-${branch.name.toLowerCase().replace(/\W+/g, "-")}.png`} className="btn-red min-h-10 px-4 text-xs">Download to print</a>
+                  <img src={qr} alt={`Check-in QR for ${branch.name}`} width={240} height={240} className="aspect-square w-full max-w-60 rounded-lg border-4 border-red bg-white p-2" />
+                  <a href={url!} target="_blank" rel="noreferrer" title={url!} className="block w-full truncate rounded border border-line px-3 py-2 text-left font-mono text-xs text-ash hover:text-chalk">{url}</a>
+                  <div className="grid w-full grid-cols-2 gap-2">
+                    <a href={`/admin/branches/${branch.id}/poster`} download={`stars-gym-checkin-${branch.name.toLowerCase().replace(/\W+/g, "-")}.png`} className="btn-red min-h-11 px-3 text-xs whitespace-nowrap">Download poster</a>
                     <ReplaceDoorKey branchId={branch.id} />
                   </div>
                 </>
@@ -76,13 +76,18 @@ export default async function BranchesPage() {
             </div>
           ))}
         </div>
+        <p className="mt-4 text-sm text-ash">The poster is A4 with the QR, branch name, hours and how-to steps. Print it and put it at the entrance.</p>
       </Panel>
 
       <section className="flex flex-col gap-4">
-        <h2 className="font-label text-lg font-bold tracking-[0.12em] uppercase">Branches</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-label text-lg font-bold tracking-[0.12em] uppercase">Branches</h2>
+          <AdminModal label="+ New branch" title="New branch" className="btn-red min-h-11">
+            <BranchForm />
+          </AdminModal>
+        </div>
         <div className="grid items-start gap-6 xl:grid-cols-2">
           {b.map((x) => <BranchForm key={x.id} branch={x} />)}
-          <BranchForm />
         </div>
       </section>
     </>

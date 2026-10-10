@@ -3,7 +3,8 @@ import { Logo } from "@/components/site";
 import { OpenStatus } from "@/components/client";
 import { getNotices } from "@/lib/data";
 import { db, publicDb } from "@/lib/supabase";
-import { hoursLabel, ladiesLabel, type Branch } from "@/lib/gym";
+import { photoUrl } from "@/lib/photo";
+import { hoursLabel, ladiesLabel, weekHolidays, type Branch } from "@/lib/gym";
 import { DoorCheckIn } from "./ui";
 
 export const metadata = { title: "Check in — Stars Gym", robots: { index: false } };
@@ -21,7 +22,7 @@ export default async function CheckInPage({ searchParams }: PageProps<"/checkin"
     getNotices(),
   ]);
   const { data: branch } = branchId ? await publicDb().from("branches").select("*").eq("id", branchId).maybeSingle<Branch>() : { data: null };
-  const { data: profile } = auth.user ? await supabase.from("profiles").select("full_name").eq("id", auth.user.id).maybeSingle() : { data: null };
+  const { data: profile } = auth.user ? await supabase.from("profiles").select("full_name,photo_path").eq("id", auth.user.id).maybeSingle() : { data: null };
 
   return (
     <main className="dark-zone relative isolate flex min-h-dvh flex-col overflow-hidden bg-ink text-chalk">
@@ -51,7 +52,7 @@ export default async function CheckInPage({ searchParams }: PageProps<"/checkin"
                 {ladiesLabel(branch) && <> · Ladies {ladiesLabel(branch)}</>}
               </p>
             </div>
-            <DoorCheckIn doorKey={key!} member={auth.user ? profile?.full_name || "Member" : null} next={`/checkin?k=${key}`} />
+            <DoorCheckIn doorKey={key!} member={auth.user ? profile?.full_name || "Member" : null} memberPhoto={await photoUrl(profile?.photo_path)} holidays={weekHolidays(notices.holidays, branch.id)} next={`/checkin?k=${key}`} />
           </>
         ) : (
           <div className="flex max-w-sm flex-col items-center gap-4 text-center">

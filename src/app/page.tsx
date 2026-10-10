@@ -1,7 +1,7 @@
 import type React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Footer, Nav, Notices } from "@/components/site";
+import { Footer, Nav } from "@/components/site";
 import { BranchTicker, PlanPicker, Price } from "@/components/client";
 import { BranchExplorer } from "@/components/branches";
 import { Arrow, Reels, ReviewsSection, STOCK, StreakWall } from "@/components/sections";
@@ -37,8 +37,8 @@ export default async function Home() {
 
   return (
     <main>
-      <Nav overlay status={<BranchTicker branches={branches} holidays={holidays} />} />
-      <Notices holidays={holidays} offers={offers} branches={branches} />
+      {/* holidays and offers rotate in the top bar (a strip here would hide behind the fixed header) */}
+      <Nav overlay status={<BranchTicker branches={branches} holidays={holidays} offers={offers} />} />
 
       {/* hero — "arena doors": giant STARS GYM over a framed photo window; scrolling opens the window to full
           screen and lands on the headline. Without scroll-driven CSS (or with reduced motion) the landed state shows directly. */}
@@ -119,7 +119,7 @@ export default async function Home() {
             <Link key={p.title} href={p.href} data-reveal style={{ transitionDelay: `${i * 90}ms` }}
               className="dark-zone group relative flex aspect-[3/4] w-[78vw] shrink-0 snap-start flex-col justify-end overflow-hidden rounded-lg border border-line sm:w-auto">
               <Image src={p.img} alt="" fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 78vw" quality={80}
-                className="object-cover grayscale-[40%] transition-[transform,filter] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
+                className="object-cover can-hover:grayscale-[40%] transition-[transform,filter] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
               <div className="absolute inset-0 bg-linear-to-t from-ink via-ink/30 to-transparent" />
               <div className="relative flex flex-col gap-2 p-6">
                 <span className="font-label text-sm font-bold tracking-[0.2em] text-red">0{i + 1}</span>
@@ -137,7 +137,7 @@ export default async function Home() {
       {/* 02 membership */}
       <section id="plans" className="scroll-mt-8 border-t border-line bg-panel">
         <div className="wrap flex flex-col gap-12 py-24 md:py-32">
-          <PlanPicker plans={plans} offers={offers} />
+          <PlanPicker plans={plans} offers={offers} admissionPaise={settings.admission_fee_paise ?? 0} />
           <div className="grid gap-4 md:grid-cols-2">
             {trial && <Pass href={`/buy/${trial.id}`} title="Trial day" sub="First visit · one per person" price={<Price paise={trial.price_paise} offer={bestOffer(offers, "trial")} />} cta="Book" red />}
             {dayPass && <Pass href={`/buy/${dayPass.id}`} title="Day pass" sub="Single day · any branch" price={<Price paise={dayPass.price_paise} offer={bestOffer(offers, "day_pass")} />} cta="Buy" />}
@@ -171,7 +171,7 @@ export default async function Home() {
                 className={`group relative overflow-hidden rounded-lg border border-line ${i === 0 ? "col-span-2 max-md:aspect-[16/10] md:row-span-2" : "max-md:aspect-square"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={itemImage(g.image_path) ?? ""} alt={g.title} loading="lazy" className="size-full object-cover transition-transform duration-700 ease-lift group-hover:scale-105" />
-                {g.title && <figcaption className="absolute bottom-3 left-3 rounded-full bg-ink/70 px-3 py-1 text-xs font-bold tracking-wider uppercase opacity-0 backdrop-blur transition-opacity group-hover:opacity-100">{g.title}</figcaption>}
+                {g.title && <figcaption className="absolute bottom-3 left-3 rounded-full bg-ink/70 px-3 py-1 text-xs font-bold tracking-wider uppercase can-hover:opacity-0 backdrop-blur transition-opacity group-hover:opacity-100">{g.title}</figcaption>}
               </figure>
             ))}
           </Link>
@@ -237,7 +237,7 @@ function Coach({ t, i }: { t: SiteItem; i: number }) {
     <Link href="/trainers" data-reveal style={{ transitionDelay: `${i * 90}ms` }} className="dark-zone group relative aspect-[3/4] overflow-hidden rounded-lg border border-line bg-carbon">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={t.title} loading="lazy" className="size-full object-cover object-top grayscale transition-[transform,filter] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
+        <img src={src} alt={t.title} loading="lazy" className="size-full object-cover object-top can-hover:grayscale transition-[transform,filter] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
       ) : (
         <div className="stripes size-full" />
       )}

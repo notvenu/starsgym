@@ -37,7 +37,7 @@ export function EnquiryRow({ id, children }: { id: string; children: React.React
   return (
     <li className={`flex flex-wrap items-start justify-between gap-3 py-4 ${done ? "opacity-40" : ""}`}>
       <div className="min-w-0 flex-1">{children}</div>
-      {!done && <button disabled={pending} onClick={() => start(async () => setDone(!(await markEnquiry(id))?.error))} className="btn-ghost">Mark handled</button>}
+      {!done && <button disabled={pending} onClick={() => start(async () => setDone(!(await markEnquiry(id))?.error))} className="btn-ghost max-sm:w-full">Mark handled</button>}
     </li>
   );
 }
@@ -131,7 +131,7 @@ export function ItemRow({ item, trainers = [] }: { item: SiteItem; trainers?: Si
           <p className={`truncate font-bold ${item.active ? "" : "text-ash line-through"}`}>{item.title || item.url || "Untitled"}</p>
           <p className="truncate text-sm text-ash">{[item.duration, item.subtitle || item.url].filter(Boolean).join(" · ")}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 max-sm:w-full max-sm:[&>*]:min-h-10 max-sm:[&>*]:flex-1 max-sm:[&>*]:px-2 max-sm:[&>*]:text-xs">
           <button onClick={() => setEditing((e) => !e)} className="btn-ghost">{editing ? "Close" : "Edit"}</button>
           <button disabled={pending} onClick={() => start(async () => void (await setItemActive(item.id, !item.active)))} className="btn-ghost">{item.active ? "Hide" : "Show"}</button>
           <button disabled={pending} onClick={() => confirm("Delete this for good?") && start(async () => void (await deleteItem(item.id)))} className="btn-ghost">Delete</button>

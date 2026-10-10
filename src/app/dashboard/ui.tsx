@@ -1,9 +1,9 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Check, Field, MemberDetailsFields, OpenStatus } from "@/components/client";
+import { Check, Field, MemberDetailsFields, OpenStatus, WeekHolidays } from "@/components/client";
 import type { Profile } from "@/lib/supabase";
-import { ladiesLabel, type Branch, type Holiday, type Session } from "@/lib/gym";
+import { ladiesLabel, weekHolidays, type Branch, type Holiday, type Session } from "@/lib/gym";
 import { PhotoCapture } from "@/components/photo";
 import { changePhoto, checkIn, postShowcase, saveProfile } from "./actions";
 
@@ -18,6 +18,8 @@ export function CheckInPanel(props: {
   streak: number;
   todaySessions: Session[];
   nowSession: Record<string, Session | "ladies_only" | null>;
+  photo: string | null;
+  name: string;
   hasPlan: boolean;
   week: { iso: string; label: string; done: boolean; today: boolean }[];
 }) {
@@ -58,7 +60,19 @@ export function CheckInPanel(props: {
   return (
     <section className="flex flex-col gap-7 rounded-lg border border-line bg-panel p-6 sm:p-9">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="label">Daily check-in</p>
+        <div className="flex items-center gap-3">
+          {/* the member's photo — the same face staff see when they scan the pass */}
+          {props.photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={props.photo} alt="" className={`size-12 rounded-full border-2 object-cover ${done ? "border-red" : "border-strong"}`} />
+          ) : (
+            <span className="flex size-12 items-center justify-center rounded-full border-2 border-strong font-display text-xl uppercase">{props.name[0]}</span>
+          )}
+          <div className="leading-tight">
+            <p className="label">Daily check-in</p>
+            <p className="font-bold">{props.name.split(" ")[0] || "Athlete"}</p>
+          </div>
+        </div>
         {branch && <p className="font-label text-sm font-bold uppercase tracking-[0.12em]"><OpenStatus branch={branch} holidays={props.holidays} withHours /></p>}
       </div>
 
@@ -103,6 +117,8 @@ export function CheckInPanel(props: {
         <input type="checkbox" className="size-5 accent-red" checked={useLocation || mustLocate} disabled={mustLocate} onChange={(e) => setUseLocation(e.target.checked)} />
         Verify with my location {mustLocate && "(required at this branch)"}
       </label>
+
+      <WeekHolidays holidays={weekHolidays(props.holidays, branchId)} />
 
       {visits.length > 0 && (
         <p className="flex flex-wrap items-center justify-center gap-2 text-sm text-ash">

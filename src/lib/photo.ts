@@ -51,3 +51,11 @@ export async function setMyPhoto(supabase: Awaited<ReturnType<typeof db>>, userI
   await removePhoto(row.old_path);
   return { left: row.changes_left };
 }
+
+/** Signed URLs for many photos in one request: path → url. */
+export async function photoUrls(paths: (string | null | undefined)[]) {
+  const list = [...new Set(paths.filter((p): p is string => !!p))];
+  if (!list.length) return new Map<string, string>();
+  const { data } = await adminDb().storage.from("faces").createSignedUrls(list, 600);
+  return new Map((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl]));
+}

@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Check } from "@/components/client";
-import { prettyDay, type Session } from "@/lib/gym";
+import { Check, WeekHolidays } from "@/components/client";
+import { prettyDay, type Holiday, type Session } from "@/lib/gym";
 import { doorCheckIn, type DoorResult } from "./actions";
 
 type By = "phone" | "ref";
 const SESSION: Record<Session, string> = { morning: "Morning", evening: "Evening", ladies: "Ladies' hours" };
 
-export function DoorCheckIn({ doorKey, member, next }: { doorKey: string; member: string | null; next: string }) {
+export function DoorCheckIn({ doorKey, member, memberPhoto, holidays, next }: { doorKey: string; member: string | null; memberPhoto: string | null; holidays: Holiday[]; next: string }) {
   const [asGuest, setAsGuest] = useState(!member); // signed-in members can still switch to phone / bill
   const [by, setBy] = useState<By>("phone");
   const [value, setValue] = useState("");
@@ -23,13 +23,21 @@ export function DoorCheckIn({ doorKey, member, next }: { doorKey: string; member
       if (!r.error) navigator.vibrate?.(r.already ? 30 : [60, 40, 60]);
     });
 
-  if (res && !res.error) return <Welcome r={res} signedIn={!!member && !asGuest} onAgain={() => { setRes(undefined); setValue(""); }} />;
+  if (res && !res.error) return <Welcome r={res} holidays={holidays} signedIn={!!member && !asGuest} onAgain={() => { setRes(undefined); setValue(""); }} />;
 
   return (
     <div className="w-full max-w-md animate-rise rounded-2xl border border-chalk/10 bg-carbon/80 p-6 shadow-[0_30px_80px_rgba(0,0,0,.5)] backdrop-blur-md [animation-delay:120ms] sm:p-8">
       {!asGuest ? (
         <div className="flex flex-col gap-4">
-          <p className="text-center text-ash">Signed in as <b className="text-chalk">{member}</b></p>
+          <div className="flex flex-col items-center gap-3">
+            {memberPhoto ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={memberPhoto} alt="" className="size-28 rounded-full border-4 border-red object-cover" />
+            ) : (
+              <span className="flex size-28 items-center justify-center rounded-full border-4 border-strong bg-panel font-display text-5xl uppercase">{member?.[0]}</span>
+            )}
+            <p className="text-center text-ash">Signed in as <b className="text-chalk">{member}</b></p>
+          </div>
           <button onClick={() => go("me")} disabled={pending} className="btn-red min-h-18 animate-pulse-red font-display text-3xl font-normal tracking-wider">
             {pending ? "Checking in…" : "Check in"}
           </button>
@@ -68,13 +76,14 @@ export function DoorCheckIn({ doorKey, member, next }: { doorKey: string; member
           )}
         </form>
       )}
+      {holidays.length > 0 && <div className="mt-5"><WeekHolidays holidays={holidays} /></div>}
       {res?.error && <p role="alert" className="mt-4 rounded-md border border-red/40 bg-redwash px-4 py-3 text-center text-sm text-chalk">{res.error}</p>}
     </div>
   );
 }
 
 /** The after-check-in screen: who, which session, streak, this month, plan validity. */
-function Welcome({ r, signedIn, onAgain }: { r: DoorResult; signedIn: boolean; onAgain: () => void }) {
+function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: Holiday[]; signedIn: boolean; onAgain: () => void }) {
   const time = r.at ? new Date(r.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "";
   const daysLeft = r.endsOn ? Math.round((Date.parse(r.endsOn) - Date.parse(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }))) / 864e5) + 1 : null;
   return (
@@ -82,7 +91,7 @@ function Welcome({ r, signedIn, onAgain }: { r: DoorResult; signedIn: boolean; o
       <div className="relative">
         {r.photo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={r.photo} alt="" className="size-36 rounded-full border-[5px] border-red object-cover shadow-[0_0_60px_rgba(227,20,28,.45)]" />
+          <img src={r.photo} alt="" className="size-44 rounded-full border-[6px] border-red object-cover shadow-[0_0_60px_rgba(227,20,28,.45)]" />
         ) : (
           <div className="flex size-36 items-center justify-center rounded-full bg-red shadow-[0_0_60px_rgba(227,20,28,.45)]">
             <Check className="size-16 text-white" />
@@ -127,6 +136,7 @@ function Welcome({ r, signedIn, onAgain }: { r: DoorResult; signedIn: boolean; o
         )}
       </dl>
       {daysLeft !== null && daysLeft <= 5 && <p className="text-sm text-red">Your plan ends soon — renew at the desk or online.</p>}
+      <div className="w-full"><WeekHolidays holidays={holidays} /></div>
 
       <div className="flex w-full flex-col gap-2 sm:flex-row">
         {signedIn ? (
