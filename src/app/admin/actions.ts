@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { adminDb, requireAdmin } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
+import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
 import { prettyDay, readMemberDetails, type Track } from "@/lib/gym";
 
 export type Result = { error?: string; ok?: string } | undefined;
@@ -29,6 +30,8 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   if (!email) return { error: "Email is required — it's how the member signs in." };
   const read = readMemberDetails(form);
   if ("error" in read) return read;
+  const photo = formPhoto(form);
+  if (photo.error) return { error: photo.error };
 
   const { data: existing } = await supabase.from("profiles").select("id").eq("email", email).maybeSingle();
   let userId = existing?.id as string | undefined;
@@ -42,6 +45,16 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
     userId = data.user.id;
   }
   await supabase.from("profiles").update({ ...read.details, ...(s(form, "branch_id") && { home_branch_id: s(form, "branch_id") }) }).eq("id", userId);
+  // photo taken at the desk: staff can set or replace it any time, without using up the member's own changes
+  if (photo.file) {
+    const path = await uploadPhoto(userId, photo.file);
+    const { data: old, error } = await supabase.rpc("admin_set_photo", { p_user: userId, p_path: path });
+    if (error) {
+      await removePhoto(path);
+      return { error: error.message };
+    }
+    await removePhoto(old as string | null);
+  }
 
   const planId = s(form, "plan_id");
   if (!planId) return done(existing ? "Member already exists — updated." : "Member added. They can sign in with Google or an email link.");
@@ -91,6 +104,15 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
 }
 
 /** Saves every plan's price and on/off switch from the pricing grid. */
+/** Can members check in at every branch, or only their home branch? */
+export async function saveBranchAccess(_: Result, form: FormData): Promise<Result> {
+  const { supabase } = await requireAdmin();
+  const mode = s(form, "branch_access");
+  if (mode !== "any" && mode !== "home") return { error: "Pick one option." };
+  const { error } = await supabase.from("site_settings").update({ branch_access: mode }).eq("id", 1);
+  return error ? { error: error.message } : done(mode === "home" ? "Members now check in at their home branch only" : "Members can check in at any branch");
+}
+
 /** Ladies' timings for one branch: up to two women-only windows. */
 export async function saveLadiesHours(_: Result, form: FormData): Promise<Result> {
   const { supabase } = await requireAdmin();

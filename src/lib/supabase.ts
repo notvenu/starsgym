@@ -42,6 +42,8 @@ export type Profile = {
   gender: Gender | null;
   date_of_birth: string | null;
   emergency_contact: string | null;
+  photo_path: string | null; // private "faces" bucket; show via photoUrl()
+  photo_changes: number; // self-service changes used (max 2 after the first photo)
   role: "member" | "admin";
 };
 
@@ -52,8 +54,9 @@ export async function requireUser(next?: string) {
   if (!data.user) redirect(login);
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single<Profile>();
   if (!profile) redirect(login);
-  // Google sign-ups arrive without gender / phone: collect them before anything else (gender gates ladies' hours)
-  if (!profile.gender && profile.role !== "admin") redirect(next ? `/welcome?next=${encodeURIComponent(next)}` : "/welcome");
+  // collect gender / phone (Google sign-ups don't give them) and a photo before anything else:
+  // gender gates ladies' hours, the photo is what staff check when they scan a pass
+  if ((!profile.gender || !profile.photo_path) && profile.role !== "admin") redirect(next ? `/welcome?next=${encodeURIComponent(next)}` : "/welcome");
   return { supabase, user: data.user, profile };
 }
 

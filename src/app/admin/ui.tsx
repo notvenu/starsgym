@@ -2,8 +2,9 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Field, MemberDetailsFields, Price } from "@/components/client";
+import { PhotoCapture } from "@/components/photo";
 import { bestOffer, DAY_NAMES, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
-import { addHoliday, addMember, cancelSub, deleteHoliday, markPaid, replaceDoorKey, saveBranch, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
+import { addHoliday, addMember, cancelSub, deleteHoliday, markPaid, replaceDoorKey, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
 
 function Status({ state }: { state: Result }) {
   if (state?.error) return <p role="alert" className="text-sm text-red">{state.error}</p>;
@@ -57,6 +58,9 @@ export function AddMemberForm({ branches, plans, offers }: { branches: Branch[];
           <Field label="Email" name="email" type="email" required />
           <Select label="Branch" name="branch_id" options={branches.map((b) => [b.id, b.name])} />
           <MemberDetailsFields />
+          <div className="sm:col-span-2">
+            <PhotoCapture label="Member photo · take it now, or they'll be asked at first sign-in" />
+          </div>
         </div>
       </Step>
 
@@ -197,6 +201,34 @@ export function LadiesHoursForm({ branch: b }: { branch: Branch }) {
       </div>
       <div className="flex items-center gap-4">
         <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Save ladies' timings"}</button>
+        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
+        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+      </div>
+    </form>
+  );
+}
+
+export function BranchAccessForm({ mode }: { mode: "any" | "home" }) {
+  const [state, action, pending] = useActionState(saveBranchAccess, undefined);
+  const options: ["any" | "home", string, string][] = [
+    ["any", "Any branch", "Members can check in at every branch with one membership."],
+    ["home", "Home branch only", "Each member checks in only at their home branch. If none is set, their first check-in sets it. Only the desk can move them."],
+  ];
+  return (
+    <form action={action} className="flex flex-col gap-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {options.map(([v, title, desc]) => (
+          <label key={v} className="flex cursor-pointer flex-col gap-1 rounded-md border border-strong p-4 has-checked:border-red has-checked:bg-redwash">
+            <span className="flex items-center gap-2 font-bold">
+              <input type="radio" name="branch_access" value={v} defaultChecked={mode === v} className="size-4 accent-red" />
+              {title}
+            </span>
+            <span className="text-sm text-ash">{desc}</span>
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center gap-4">
+        <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Save"}</button>
         {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
         {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
       </div>

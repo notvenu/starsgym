@@ -219,6 +219,7 @@ export type Settings = {
   whatsapp: string | null;
   phone: string | null;
   email: string | null;
+  branch_access?: "any" | "home"; // "home" = members check in only at their home branch
 };
 
 /** Item photos are either uploads in the "site" bucket or full URLs. */

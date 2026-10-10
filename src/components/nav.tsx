@@ -95,7 +95,7 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
 
         {children ?? (
           <>
-            <ul className="flex items-center gap-1 rounded-full border border-chalk/10 bg-chalk/[0.04] p-1 backdrop-blur-md max-lg:hidden">
+            <ul className="flex items-center gap-1 max-lg:hidden">
               {PAGES.map(([label, href]) => {
                 const active = pathname === href;
                 return (

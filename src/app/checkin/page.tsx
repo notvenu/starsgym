@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { Logo } from "@/components/site";
-import { db } from "@/lib/supabase";
+import { OpenStatus } from "@/components/client";
+import { getNotices } from "@/lib/data";
+import { db, publicDb } from "@/lib/supabase";
+import { hoursLabel, ladiesLabel, type Branch } from "@/lib/gym";
 import { DoorCheckIn } from "./ui";
 
 export const metadata = { title: "Check in — Stars Gym", robots: { index: false } };
@@ -12,32 +15,52 @@ export default async function CheckInPage({ searchParams }: PageProps<"/checkin"
   const k = (await searchParams).k;
   const key = typeof k === "string" && UUID.test(k) ? k : null;
   const supabase = await db();
-  const [{ data: branch }, { data: auth }] = await Promise.all([
+  const [{ data: branchId }, { data: auth }, notices] = await Promise.all([
     key ? supabase.rpc("door_branch", { p_key: key }) : Promise.resolve({ data: null }),
     supabase.auth.getUser(),
+    getNotices(),
   ]);
-  const { data: profile } = auth.user
-    ? await supabase.from("profiles").select("full_name").eq("id", auth.user.id).maybeSingle()
-    : { data: null };
+  const { data: branch } = branchId ? await publicDb().from("branches").select("*").eq("id", branchId).maybeSingle<Branch>() : { data: null };
+  const { data: profile } = auth.user ? await supabase.from("profiles").select("full_name").eq("id", auth.user.id).maybeSingle() : { data: null };
 
   return (
-    <main className="flex min-h-dvh flex-col items-center gap-8 px-4 py-10">
-      <Logo size={80} />
-      {branch ? (
-        <>
-          <div className="text-center">
-            <p className="eyebrow justify-center">{branch as string} entrance</p>
-            <h1 className="font-display text-[clamp(52px,14vw,88px)] leading-none uppercase">Check in</h1>
+    <main className="dark-zone relative isolate flex min-h-dvh flex-col overflow-hidden bg-ink text-chalk">
+      {/* backdrop: brand glow + giant outlined word */}
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_55%_at_50%_0%,rgb(227_20_28/0.35),transparent_70%)]" />
+      <div aria-hidden="true" className="outline-text pointer-events-none absolute -bottom-8 left-1/2 -z-10 -translate-x-1/2 font-display text-[42vw] leading-none whitespace-nowrap opacity-60 sm:text-[22vw]">CHECK IN</div>
+
+      <header className="flex items-center justify-between px-5 pt-6 sm:px-10">
+        <Logo size={64} />
+        {branch && (
+          <p className="rounded-full border border-chalk/15 bg-chalk/5 px-4 py-2 font-label text-xs font-bold tracking-[0.16em] uppercase backdrop-blur">
+            <OpenStatus branch={branch} holidays={notices.holidays} />
+          </p>
+        )}
+      </header>
+
+      <div className="flex flex-1 flex-col items-center justify-center gap-8 px-5 py-10">
+        {branch ? (
+          <>
+            <div className="animate-rise text-center">
+              <p className="font-label text-sm font-bold tracking-[0.3em] text-red uppercase">{branch.name} · entrance</p>
+              <h1 className="mt-2 font-display text-[clamp(64px,18vw,128px)] leading-[0.85] uppercase">
+                Earn your <span className="text-red">star.</span>
+              </h1>
+              <p className="mt-4 text-sm text-ash">
+                General {hoursLabel(branch)}
+                {ladiesLabel(branch) && <> · Ladies {ladiesLabel(branch)}</>}
+              </p>
+            </div>
+            <DoorCheckIn doorKey={key!} member={auth.user ? profile?.full_name || "Member" : null} next={`/checkin?k=${key}`} />
+          </>
+        ) : (
+          <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+            <h1 className="font-display text-6xl leading-none uppercase">Code not recognised</h1>
+            <p className="text-body">This check-in QR has been replaced or isn&apos;t from Stars Gym. Ask the desk, or check in from your dashboard.</p>
+            <Link href="/dashboard" className="btn-red">Go to dashboard</Link>
           </div>
-          <DoorCheckIn doorKey={key!} member={auth.user ? (profile?.full_name || "Member") : null} next={`/checkin?k=${key}`} />
-        </>
-      ) : (
-        <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-          <h1 className="font-display text-5xl leading-none uppercase">Code not recognised</h1>
-          <p className="text-body">This check-in QR has been replaced or isn&apos;t from Stars Gym. Ask the desk, or check in from your dashboard.</p>
-          <Link href="/dashboard" className="btn-red">Go to dashboard</Link>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }

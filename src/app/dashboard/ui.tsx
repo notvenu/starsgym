@@ -4,7 +4,8 @@ import { useActionState, useState, useTransition } from "react";
 import { Check, Field, MemberDetailsFields, OpenStatus } from "@/components/client";
 import type { Profile } from "@/lib/supabase";
 import { ladiesLabel, type Branch, type Holiday, type Session } from "@/lib/gym";
-import { checkIn, postShowcase, saveProfile } from "./actions";
+import { PhotoCapture } from "@/components/photo";
+import { changePhoto, checkIn, postShowcase, saveProfile } from "./actions";
 
 const MILESTONES = [7, 30, 60, 100, 200, 365];
 const R = 88;
@@ -152,6 +153,29 @@ export function ShowcaseForm({ defaultLink }: { defaultLink: string }) {
       {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
       {state?.ok && <p role="status" className="text-sm">{state.ok}</p>}
       <button disabled={pending} className="btn-red">{pending ? "Uploading…" : "Post to the wall"}</button>
+    </form>
+  );
+}
+
+/** Members can replace their photo twice; after that the desk does it. */
+export function PhotoForm({ url, changesLeft }: { url: string | null; changesLeft: number }) {
+  const [state, action, pending] = useActionState(changePhoto, undefined);
+  if (changesLeft <= 0)
+    return (
+      <div className="flex items-center gap-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {url && <img src={url} alt="Your photo" className="size-24 rounded-full border-2 border-strong object-cover" />}
+        <p className="text-sm text-ash">You&apos;ve used both photo changes. Ask the desk if it needs updating.</p>
+      </div>
+    );
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <PhotoCapture current={url} label={`Your photo · ${changesLeft} change${changesLeft === 1 ? "" : "s"} left`} />
+      <div className="flex items-center gap-4">
+        <button disabled={pending} className="btn-ghost">{pending ? "Saving…" : "Save new photo"}</button>
+        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
+        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+      </div>
     </form>
   );
 }

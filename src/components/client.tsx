@@ -77,18 +77,20 @@ export function PlanPicker({ plans, offers }: { plans: Plan[]; offers: Offer[] }
           </p>
           <h2 className="font-display text-[clamp(44px,6vw,88px)] leading-[0.92] uppercase">Pick your plan.</h2>
         </div>
-        <div role="group" aria-label="Plan length" className="flex flex-wrap gap-1 rounded-md border border-line bg-panel p-1">
+        <div role="group" aria-label="Plan length" className="grid w-full grid-cols-4 gap-1 rounded-md border border-line bg-panel p-1 sm:flex sm:w-auto">
           {DURATIONS.map((d) => (
             <button
               key={d.days}
               type="button"
               aria-pressed={d.days === days}
               onClick={() => setDays(d.days)}
-              className={`min-h-11 cursor-pointer rounded px-5 font-label text-[15px] font-bold uppercase tracking-[0.12em] transition-colors duration-200 ${
+              className={`min-h-11 cursor-pointer rounded px-1 font-label text-[13px] font-bold uppercase tracking-[0.06em] whitespace-nowrap transition-colors duration-200 sm:px-5 sm:text-[15px] sm:tracking-[0.12em] ${
                 d.days === days ? "bg-red text-white" : "text-ash hover:text-chalk"
               }`}
             >
-              {d.label}
+              {/* phones: four equal tabs on one row, so the long label gets a short form */}
+              <span className="sm:hidden">{d.days === 180 ? "6 Months" : d.label}</span>
+              <span className="max-sm:hidden">{d.label}</span>
             </button>
           ))}
         </div>

@@ -4,16 +4,17 @@ import { doorUrl } from "@/lib/pass";
 import { emailEnabled } from "@/lib/email";
 import { gymDate, type Branch, type Holiday } from "@/lib/gym";
 import { Empty, PageHeader, Panel } from "../kit";
-import { BranchForm, HolidayForm, HolidayRow, LadiesHoursForm, ReplaceDoorKey } from "../ui";
+import { BranchAccessForm, BranchForm, HolidayForm, HolidayRow, LadiesHoursForm, ReplaceDoorKey } from "../ui";
 
 export const metadata = { title: "Branches & holidays — Stars Gym admin" };
 
 export default async function BranchesPage() {
   const { supabase } = await requireAdmin();
-  const [branches, holidays, keys] = await Promise.all([
+  const [branches, holidays, keys, settings] = await Promise.all([
     supabase.from("branches").select("*").order("created_at"),
     supabase.from("holidays").select("*").gte("day", gymDate()).order("day"),
     supabase.from("branch_door_keys").select("branch_id,key"),
+    supabase.from("site_settings").select("branch_access").eq("id", 1).maybeSingle(),
   ]);
   const b = (branches.data ?? []) as Branch[];
   const h = (holidays.data ?? []) as Holiday[];
@@ -43,6 +44,10 @@ export default async function BranchesPage() {
           )}
         </Panel>
       </div>
+
+      <Panel id="access" title="Branch access" intro="Which branches a member can check in at.">
+        <BranchAccessForm mode={settings.data?.branch_access === "home" ? "home" : "any"} />
+      </Panel>
 
       <Panel id="ladies" title="Ladies' timings" intro="Women-only windows. Women can also check in during general hours; men can't check in during these. Leave a window blank if there isn't one.">
         <div className="grid gap-5 lg:grid-cols-2">

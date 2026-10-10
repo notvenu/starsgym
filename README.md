@@ -4,7 +4,7 @@ Next.js 16 (App Router, TypeScript, Tailwind v4) + Supabase + Razorpay.
 
 ## Setup
 
-1. **Supabase**: create a project, open the SQL editor, run the files in `supabase/migrations/` in order (`0001` → `0007`).
+1. **Supabase**: create a project, open the SQL editor, run the files in `supabase/migrations/` in order (`0001` → `0008`).
    - Auth → Providers → Google: enable it with a Google OAuth client (redirect URI shown on that screen).
    - Auth → URL Configuration: set Site URL to your domain and add `http://localhost:3000/auth/callback` (and the production one) to Redirect URLs.
 2. `cp .env.example .env.local` and fill it in.

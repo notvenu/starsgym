@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { Flame, Nav, Notices } from "@/components/site";
-import { getNotices } from "@/lib/data";
+import { getNotices, getSettings } from "@/lib/data";
 import { requireUser } from "@/lib/supabase";
 import { DAY_NAMES, inr, recentGymDates, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
 import { signOut } from "../login/actions";
 import { getPass } from "../pass/[subId]/data";
 import { Ticket } from "../pass/[subId]/ticket";
 import { PassDialog } from "../pass/[subId]/ui";
-import { CheckInPanel, ProfileForm, ShowcaseForm } from "./ui";
+import { photoUrl } from "@/lib/photo";
+import { CheckInPanel, PhotoForm, ProfileForm, ShowcaseForm } from "./ui";
 
 export const metadata = { title: "Dashboard — Stars Gym" };
 
@@ -28,6 +29,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
     supabase.from("showcase_feed").select("user_id").order("streak", { ascending: false }),
     getNotices(),
   ]);
+  const homeOnly = (await getSettings()).branch_access === "home" && !!profile.home_branch_id;
+  const checkInBranches = ((branches.data ?? []) as Branch[]).filter((b) => !homeOnly || b.id === profile.home_branch_id);
 
   const allSubs = (subs.data ?? []) as unknown as Sub[];
   const active = allSubs.find((s) => s.status === "active" && s.starts_on! <= today && s.ends_on! >= today);
@@ -67,7 +70,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
 
         <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
           <CheckInPanel
-            branches={(branches.data ?? []) as Branch[]}
+            branches={checkInBranches}
             homeBranch={profile.home_branch_id}
             holidays={notices.holidays}
             streak={(streak.data as number) ?? 0}
@@ -133,6 +136,9 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
 
         <section className="card p-6">
           <p className="label mb-4">Profile</p>
+          <div className="mb-6 border-b border-line pb-6">
+            <PhotoForm url={await photoUrl(profile.photo_path)} changesLeft={profile.photo_path ? 2 - profile.photo_changes : 2} />
+          </div>
           <ProfileForm profile={profile} branches={(branches.data ?? []) as Branch[]} />
         </section>
       </div>

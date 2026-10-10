@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/supabase";
 import { readMemberDetails } from "@/lib/gym";
+import { formPhoto, setMyPhoto } from "@/lib/photo";
 
 export type Result = { error?: string; ok?: string } | undefined;
 
@@ -12,6 +13,17 @@ export async function checkIn(branchId: string, lat?: number, lng?: number): Pro
   if (error) return { error: error.message };
   revalidatePath("/dashboard");
   return { ok: "Checked in", streak: data as number };
+}
+
+export async function changePhoto(_: Result, form: FormData): Promise<Result> {
+  const { supabase, user } = await requireUser();
+  const { file, error } = formPhoto(form);
+  if (error) return { error };
+  if (!file) return { error: "Take or upload a new photo first." };
+  const res = await setMyPhoto(supabase, user.id, file);
+  if (res.error) return { error: res.error };
+  revalidatePath("/dashboard");
+  return { ok: res.left ? `Photo updated — ${res.left} change${res.left === 1 ? "" : "s"} left.` : "Photo updated — that was your last change." };
 }
 
 export async function saveProfile(_: Result, form: FormData): Promise<Result> {

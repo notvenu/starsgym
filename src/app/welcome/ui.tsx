@@ -2,14 +2,16 @@
 
 import { useActionState } from "react";
 import { Field, MemberDetailsFields } from "@/components/client";
+import { PhotoCapture } from "@/components/photo";
 import type { Profile } from "@/lib/supabase";
 import { saveDetails } from "./actions";
 
-export function WelcomeForm({ profile, next }: { profile: Profile | null; next: string }) {
+export function WelcomeForm({ profile, photo, next }: { profile: Profile | null; photo: string | null; next: string }) {
   const [state, action, pending] = useActionState(saveDetails, undefined);
   return (
     <form action={action} className="flex w-full max-w-md flex-col gap-4">
       <input type="hidden" name="next" value={next} />
+      <PhotoCapture current={photo} label="Your photo" />
       <Field label="Full name" name="full_name" autoComplete="name" defaultValue={profile?.full_name ?? ""} required />
       <MemberDetailsFields d={profile} />
       {state?.error && <p role="alert" className="text-red">{state.error}</p>}

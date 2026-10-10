@@ -165,10 +165,10 @@ export default async function Home() {
       {items.gallery.length >= 5 && (
         <section className="wrap flex flex-col gap-10 py-24 md:py-32">
           <Head n="05" eyebrow="Inside" title="Where the work happens." href="/gallery" cta="Full gallery" />
-          <Link href="/gallery" aria-label="Open the gallery" className="grid h-[min(80vh,720px)] grid-cols-4 grid-rows-2 gap-3 max-md:h-[520px] max-md:grid-cols-2 max-md:grid-rows-3">
+          <Link href="/gallery" aria-label="Open the gallery" className="grid grid-cols-2 gap-3 md:h-[min(80vh,720px)] md:grid-cols-4 md:grid-rows-2">
             {items.gallery.slice(0, 5).map((g, i) => (
               <figure key={g.id} data-reveal style={{ transitionDelay: `${i * 70}ms` }}
-                className={`group relative overflow-hidden rounded-lg border border-line ${i === 0 ? "col-span-2 row-span-2 max-md:row-span-1" : ""} ${i === 4 ? "max-md:col-span-2" : ""}`}>
+                className={`group relative overflow-hidden rounded-lg border border-line ${i === 0 ? "col-span-2 max-md:aspect-[16/10] md:row-span-2" : "max-md:aspect-square"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={itemImage(g.image_path) ?? ""} alt={g.title} loading="lazy" className="size-full object-cover transition-transform duration-700 ease-lift group-hover:scale-105" />
                 {g.title && <figcaption className="absolute bottom-3 left-3 rounded-full bg-ink/70 px-3 py-1 text-xs font-bold tracking-wider uppercase opacity-0 backdrop-blur transition-opacity group-hover:opacity-100">{g.title}</figcaption>}
