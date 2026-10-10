@@ -2,25 +2,28 @@ import Link from "next/link";
 import { Logo } from "@/components/site";
 import { OpenStatus } from "@/components/client";
 import { getNotices } from "@/lib/data";
-import { db, publicDb } from "@/lib/supabase";
+import { adminDb, db } from "@/lib/supabase";
 import { hoursLabel, ladiesLabel, type Branch } from "@/lib/gym";
 import { DoorCheckIn } from "./ui";
 
 export const metadata = { title: "Check in — Stars Gym", robots: { index: false } };
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 /** Opened by scanning the QR at a branch entrance. Scanning proves you're there, so no location permission. */
 export default async function CheckInPage({ searchParams }: PageProps<"/checkin">) {
   const k = (await searchParams).k;
-  const key = typeof k === "string" && UUID.test(k) ? k : null;
+  // some scanner apps add spaces or junk around the value, so pull the key out rather than demand an exact match
+  const key = (Array.isArray(k) ? k[0] : k)?.match(UUID)?.[0].toLowerCase() ?? null;
   const supabase = await db();
-  const [{ data: branchId }, { data: auth }, notices] = await Promise.all([
-    key ? supabase.rpc("door_branch", { p_key: key }) : Promise.resolve({ data: null }),
+  const [{ data: door }, { data: auth }, notices] = await Promise.all([
+    // the key itself is the secret, so look it up server-side: door keys are admin-only under RLS,
+    // which made a correct code read as "not recognised" for members and signed-out visitors
+    key ? adminDb().from("branch_door_keys").select("branch_id").eq("key", key).maybeSingle() : Promise.resolve({ data: null }),
     supabase.auth.getUser(),
     getNotices(),
   ]);
-  const { data: branch } = branchId ? await publicDb().from("branches").select("*").eq("id", branchId).maybeSingle<Branch>() : { data: null };
+  const { data: branch } = door ? await adminDb().from("branches").select("*").eq("id", door.branch_id).eq("active", true).maybeSingle<Branch>() : { data: null };
   const { data: profile } = auth.user ? await supabase.from("profiles").select("full_name").eq("id", auth.user.id).maybeSingle() : { data: null };
 
   return (

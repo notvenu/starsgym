@@ -32,7 +32,9 @@ export function readPassCode(code: string): ReadPass {
 export async function siteOrigin() {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const base = (process.env.NEXT_PUBLIC_SITE_URL || `${h.get("x-forwarded-proto") ?? "http"}://${host}`).replace(/\/$/, "");
+  // a site URL saved without "https://" makes scanners treat the QR as plain text instead of a link
+  const site = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  const base = (site ? (/^https?:\/\//i.test(site) ? site : `https://${site}`) : `${h.get("x-forwarded-proto")?.split(",")[0] ?? "http"}://${host}`).replace(/\/+$/, "");
   // ponytail: in dev a phone can't open "localhost", so point codes at this machine's Wi-Fi address instead
   const local = base.match(/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/);
   if (local && process.env.NODE_ENV !== "production") {
