@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Lenis from "lenis";
-import { bestOffer, discounted, DURATIONS, GENDERS, gymDate, inr, itemImage, openState, prettyDay, TRACKS, videoEmbed, type Branch, type Holiday, type MemberDetails, type Offer, type Plan, type SiteItem, type Track } from "@/lib/gym";
+import { bestOffer, discounted, savings, DURATIONS, GENDERS, gymDate, inr, itemImage, openState, prettyDay, TRACKS, videoEmbed, type Branch, type Holiday, type MemberDetails, type Offer, type Plan, type SiteItem, type Track } from "@/lib/gym";
 
 /** Inertia scrolling + fade-up reveal for [data-reveal]. Both off when the visitor prefers reduced motion. */
 export function SmoothScroll() {
@@ -66,6 +66,8 @@ const PERKS: Record<string, string[]> = {
 export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[]; offers: Offer[]; admissionPaise?: number }) {
   const [days, setDays] = useState<number>(30);
   const per = DURATIONS.find((d) => d.days === days)!.per;
+  // biggest saving any membership offers at each length — shown on the tabs to pull people toward longer plans
+  const upTo = (d: number) => Math.max(0, ...plans.filter((p) => p.duration_days === d && MEMBERSHIP_TRACKS.includes(p.track)).map((p) => savings(plans, offers, p)?.pct ?? 0));
 
   return (
     <div className="flex flex-col gap-12">
@@ -85,13 +87,21 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
               type="button"
               aria-pressed={d.days === days}
               onClick={() => setDays(d.days)}
-              className={`min-h-11 cursor-pointer rounded px-1 font-label text-[13px] font-bold uppercase tracking-[0.06em] whitespace-nowrap transition-colors duration-200 sm:px-5 sm:text-[15px] sm:tracking-[0.12em] ${
+              className={`relative flex min-h-12 cursor-pointer flex-col items-center justify-center rounded px-1 font-label text-[13px] font-bold uppercase tracking-[0.06em] whitespace-nowrap transition-colors duration-200 sm:px-5 sm:text-[15px] sm:tracking-[0.12em] ${
                 d.days === days ? "bg-red text-white" : "text-ash hover:text-chalk"
               }`}
             >
               {/* phones: four equal tabs on one row, so the long label gets a short form */}
               <span className="sm:hidden">{d.days === 180 ? "6 Months" : d.label}</span>
               <span className="max-sm:hidden">{d.label}</span>
+              {upTo(d.days) > 0 && (
+                <span className={`text-[10px] leading-none tracking-[0.04em] normal-case ${d.days === days ? "text-white/85" : "text-red"}`}>
+                  Save {upTo(d.days)}%
+                </span>
+              )}
+              {d.days === 365 && upTo(365) > 0 && (
+                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-chalk px-1.5 py-0.5 text-[9px] leading-none tracking-[0.08em] text-ink">Best value</span>
+              )}
             </button>
           ))}
         </div>
@@ -121,6 +131,19 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
                   {plan ? <Price paise={plan.price_paise} offer={offer} size="text-[48px]" /> : <span className="font-display text-[48px]">—</span>}
                 </span>
                 <p className="mt-1.5 text-[15px] text-ash">per {per}</p>
+                {(() => {
+                  const s = plan && savings(plans, offers, plan);
+                  return s ? (
+                    <div key={`save-${days}`} className="mt-3 flex animate-rise flex-col gap-1 [animation-duration:.5s]">
+                      <span className="self-start rounded-full bg-red px-3 py-1 font-label text-xs font-bold tracking-[0.12em] text-white uppercase">
+                        Save {inr(s.save)} · {s.pct}%
+                      </span>
+                      <span className="text-sm text-ash">
+                        {inr(s.perMonth)}/month · <s>{inr(s.payingMonthly)}</s> paying monthly
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
               </div>
               <hr className={featured ? "border-redline" : "border-line"} />
               <ul className="flex flex-col gap-3 text-body">

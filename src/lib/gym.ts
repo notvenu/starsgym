@@ -57,6 +57,22 @@ export function bestOffer(offers: Offer[], track: Track, today = gymDate()) {
 export const discounted = (paise: number, offer?: Offer) =>
   offer ? Math.round((paise * (100 - offer.percent_off)) / 100) : paise;
 
+/**
+ * How much a longer plan saves against paying monthly for the same stretch (offers applied to both).
+ * null for monthly plans, one-day passes, or when there's no saving.
+ */
+export function savings(plans: Plan[], offers: Offer[], plan: Plan) {
+  const months = Math.round(plan.duration_days / 30); // 365 days → 12
+  const monthly = plans.find((p) => p.track === plan.track && p.duration_days === 30 && p.active);
+  if (months <= 1 || !monthly) return null;
+  const offer = bestOffer(offers, plan.track);
+  const price = discounted(plan.price_paise, offer);
+  const payingMonthly = discounted(monthly.price_paise, offer) * months;
+  const save = payingMonthly - price;
+  if (save <= 0) return null;
+  return { perMonth: Math.round(price / months), payingMonthly, save, pct: Math.round((save / payingMonthly) * 100) };
+}
+
 /** Tracks that are memberships (and so carry the one-time admission fee on the first one). */
 export const MEMBERSHIP: Track[] = ["strength", "strength_cardio", "couples", "personal_training"];
 
