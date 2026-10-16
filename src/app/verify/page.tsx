@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Logo } from "@/components/site";
 import { publicDb } from "@/lib/supabase";
 import { gymDate, planName, prettyDay, type Track } from "@/lib/gym";
@@ -10,7 +11,9 @@ type Verified = { first_name: string; track: Track; duration_days: number; start
 
 /** What staff see after scanning a member's QR with any phone camera. No login needed. */
 export default async function VerifyPage({ searchParams }: PageProps<"/verify">) {
-  const c = (await searchParams).c;
+  const sp = await searchParams;
+  const c = sp.c;
+  const fromDesk = sp.from === "desk";
   const read = typeof c === "string" ? readPassCode(c) : null;
   const { data } = read ? await publicDb().rpc("verify_pass", { p_token: read.token }) : { data: null };
   const pass = (data as Verified[] | null)?.[0];
@@ -60,6 +63,12 @@ export default async function VerifyPage({ searchParams }: PageProps<"/verify">)
           {pass.home_branch && <div className="col-span-2"><dt className="label">Home branch</dt><dd className="font-bold">{pass.home_branch}</dd></div>}
           <div className="col-span-2"><dt className="label">Checked in today</dt><dd className="font-bold">{pass.checked_in_today ? "Yes" : "Not yet"}</dd></div>
         </dl>
+      )}
+      {fromDesk && (
+        <div className="flex w-full max-w-sm gap-3">
+          <Link href="/admin?scan=1" className="btn-red min-h-14 flex-1">Scan next</Link>
+          <Link href="/admin" className="btn-ghost min-h-14 flex-1">Front desk</Link>
+        </div>
       )}
     </main>
   );

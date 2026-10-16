@@ -5,6 +5,7 @@ import { Check, Field, MemberDetailsFields, OpenStatus, WeekHolidays } from "@/c
 import type { Profile } from "@/lib/supabase";
 import { ladiesLabel, weekHolidays, type Branch, type Holiday, type Session } from "@/lib/gym";
 import { PhotoCapture } from "@/components/photo";
+import { ScanButton } from "@/components/scanner";
 import { ResultToast, toast } from "@/components/feedback";
 import { changePhoto, checkIn, postShowcase, saveProfile } from "./actions";
 
@@ -144,7 +145,22 @@ export function CheckInPanel(props: {
           {pending ? "Checking in…" : props.hasPlan ? "Check in now" : "Buy a plan to check in"}
         </button>
       )}
+
+      {/* at the gym: scan the poster by the door instead (proves you're there, no location needed) */}
+      {props.hasPlan && !done && (
+        <ScanButton kind="door" className="btn-ghost -mt-3 min-h-12 gap-2.5">
+          <ScanIcon /> Scan the entrance QR
+        </ScanButton>
+      )}
     </section>
+  );
+}
+
+export function ScanIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16" />
+    </svg>
   );
 }
 

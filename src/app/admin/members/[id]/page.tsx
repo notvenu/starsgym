@@ -2,8 +2,9 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
-import { ageOf, DAY_NAMES, GENDERS, inr, planName, prettyDay, recentGymDates, waLink, type Branch, type Plan } from "@/lib/gym";
+import { ageOf, GENDERS, inr, planName, prettyDay, recentGymDates, waLink, type Branch, type Plan } from "@/lib/gym";
 import { photoUrl } from "@/lib/photo";
+import { Attendance } from "@/components/attendance";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, waNumber } from "../../kit";
 import { MemberEditForm, MemberPhotoForm } from "../../ui";
 
@@ -89,27 +90,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
           {/* attendance */}
           <Panel title="Attendance" intro="Last 30 days. Morning and evening visits on the same day both count.">
             <div className="flex flex-col gap-5">
-              <div className="grid grid-cols-3 gap-3">
-                <Big label="Streak" value={`${(streak.data as number) ?? 0}d`} />
-                <Big label="Visits · 30 days" value={v.length} />
-                <Big label="Days · 30 days" value={byDay.size} />
-              </div>
-              <div className="grid grid-cols-7 gap-1.5 sm:grid-cols-10" role="list" aria-label="Visits by day">
-                {days.map((d) => {
-                  const s = byDay.get(d) ?? [];
-                  return (
-                    <div key={d} role="listitem" title={`${prettyDay(d)}${s.length ? ` · ${s.map((x) => SESSION_LABEL[x] ?? x).join(" + ")}` : " · no visit"}`}
-                      className={`flex aspect-square flex-col items-center justify-center rounded-md border text-[10px] font-bold ${s.length > 1 ? "border-red bg-red text-white" : s.length ? "border-red bg-redwash text-chalk" : "border-line text-faint"} ${d === today ? "ring-2 ring-chalk/60" : ""}`}>
-                      <span>{DAY_NAMES[new Date(`${d}T12:00:00`).getDay()][0]}</span>
-                      <span>{d.slice(8)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="flex flex-wrap gap-4 text-xs text-ash">
-                <span className="flex items-center gap-1.5"><i className="size-3 rounded border border-red bg-redwash" /> One visit</span>
-                <span className="flex items-center gap-1.5"><i className="size-3 rounded bg-red" /> Morning + evening</span>
-              </p>
+              <Attendance days={days} visits={v} streak={(streak.data as number) ?? 0} />
               {v.length > 0 && (
                 <ul className="divide-y divide-line border-t border-line text-sm">
                   {v.slice(0, 8).map((x) => (
@@ -166,15 +147,6 @@ function Info({ label, value, wide }: { label: string; value?: string | null; wi
     <div className={wide ? "col-span-2" : ""}>
       <dt className="label">{label}</dt>
       <dd className={`mt-0.5 font-semibold ${value ? "" : "text-faint"}`}>{value || "—"}</dd>
-    </div>
-  );
-}
-
-function Big({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border border-line bg-panel px-4 py-3">
-      <p className="font-display text-4xl leading-none">{value}</p>
-      <p className="label mt-1.5">{label}</p>
     </div>
   );
 }

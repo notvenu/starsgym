@@ -130,7 +130,7 @@ export function PhotoCapture({ current, label = "Photo" }: { current?: string | 
 
       {camera ? (
         <div className="flex flex-col items-center gap-3">
-          <div className="relative size-64 overflow-hidden rounded-full border-4 border-red bg-black sm:size-72">
+          <div className="relative size-[min(16rem,68vw)] overflow-hidden rounded-full border-4 border-red bg-black sm:size-72">
             <video ref={video} autoPlay playsInline muted className="size-full -scale-x-100 object-cover" />
             {/* face guide */}
             <div aria-hidden="true" className="pointer-events-none absolute inset-[16%_22%] rounded-[50%] border-2 border-dashed border-white/70" />
@@ -151,7 +151,7 @@ export function PhotoCapture({ current, label = "Photo" }: { current?: string | 
               <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-faint" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2">
             <button type="button" onClick={openCamera} disabled={busy} className="btn-red min-h-11 px-5 text-sm">{shown ? "Retake" : "Take photo"}</button>
             <label className="btn-ghost min-h-11 cursor-pointer px-5 text-sm">
               {busy ? "Checking…" : "Upload"}

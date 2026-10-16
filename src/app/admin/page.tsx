@@ -4,11 +4,13 @@ import { ageOf, GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, waLink, t
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
 import { MemberActions } from "./ui";
+import { ScanButton } from "@/components/scanner";
 
 type Visit = { created_at: string; session: string; branch_id: string; user_id: string; profiles: { full_name: string; photo_path: string | null } | null };
 type Ending = { id: string; user_id: string; ends_on: string; plans: Plan; profiles: Profile | null };
 
-export default async function Overview() {
+export default async function Overview({ searchParams }: PageProps<"/admin">) {
+  const scanNext = (await searchParams).scan === "1"; // "Scan next" on a checked pass comes back here
   const { supabase, profile, isOwner, branchId, view } = await requireStaff();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the generic query-builder type recurses too deep
   const only = (q: any) => (view ? q.eq("branch_id", view) : q);
@@ -48,6 +50,7 @@ export default async function Overview() {
 
   return (
     <>
+      {scanNext && <ScanButton kind="pass" autoOpen className="hidden">Scan</ScanButton>}
       <PageHeader title={`Hi, ${profile.full_name.split(" ")[0] || "coach"}`} intro={`Here's Stars Gym on ${prettyDay(today)}.`}>
         <Link href="/admin/members?new=1" className="btn-red">+ New member</Link>
         {isOwner && <Link href="/admin/pricing" className="btn-ghost">Edit prices</Link>}

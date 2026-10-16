@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/site";
 import { requireStaff } from "@/lib/supabase";
 import { BranchSwitch } from "./ui";
+import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
 
@@ -50,6 +51,8 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
     { label: "Inbox", items: [{ href: "/admin/enquiries", label: "Enquiries", icon: "enquiries", badge: enquiries.count ?? 0 }] },
   ];
 
+  const switcher = branchList?.data && branchList.data.length > 1 ? <BranchSwitch branches={branchList.data.map((x) => [x.id, x.name])} value={view ?? ""} /> : null;
+
   const footer = (
     <div className="flex flex-col gap-1">
       <Link href="/" className="rounded px-3 py-2.5 text-sm text-ash hover:bg-steel hover:text-chalk">View website ↗</Link>
@@ -62,7 +65,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[260px_1fr]">
-      <AdminMobileNav groups={groups} logo={<Logo size={40} />} footer={footer} />
+      <AdminMobileNav groups={groups} logo={<Logo size={40} />} footer={footer} switcher={switcher} />
       <aside className="border-r border-line bg-panel max-lg:hidden lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
         <div className="flex min-h-full flex-col gap-6 px-4 py-6">
           <div className="flex items-center justify-between gap-3">
@@ -74,13 +77,17 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
               </div>
             </div>
           </div>
+          {switcher}
+          <ScanButton kind="pass" className="btn-red min-h-11 gap-2.5">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16" /></svg>
+            Scan a pass
+          </ScanButton>
           <AdminNav groups={groups} />
           <div className="mt-auto border-t border-line pt-4">{footer}</div>
         </div>
       </aside>
       {/* bottom padding on phones keeps content clear of the tab bar */}
       <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 max-lg:pb-28 sm:gap-8 sm:px-8 lg:py-10">
-        {branchList?.data && branchList.data.length > 1 && <BranchSwitch branches={branchList.data.map((x) => [x.id, x.name])} value={view ?? ""} />}
         {children}
       </main>
     </div>

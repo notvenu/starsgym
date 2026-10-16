@@ -12,7 +12,7 @@ export function SettingsForm({ settings }: { settings: Settings }) {
   const [state, action, pending] = useActionState(saveSettings, undefined);
   return (
     <form action={action} className="flex flex-col gap-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Instagram" name="instagram_url" type="url" placeholder="https://instagram.com/starsgym" defaultValue={settings.instagram_url ?? ""} />
         <Field label="Facebook" name="facebook_url" type="url" placeholder="https://facebook.com/starsgym" defaultValue={settings.facebook_url ?? ""} />
         <Field label="YouTube" name="youtube_url" type="url" placeholder="https://youtube.com/@starsgym" defaultValue={settings.youtube_url ?? ""} />
@@ -58,7 +58,7 @@ export function ItemForm({ kind, item, trainers = [], onDone }: { kind: ItemKind
     <form action={action} className="flex flex-col gap-4" key={item?.id ?? "new"}>
       <input type="hidden" name="kind" value={kind} />
       {item && <input type="hidden" name="id" value={item.id} />}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {f.title && <Field label={f.title} name="title" defaultValue={item?.title} />}
         {f.subtitle && <Field label={f.subtitle} name="subtitle" defaultValue={item?.subtitle} />}
         {f.url && <Field label={f.url} name="url" type="url" defaultValue={item?.url ?? ""} required={kind === "reel"} />}
@@ -95,7 +95,7 @@ export function ItemForm({ kind, item, trainers = [], onDone }: { kind: ItemKind
 export function PhotoInput({ label, file, url, current }: { label: string; file: string; url: string; current: string | null }) {
   const src = itemImage(current);
   return (
-    <div className="grid items-end gap-4 sm:grid-cols-[auto_1fr_1fr]">
+    <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[auto_1fr_1fr]">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={`Current ${label.toLowerCase()}`} className="size-11 rounded object-cover" />

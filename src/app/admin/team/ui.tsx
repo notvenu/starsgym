@@ -22,12 +22,21 @@ export type Person = {
   self: boolean;
 };
 
-const ACCESS: [string, string][] = [["none", "No desk access"], ["staff", "Staff"], ["admin", "Admin"]];
+const ROLES: [string, string][] = [["trainer", "Trainer"], ["staff", "Desk staff"], ["both", "Trainer + desk"], ["admin", "Admin"]];
+const ROLE_HINT: Record<string, string> = {
+  trainer: "Shown on the website. No sign-in.",
+  staff: "Signs in to the front desk: members, renewals, payments, check-ins.",
+  both: "On the website, and signs in to the front desk.",
+  admin: "Everything, at every branch, including this page.",
+};
 
-/** One person: name and branch, then the two switches — desk access and a trainer card on the website. */
+const startRole = (p?: Person) =>
+  !p ? "trainer" : p.role === "admin" ? "admin" : p.role === "staff" ? (p.item?.active ? "both" : "staff") : "trainer";
+
+/** One person: name, one role choice, then only the fields that role needs. */
 export function TeamForm({ person, branches, onDone }: { person?: Person; branches: Branch[]; onDone?: () => void }) {
-  const [access, setAccess] = useState<string>(person?.role ?? "none");
-  const [trainer, setTrainer] = useState(person ? !!person.item?.active : true);
+  const [role, setRole] = useState(startRole(person));
+  const [adminCard, setAdminCard] = useState(!!person?.item?.active); // an admin who also coaches
   const [pending, start] = useTransition();
   const [state, action, saving] = useActionState(async (prev: Result, form: FormData) => {
     const res = await saveTeam(prev, form);
@@ -35,15 +44,40 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
     return res;
   }, undefined);
   const item = person?.item;
+  const access = role === "trainer" ? "none" : role === "admin" ? "admin" : "staff";
+  const trainer = role === "trainer" || role === "both" || (role === "admin" && adminCard);
+  const needsEmail = access !== "none" && !person?.profileId;
 
   return (
     <form action={action} className="flex flex-col gap-5">
       {person?.profileId && <input type="hidden" name="profile_id" value={person.profileId} />}
       {item && <input type="hidden" name="item_id" value={item.id} />}
       <input type="hidden" name="access" value={access} />
+      {trainer && <input type="hidden" name="trainer" value="on" />}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name" name="name" defaultValue={person?.name} required autoComplete="off" />
+      <Field label="Name" name="name" defaultValue={person?.name} required autoComplete="off" />
+
+      {person?.self ? (
+        <p className="text-sm text-ash">That&apos;s you — you keep admin access.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <span className="label">Role</span>
+          <Segmented label="Role" options={ROLES} value={role} onChange={setRole} />
+          <p className="text-sm text-ash">{ROLE_HINT[role]}</p>
+        </div>
+      )}
+
+      {needsEmail && <Field label="Email — they sign in with it" name="email" type="email" required autoComplete="off" inputMode="email" />}
+      {access !== "none" && person?.email && <p className="-mt-2 text-sm text-ash">Signs in as {person.email}</p>}
+
+      {role === "admin" && (
+        <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4">
+          <span className="font-semibold">Also show on the website as a trainer</span>
+          <input type="checkbox" checked={adminCard} onChange={(e) => setAdminCard(e.target.checked)} className="size-6 shrink-0 cursor-pointer accent-red" />
+        </label>
+      )}
+
+      {(role !== "admin" || adminCard) && (
         <label className="flex flex-col gap-1.5">
           <span className="label">Branch</span>
           <select name="branch" defaultValue={person?.branch ?? branches[0]?.id ?? "all"} className="field">
@@ -51,58 +85,36 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
             <option value="all">Both branches</option>
           </select>
         </label>
-      </div>
+      )}
+      {role === "admin" && !adminCard && <input type="hidden" name="branch" value="all" />}
 
-      <fieldset className="flex flex-col gap-3 rounded-lg border border-line p-4">
-        <legend className="label px-1">Front desk</legend>
-        {person?.self ? (
-          <p className="text-sm text-ash">That&apos;s you — you keep admin access.</p>
-        ) : (
-          <>
-            <Segmented label="Desk access" options={ACCESS} value={access} onChange={setAccess} />
-            {access !== "none" && !person?.profileId && <Field label="Email (they sign in with it)" name="email" type="email" required autoComplete="off" />}
-            {person?.profileId && person.email && <p className="text-sm text-ash">Signs in as {person.email}</p>}
-            <p className="text-sm text-ash">
-              {access === "staff" ? "Members, renewals, payments and check-ins at their branch — or both. No prices, website or analytics."
-                : access === "admin" ? "Everything, at every branch, including this page."
-                : "No sign-in to the desk."}
-            </p>
-          </>
-        )}
-      </fieldset>
-
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-line p-4">
-        <legend className="label px-1">Website</legend>
-        <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4">
-          <span>
-            <span className="block font-semibold">Show as a trainer</span>
-            <span className="block text-sm text-ash">On Our Trainers, Personal Training and the homepage.</span>
-          </span>
-          <input type="checkbox" name="trainer" checked={trainer} onChange={(e) => setTrainer(e.target.checked)} className="size-6 shrink-0 cursor-pointer accent-red" />
-        </label>
-        {trainer && (
-          <>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Role / speciality" name="subtitle" defaultValue={item?.subtitle} placeholder="Head coach · Strength" />
+      {trainer && (
+        <>
+          <Field label="Speciality" name="subtitle" defaultValue={item?.subtitle} placeholder="Head coach · Strength" />
+          <PhotoInput label="Photo" file="photo" url="image_url" current={item?.image_path ?? null} />
+          <details className="group rounded-lg border border-line">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 text-sm font-semibold text-ash">
+              More for the website <span className="transition-transform group-open:rotate-180" aria-hidden="true">▾</span>
+            </summary>
+            <div className="flex flex-col gap-4 border-t border-line p-4">
               <Field label="Instagram link" name="url" type="url" defaultValue={item?.url ?? ""} placeholder="https://instagram.com/…" />
+              <label className="flex flex-col gap-1.5">
+                <span className="label">Short bio</span>
+                <textarea name="body" rows={3} defaultValue={item?.body} className="field py-3" />
+              </label>
+              <Field label="Order on the page (lower first)" name="sort" type="number" inputMode="numeric" defaultValue={item?.sort ?? 0} />
             </div>
-            <label className="flex flex-col gap-1.5">
-              <span className="label">Short bio</span>
-              <textarea name="body" rows={3} defaultValue={item?.body} className="field py-3" />
-            </label>
-            <PhotoInput label="Photo" file="photo" url="image_url" current={item?.image_path ?? null} />
-            <Field label="Order (lower shows first)" name="sort" type="number" inputMode="numeric" defaultValue={item?.sort ?? 0} />
-          </>
-        )}
-      </fieldset>
+          </details>
+        </>
+      )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button disabled={saving || pending} className="btn-red max-sm:flex-1">{saving ? "Saving…" : person ? "Save" : "Add to team"}</button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <button disabled={saving || pending} className="btn-red min-h-12">{saving ? "Saving…" : person ? "Save" : "Add to team"}</button>
         {item && (
-          <button type="button" disabled={saving || pending} className="btn-ghost max-sm:flex-1"
-            onClick={async () => (await confirmDialog({ title: `Delete ${item.title}'s trainer card?`, body: "It comes off the website for good. Desk access isn't touched. Untick “Show as a trainer” to just hide it.", confirm: "Delete card", danger: true }))
+          <button type="button" disabled={saving || pending} className="min-h-11 cursor-pointer text-sm font-semibold text-ash hover:text-red"
+            onClick={async () => (await confirmDialog({ title: `Delete ${item.title}'s trainer card?`, body: "It comes off the website for good. Sign-in access isn't touched. Pick “Desk staff” to just hide the card.", confirm: "Delete card", danger: true }))
               && start(async () => { const r = await deleteItem(item.id); toastResult(r); if (r?.ok) onDone?.(); })}>
-            Delete card
+            Delete trainer card
           </button>
         )}
         <ResultToast state={state} />

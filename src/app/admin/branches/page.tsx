@@ -56,7 +56,7 @@ export default async function BranchesPage() {
       </Panel>
 
       <Panel id="entrance" title="Entrance check-in QR" intro="Print one at each branch entrance. Scanning it checks members in without location permission — signed in, or with their phone / bill number.">
-        <div className="grid gap-4 sm:grid-cols-2 sm:gap-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
           {doors.map(({ branch, url, qr }) => (
             <div key={branch.id} className="flex min-w-0 flex-col items-center gap-4 rounded-xl border border-line bg-panel p-4 text-center sm:p-6">
               <p className="font-display text-3xl uppercase">{branch.name}</p>

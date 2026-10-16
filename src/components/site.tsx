@@ -5,11 +5,10 @@ import { getSettings } from "@/lib/data";
 import { prettyDay, TRACKS, waLink, type Branch, type Holiday, type Offer, type Settings } from "@/lib/gym";
 
 export function Logo({ size = 72 }: { size?: number }) {
-  // transparent mark, ~1.47:1 — `size` is its height. White lettering in dark theme, ink lettering in light.
+  // transparent mark, ~1.47:1 — `size` is its height
   return (
     <Link href="/" aria-label="Stars Gym home" className="block shrink-0">
-      <Image src="/logo-mark.png" alt="Stars Gym — The Fitness Arena" width={542} height={369} priority className="logo-dark " style={{ height: size * 0.72, width: "auto" }} />
-      <Image src="/logo-mark-light.png" alt="Stars Gym — The Fitness Arena" width={542} height={369} priority className="logo-light " style={{ height: size * 0.72, width: "auto" }} />
+      <Image src="/logo-mark.png" alt="Stars Gym — The Fitness Arena" width={542} height={369} priority style={{ height: size * 0.72, width: "auto" }} />
     </Link>
   );
 }

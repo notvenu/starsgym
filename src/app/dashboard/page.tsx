@@ -8,6 +8,7 @@ import { getPass } from "../pass/[subId]/data";
 import { Ticket } from "../pass/[subId]/ticket";
 import { PassDialog } from "../pass/[subId]/ui";
 import { photoUrl } from "@/lib/photo";
+import { Attendance } from "@/components/attendance";
 import { CheckInPanel, PhotoForm, ProfileForm, ShowcaseForm } from "./ui";
 
 export const metadata = { title: "Dashboard — Stars Gym" };
@@ -17,14 +18,15 @@ type Sub = { id: string; status: string; method: string; starts_on: string | nul
 export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
   const openPass = (await searchParams).pass; // set after a purchase: open that pass straight away
   const { supabase, user, profile } = await requireUser();
-  const dates = recentGymDates(7);
+  const month = recentGymDates(30);
+  const dates = month.slice(-7);
   const today = dates[6];
 
   const [branches, subs, streak, week, post, feed, notices] = await Promise.all([
     supabase.from("branches").select("*").eq("active", true).order("created_at"),
     supabase.from("subscriptions").select("id,status,method,starts_on,ends_on,amount_paise,plans(*)").eq("user_id", user.id).neq("status", "cancelled").order("created_at", { ascending: false }),
     supabase.rpc("current_streak", { uid: user.id }),
-    supabase.from("checkins").select("day,session").eq("user_id", user.id).gte("day", dates[0]),
+    supabase.from("checkins").select("day,session").eq("user_id", user.id).gte("day", month[0]),
     supabase.from("showcase_posts").select("image_path,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("showcase_feed").select("user_id").order("streak", { ascending: false }),
     getNotices(),
@@ -136,6 +138,14 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             </section>
           </div>
         </div>
+
+        <section className="card flex flex-col gap-4 p-6">
+          <div>
+            <p className="label">Your last 30 days</p>
+            <p className="text-sm text-ash">Morning and evening visits on the same day both count. Holidays never break a streak.</p>
+          </div>
+          <Attendance days={month} visits={(week.data ?? []) as { day: string; session: string }[]} streak={(streak.data as number) ?? 0} />
+        </section>
 
         <section className="card p-6">
           <p className="label mb-4">Profile</p>

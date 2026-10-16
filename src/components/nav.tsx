@@ -22,30 +22,8 @@ function Logo({ small }: { small: boolean }) {
   const cls = `w-auto transition-[height] duration-300 ${small ? "h-10" : "h-12"}`;
   return (
     <Link href="/" aria-label="Stars Gym home" className="block shrink-0">
-      <Image src="/logo-mark.png" alt="Stars Gym — The Fitness Arena" width={542} height={369} priority className={`logo-dark ${cls}`} />
-      <Image src="/logo-mark-light.png" alt="" width={542} height={369} priority className={`logo-light ${cls}`} />
+      <Image src="/logo-mark.png" alt="Stars Gym — The Fitness Arena" width={542} height={369} priority className={cls} />
     </Link>
-  );
-}
-
-/** Sun/moon switch. The choice is saved; the inline script in the root layout applies it before first paint. */
-function ThemeToggle() {
-  const toggle = () => {
-    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem("theme", next); } catch {}
-  };
-  return (
-    <button type="button" onClick={toggle} aria-label="Switch light / dark theme" title="Switch theme"
-      className="flex size-11 cursor-pointer items-center justify-center rounded-full border border-chalk/15 text-chalk transition-colors hover:border-red hover:text-red">
-      {/* moon in dark theme, sun in light theme — pure CSS, so it is right before hydration */}
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="icon-moon">
-        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-      </svg>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="icon-sun">
-        <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-      </svg>
-    </button>
   );
 }
 
@@ -113,7 +91,6 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
             </ul>
 
             <div className="flex items-center gap-2">
-              <ThemeToggle />
               <Link href={signedIn ? "/dashboard" : "/login"} className="group flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-bold tracking-wider text-body uppercase hover:text-chalk max-sm:hidden">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>
                 {signedIn ? "My account" : "Sign in"}

@@ -58,9 +58,9 @@ export default async function Home() {
 
           {/* the name: starts huge over the window, then travels down-left and becomes the headline */}
           <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
-            <h1 className="door-title text-center font-display text-[19vw] leading-[0.85] whitespace-nowrap uppercase [filter:drop-shadow(0_12px_40px_rgba(0,0,0,.6))]">
+            <h1 className="door-title text-center font-display text-[19vw] leading-[0.85] whitespace-nowrap uppercase max-sm:text-left max-sm:text-[40vw] [filter:drop-shadow(0_12px_40px_rgba(0,0,0,.6))]">
               <span className="hero-line inline-block" style={{ "--d": "250ms" } as React.CSSProperties}>
-                Stars <span className="text-transparent [-webkit-text-stroke:0.012em_var(--color-chalk)]">gym</span>
+                Stars <br className="sm:hidden" /><span className="text-transparent [-webkit-text-stroke:0.012em_var(--color-chalk)]">gym</span>
               </span>
             </h1>
           </div>

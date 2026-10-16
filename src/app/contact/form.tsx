@@ -25,12 +25,12 @@ export function EnquiryForm({ branches, topic }: { branches: Branch[]; topic: st
 
   return (
     <form action={action} className="flex flex-col gap-4 rounded-md border border-line bg-carbon p-6 sm:p-8">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Name" name="name" autoComplete="name" required maxLength={100} />
         <Field label="Phone / WhatsApp" name="phone" type="tel" autoComplete="tel" required />
       </div>
       <Field label="Email (optional)" name="email" type="email" autoComplete="email" />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="label">About</span>
           <select name="topic" defaultValue={topic} className="field">

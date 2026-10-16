@@ -19,23 +19,12 @@ export const metadata: Metadata = {
 // viewport-fit=cover so the admin tab bar can pad itself above the phone's home indicator
 export const viewport: Viewport = {
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
-    { media: "(prefers-color-scheme: light)", color: "#f6f3ee" },
-  ],
+  themeColor: "#0a0a0a",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${anton.variable} ${barlow.variable} ${barlowCondensed.variable} antialiased`}>
-      <head>
-        {/* apply the saved (or device) theme before first paint — no flash of the wrong theme */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("theme");if(!t)t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t}catch(e){}`,
-          }}
-        />
-      </head>
+    <html lang="en" className={`${anton.variable} ${barlow.variable} ${barlowCondensed.variable} antialiased`}>
       <body className="min-h-dvh overflow-x-hidden">
         <SmoothScroll />
         <Cursor />

@@ -112,7 +112,7 @@ export function AddMemberForm({ branches, plans, offers, admissionPaise = 0 }: {
   return (
     <form action={action} className="flex flex-col gap-8">
       <Step n="01" title="Member details">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Full name" name="full_name" required />
           <Field label="Email" name="email" type="email" required />
           <Select label="Branch" name="branch_id" options={branches.map((b) => [b.id, b.name])} />
@@ -179,7 +179,7 @@ function PlanSteps({ plans, offers, admissionPaise, kinds, first, verb, pending,
 
       {plan && (
         <Step n={n(1)} title="Payment">
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {[
               ["cash", "Cash received", "Activates now"],
               ["upi_paid", "UPI received", "Activates now"],
@@ -219,7 +219,7 @@ function NegotiatedPrice({ standard, list, admission }: { standard: number; list
   );
   return (
     <div className="flex flex-col gap-3 rounded-md border border-line bg-panel p-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {money("Plan price", "price", price, setPrice, changed ? <span className="text-red">Negotiated · standard {inr(standard)}</span> : standard < list ? <>Offer applied · list {inr(list)}</> : "Change it if you've agreed a different price")}
         {admission !== null && money("Admission", "admission", fee, setFee, "Only charged on their first membership · 0 = waived")}
       </div>
@@ -277,7 +277,7 @@ export function HolidayForm({ branches, emailEnabled }: { branches: Branch[]; em
   const [state, action, pending] = useActionState(addHoliday, undefined);
   return (
     <form action={action} className="flex flex-col gap-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Date" name="day" type="date" min={gymDate()} required />
         <Select label="Branch" name="branch_id" options={[["", "All branches"], ...branches.map((b) => [b.id, b.name] as [string, string])]} />
       </div>
@@ -351,7 +351,7 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
 export function MemberEditForm({ member, branches }: { member: Profile; branches: Branch[] }) {
   const [state, action, pending] = useActionState(adminSaveMember, undefined);
   return (
-    <form action={action} className="grid gap-4 sm:grid-cols-2">
+    <form action={action} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <input type="hidden" name="id" value={member.id} />
       <Field label="Full name" name="full_name" defaultValue={member.full_name} required />
       <label className="flex flex-col gap-1.5">
@@ -478,17 +478,20 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
   );
 }
 
-/** Top of the admin (owner and both-branch staff): view one branch or both. */
+/** Owner and both-branch staff: which branch the desk shows. A compact pill in the top bar / sidebar. */
 export function BranchSwitch({ branches, value }: { branches: [string, string][]; value: string }) {
   const [pending, start] = useTransition();
   return (
-    <label className="flex items-center gap-3 self-start text-sm text-ash">
-      Branch
-      <select aria-label="Branch" defaultValue={value} disabled={pending} className="field min-h-10 w-auto py-0 text-sm text-chalk"
-        onChange={(e) => start(() => switchBranch(e.target.value))}>
+    <label className={`relative flex min-w-0 shrink items-center text-chalk ${pending ? "opacity-60" : ""}`}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="pointer-events-none absolute left-3 text-red">
+        <path d="M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z" /><circle cx="12" cy="10" r="2.5" />
+      </svg>
+      <select aria-label="Branch" defaultValue={value} disabled={pending} onChange={(e) => start(() => switchBranch(e.target.value))}
+        className="h-9 w-full min-w-0 cursor-pointer appearance-none truncate rounded-full border border-line bg-steel pr-8 pl-8 text-sm font-semibold outline-none hover:border-strong focus-visible:border-red">
         <option value="">Both branches</option>
         {branches.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
       </select>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="pointer-events-none absolute right-3 text-ash"><path d="M6 9l6 6 6-6" /></svg>
     </label>
   );
 }
@@ -568,7 +571,7 @@ export function BranchAccessForm({ mode }: { mode: "any" | "home" }) {
   ];
   return (
     <form action={action} className="flex flex-col gap-4">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {options.map(([v, title, desc]) => (
           <label key={v} className="flex cursor-pointer flex-col gap-1 rounded-md border border-strong p-4 has-checked:border-red has-checked:bg-redwash">
             <span className="flex items-center gap-2 font-bold">
@@ -604,7 +607,7 @@ export function OfferForm() {
   const [state, action, pending] = useActionState(saveOffer, undefined);
   return (
     <form action={action} className="flex flex-col gap-4">
-      <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_8rem]">
         <Field label="Title" name="title" placeholder="Diwali offer" required />
         <Field label="% off" name="percent_off" type="number" min="1" max="100" required />
       </div>
@@ -617,7 +620,7 @@ export function OfferForm() {
           </label>
         ))}
       </fieldset>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Starts" name="starts_on" type="date" defaultValue={gymDate()} required />
         <Field label="Ends" name="ends_on" type="date" min={gymDate()} required />
       </div>
@@ -747,7 +750,7 @@ export function PriceForm({ plans }: { plans: Plan[] }) {
         })}
       </div>
 
-      <div className="grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 border-t border-line pt-5 sm:grid-cols-2">
         {(["trial", "day_pass"] as Track[]).map((t) => (
           <div key={t} className="flex items-start justify-between gap-4 rounded-md border border-line bg-ink/50 p-4">
             <div className="min-w-0">
@@ -780,7 +783,7 @@ export function BranchForm({ branch }: { branch?: Branch }) {
     <form action={action} className={`flex flex-col gap-4 ${b ? "rounded-md border border-line bg-carbon p-4 sm:p-6" : ""}`}>
       {b && <h3 className="font-display text-2xl uppercase">{b.name}</h3>}
       {b && <input type="hidden" name="id" value={b.id} />}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Name" name="name" defaultValue={b?.name} required />
         <Field label="Address" name="address" defaultValue={b?.address} />
         <Field label="Morning opens" name="morning_open" type="time" defaultValue={b ? hhmm(b.morning_open) : "05:00"} required />

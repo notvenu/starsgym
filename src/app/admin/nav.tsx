@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { ScanButton } from "@/components/scanner";
 
 type Item = { href: string; label: string; icon: keyof typeof ICONS; badge?: number };
 export type NavGroup = { label: string; items: Item[] };
@@ -24,6 +25,7 @@ const ICONS = {
   enquiries: "M4 4h16v12H5.2L4 17.2zM8 9h8M8 12h5",
   staff: "M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6zM9 12l2 2 4-4",
   menu: "M4 6h16M4 12h16M4 18h16",
+  scan: "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16",
   close: "M6 6l12 12M18 6L6 18",
 };
 
@@ -73,7 +75,7 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
  * Phones: a slim top bar (logo, current page, menu) and a bottom tab bar with the three screens the desk
  * uses all day. "Menu" opens every section as a sheet, grouped like the desktop sidebar.
  */
-export function AdminMobileNav({ groups, logo, footer }: { groups: NavGroup[]; logo: ReactNode; footer: ReactNode }) {
+export function AdminMobileNav({ groups, logo, footer, switcher }: { groups: NavGroup[]; logo: ReactNode; footer: ReactNode; switcher?: ReactNode }) {
   const path = usePathname();
   const menu = useRef<HTMLDialogElement>(null);
   const items = groups.flatMap((g) => g.items);
@@ -95,22 +97,32 @@ export function AdminMobileNav({ groups, logo, footer }: { groups: NavGroup[]; l
           <span className="h-5 w-px shrink-0 bg-line" />
           <span className="truncate font-label text-[15px] font-bold tracking-[0.1em] uppercase">{current?.label ?? "Admin"}</span>
         </div>
+        {switcher && <div className="ml-auto w-36 min-w-0 shrink">{switcher}</div>}
         <button type="button" onClick={open} aria-label="Open admin menu" className="relative flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line">
           <Icon d={ICONS.menu} />
           {elsewhere > 0 && <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-red" />}
         </button>
       </header>
 
-      <nav aria-label="Admin shortcuts" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        {tabs.map((it) => {
+      <nav aria-label="Admin shortcuts" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-panel/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+        {tabs.map((it, i) => {
           const active = isActive(it.href);
           return (
-            <Link key={it.href} href={it.href} aria-current={active ? "page" : undefined}
+            <Fragment key={it.href}>
+            {/* the desk's most-used action sits in the middle of the bar */}
+            {i === 2 && (
+              <ScanButton kind="pass" className="relative flex min-h-16 cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-bold tracking-wide text-chalk uppercase">
+                <span className="flex size-11 -mt-5 items-center justify-center rounded-full bg-red text-white shadow-lg shadow-red/30"><Icon d={ICONS.scan} /></span>
+                Scan
+              </ScanButton>
+            )}
+            <Link href={it.href} aria-current={active ? "page" : undefined}
               className={`relative flex min-h-16 flex-col items-center justify-center gap-1 text-[11px] font-bold tracking-wide uppercase ${active ? "text-red" : "text-ash"}`}>
               {active && <span className="absolute top-0 h-0.5 w-10 rounded bg-red" />}
               <span className="relative"><Icon d={ICONS[it.icon]} />{badge(it.badge)}</span>
               {it.label}
             </Link>
+            </Fragment>
           );
         })}
         <button type="button" onClick={open} className="relative flex min-h-16 cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-bold tracking-wide text-ash uppercase">
