@@ -10,7 +10,7 @@ export const metadata = { title: "Sign in — Stars Gym" };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
-  const mode = sp.mode === "signup" ? "signup" : sp.mode === "link" ? "link" : "signin";
+  const mode = sp.mode === "signup" ? "signup" : "signin";
   const next = safeNext(sp.next, "");
   // already signed in: don't ask again
   if (await currentUserId()) redirect(next || "/dashboard");
@@ -32,7 +32,6 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             [
               ["signin", "Sign in"],
               ["signup", "Sign up"],
-              ["link", "Email link"],
             ] as const
           ).map(([m, label]) => (
             <Link
@@ -47,17 +46,17 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           ))}
         </div>
         <h2 className="font-display text-6xl uppercase">
-          {mode === "signup" ? "Join the arena." : mode === "link" ? "No password? No problem." : "Welcome back."}
+          {mode === "signup" ? "Join the arena." : "Welcome back."}
         </h2>
-        {sp.error === "link" && <p className="text-red">That link expired or was already used. Request a new one.</p>}
-        {sp.error === "google" && <p className="text-red">Google sign-in didn&apos;t go through. Try again, or use email.</p>}
+        {sp.error === "link" && <p className="text-red">That link expired or was already used. Sign in with your password instead.</p>}
+        {sp.error === "google" && <p className="text-red">Google sign-in didn&apos;t go through. Try again, or use your email or phone.</p>}
         <form action={signInWithGoogle} className="max-w-md">
           <input type="hidden" name="next" value={next} />
           <button className="btn min-h-14 w-full gap-3 border border-strong bg-chalk text-base text-ink normal-case tracking-normal hover:bg-white">
             <GoogleIcon /> Continue with Google
           </button>
         </form>
-        <div className="flex max-w-md items-center gap-3 text-sm text-ash"><span className="h-px flex-1 bg-line" />or with email<span className="h-px flex-1 bg-line" /></div>
+        <div className="flex max-w-md items-center gap-3 text-sm text-ash"><span className="h-px flex-1 bg-line" />or with email or phone<span className="h-px flex-1 bg-line" /></div>
         <AuthForm key={mode} mode={mode} next={next} />
       </section>
     </main>

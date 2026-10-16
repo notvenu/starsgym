@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { gymDate, planName, prettyDay } from "@/lib/gym";
+import { gymDate, inr, payMethod, planName, prettyDay } from "@/lib/gym";
 import type { PassData } from "./data";
 import { LiveQr, PassActions } from "./ui";
 
@@ -37,6 +37,13 @@ export function Ticket({ pass }: { pass: PassData }) {
           {!oneDay && <Detail label="Valid till" value={pass.ends_on ? prettyDay(pass.ends_on) : "—"} />}
           <Detail label="Branch" value={pass.branches?.name ?? "Any branch"} />
           {valid && !oneDay && <Detail label="Days left" value={String(daysLeft)} />}
+          {/* the receipt: what was paid, how and when */}
+          {pass.paid_at && (
+            <>
+              <Detail label={pass.admission_paise > 0 ? `Paid · incl. ${inr(pass.admission_paise)} admission` : "Paid"} value={`${inr(pass.amount_paise)} · ${payMethod(pass)}`} wide />
+              <Detail label="Paid on" value={new Date(pass.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })} />
+            </>
+          )}
         </dl>
 
         {/* perforation with side notches */}
@@ -63,7 +70,8 @@ export function Ticket({ pass }: { pass: PassData }) {
       </article>
 
       {pass.status === "active" && (
-        <PassActions subId={pass.id} ref_={ref} phone={pass.profiles?.phone ?? null} name={pass.profiles?.full_name ?? ""} />
+        <PassActions subId={pass.id} ref_={ref} phone={pass.profiles?.phone ?? null} name={pass.profiles?.full_name ?? ""}
+          receipt={pass.paid_at ? `${planName(pass.plans)}${pass.ends_on ? `, valid till ${prettyDay(pass.ends_on)}` : ""}. Paid ${inr(pass.amount_paise)} (${payMethod(pass)}).` : ""} />
       )}
     </>
   );

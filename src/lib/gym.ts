@@ -102,6 +102,11 @@ export function planName(p: Pick<Plan, "track" | "duration_days">) {
 export const inr = (paise: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(paise / 100);
 
+const METHOD: Record<string, string> = { razorpay: "Online", upi_qr: "UPI", cash: "Cash" };
+/** How a plan was paid: "Cash", "UPI", or for a split desk payment "UPI ₹1,000 + Cash ₹350". */
+export const payMethod = (p: { method: string; amount_paise: number; cash_paise?: number | null }) =>
+  p.cash_paise ? `${METHOD[p.method] ?? p.method} ${inr(p.amount_paise - p.cash_paise)} + Cash ${inr(p.cash_paise)}` : (METHOD[p.method] ?? p.method);
+
 export const hhmm = (t: string) => t.slice(0, 5);
 
 /** "2026-10-25" → "Sat, 25 Oct" */
@@ -295,3 +300,32 @@ export function videoEmbed(url: string | null) {
 }
 
 export const waLink = (digits: string, text = "Hi Stars Gym!") => `https://wa.me/${digits.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+
+/** Rows → CSV text. Quotes every cell, and defuses cells Excel would run as a formula (=, +, -, @). */
+export const toCsv = (rows: (string | number | null | undefined)[][]) =>
+  rows.map((r) => r.map((v) => {
+    const t = String(v ?? "");
+    return `"${(/^[=+\-@\t\r]/.test(t) ? `'${t}` : t).replace(/"/g, '""')}"`;
+  }).join(",")).join("\r\n");
+
+/** Hidden sign-in email for phone-only accounts (members imported from GymPro had no email). Members never see it or
+ *  type it: they sign in with their phone, and the server swaps in this address. ".invalid" can never receive mail. */
+export const LOGIN_EMAIL_DOMAIN = "members.stars-gym.invalid";
+export const loginEmail = (userId: string) => `${userId}@${LOGIN_EMAIL_DOMAIN}`;
+
+/** A phone number's last 10 digits — how phone sign-in matches "+91 98765-43210" to "9876543210". */
+export const phoneKey = (phone: string | null | undefined) => (phone ?? "").replace(/\D/g, "").slice(-10);
+
+/**
+ * The starting password the gym hands out: first 4 letters of the name + last 4 digits of the phone, lowercase, skipping
+ * initials ("B. Bunny", 9392705139 → "bunn5139"; "Sk. Sami" → "sami"). Guessable by anyone who knows both, so members
+ * are asked to change it. null when there aren't enough letters or digits for a 6+ character password.
+ */
+export function starterPassword(name: string | null | undefined, phone: string | null | undefined) {
+  const letters = (s: string) => s.replace(/[^a-z]/gi, "").slice(0, 4).toLowerCase();
+  // initials: 1–3 letters before a dot ("B.", "Sk.", "S.Jhansi"), or a lone letter ("Karthik B")
+  const noInitials = letters((name ?? "").replace(/\b[a-z]{1,3}\./gi, " ").replace(/\b[a-z]\b/gi, " "));
+  const word = noInitials.length >= 2 ? noInitials : letters(name ?? ""); // a name that's only initials keeps them
+  const digits = (phone ?? "").replace(/\D/g, "");
+  return word.length >= 2 && digits.length >= 10 ? word + digits.slice(-4) : null;
+}

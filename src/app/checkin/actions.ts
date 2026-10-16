@@ -1,6 +1,7 @@
 "use server";
 
-import { currentUserId, db } from "@/lib/supabase";
+import { adminDb, currentUserId, db } from "@/lib/supabase";
+import { allow, clientIp, SLOW_DOWN } from "@/lib/rate-limit";
 import { photoUrl } from "@/lib/photo";
 import { planName, type Session, type Track } from "@/lib/gym";
 
@@ -22,7 +23,9 @@ export type DoorResult = {
 /** Entrance-QR check-in. `by` = how the member identifies themselves; "me" uses the signed-in session. */
 export async function doorCheckIn(key: string, by: "me" | "phone" | "ref", value = ""): Promise<DoorResult> {
   const supabase = await db();
-  const { data, error } = await supabase.rpc("check_in_at_door", {
+  // phone / bill number: anyone at the door can type one, so it's rate-limited and only the server may run it (0017)
+  if (by !== "me" && !(await allow([`door:ip:${await clientIp()}`], 40, 600))) return { error: SLOW_DOWN };
+  const { data, error } = await (by === "me" ? supabase : adminDb()).rpc("check_in_at_door", {
     p_key: key,
     p_phone: by === "phone" ? value : null,
     p_ref: by === "ref" ? value : null,

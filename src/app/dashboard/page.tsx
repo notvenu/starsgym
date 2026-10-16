@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Flame, Nav, Notices } from "@/components/site";
 import { getNotices, getSettings } from "@/lib/data";
 import { requireUser } from "@/lib/supabase";
+import { AccountPrompt } from "@/components/account-prompt";
 import { DAY_NAMES, inr, recentGymDates, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
 import { signOut } from "../login/actions";
 import { getPass } from "../pass/[subId]/data";
@@ -61,6 +62,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
 
   return (
     <main className="min-h-dvh pb-20">
+      <AccountPrompt />
       <Notices holidays={notices.holidays} offers={notices.offers} branches={(branches.data ?? []) as Branch[]} />
       <Nav>
         <div className="flex items-center gap-2.5">

@@ -4,6 +4,7 @@ import { ageOf, GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, waLink, t
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
 import { MemberActions, RequestRow } from "./ui";
+import { getTrainers } from "./data";
 import { ScanButton } from "@/components/scanner";
 
 type Visit = { created_at: string; session: string; branch_id: string; user_id: string; profiles: { full_name: string; photo_path: string | null } | null };
@@ -17,8 +18,9 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const today = gymDate();
   const monthStart = `${today.slice(0, 7)}-01`;
   const weekOut = gymDateIn(7);
+  const monthAgo = gymDateIn(-30);
 
-  const [branches, checkins, active, paid, holidays, offers, enquiries, expiring, plans, requests] = await Promise.all([
+  const [branches, checkins, active, paid, holidays, offers, enquiries, expiring, plans, requests, ended, trainers] = await Promise.all([
     supabase.from("branches").select("*").eq("active", true).order("created_at"),
     only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
     // ponytail: counts distinct members client-side; switch to an SQL count past ~10k active plans
@@ -38,20 +40,70 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     supabase.from("plans").select("*").eq("active", true).order("track").order("duration_days"),
     // members' name / gender / branch / photo change requests this desk can see (RLS); none before 0015
     supabase.from("profile_requests").select("*,profiles!profile_requests_user_id_fkey(full_name,photo_path,gender,home_branch_id)").eq("status", "pending").order("created_at"),
+    // plans that ran out in the last 30 days — the renewal list (members who bought again are dropped below)
+    only(supabase
+      .from("subscriptions")
+      .select("id,user_id,ends_on,plans(*),profiles!subscriptions_user_id_fkey(*)")
+      .eq("status", "active")
+      .gte("ends_on", monthAgo)
+      .lt("ends_on", today))
+      .order("ends_on", { ascending: false })
+      .limit(300),
+    getTrainers(supabase, view),
   ]);
   const b = (branches.data ?? []) as Branch[];
   const members = new Set(((active.data ?? []) as { user_id: string }[]).map((r) => r.user_id)).size;
   const collected = ((paid.data ?? []) as { amount_paise: number }[]).reduce((sum, r) => sum + r.amount_paise, 0);
   const visits = (checkins.data ?? []) as unknown as Visit[];
   const ending = (expiring.data ?? []) as unknown as Ending[];
+  // lapsed: their latest plan ended in the last 30 days and nothing runs today or later
+  const endedRows = (ended.data ?? []) as unknown as Ending[];
+  const lapsedIds = [...new Set(endedRows.map((e) => e.user_id))];
+  const { data: renewed } = lapsedIds.length
+    ? await supabase.from("subscriptions").select("user_id").eq("status", "active").gte("ends_on", today).in("user_id", lapsedIds)
+    : { data: [] };
+  const back = new Set((renewed ?? []).map((r) => r.user_id as string));
+  const lapsed = endedRows.filter((e, i) => !back.has(e.user_id) && endedRows.findIndex((x) => x.user_id === e.user_id) === i);
   type Req = { id: string; user_id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null; note: string | null;
     profiles: { full_name: string; photo_path: string | null; gender: string | null; home_branch_id: string | null } | null };
   const queue = (requests.data ?? []) as unknown as Req[];
-  const photos = await photoUrls([...visits.map((v) => v.profiles?.photo_path), ...ending.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path])]);
+  const photos = await photoUrls([...visits.map((v) => v.profiles?.photo_path), ...ending.map((e) => e.profiles?.photo_path), ...lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path])]);
   const pic = (p?: string | null) => (p ? photos.get(p) : null);
   const branchName = (id: string) => b.find((x) => x.id === id)?.name ?? "";
   const where = (h: Holiday) => (h.branch_id ? b.find((x) => x.id === h.branch_id)?.name ?? "One branch" : "All branches");
   const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+
+  // one row for the renewal lists: who, which plan, a badge, and the ⋯ menu with a ready WhatsApp message
+  const renewRow = (e: Ending, badge: string, message: string, runningSubId: string | null) => {
+    const m = e.profiles;
+    if (!m) return null;
+    return (
+      <li key={e.id} className="flex items-center gap-2 pr-3 transition-colors hover:bg-steel/60 sm:pr-5">
+        <Link href={`/admin/members/${e.user_id}`} className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-5">
+          <Avatar src={pic(m.photo_path)} name={m.full_name || "?"} size="size-12" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-bold">{m.full_name || "—"}</span>
+            <span className="block truncate text-xs text-ash">{[branchName(m.home_branch_id ?? ""), ageOf(m) != null && `${ageOf(m)} yrs`, GENDERS.find(([k]) => k === m.gender)?.[1]].filter(Boolean).join(" · ")}</span>
+            <span className="block truncate text-sm text-ash">{[m.phone, m.email].filter(Boolean).join(" · ")}</span>
+            <span className="block truncate text-sm text-ash">{planName(e.plans)} · {runningSubId ? "till" : "ended"} {prettyDay(e.ends_on)}</span>
+          </span>
+          <span className="shrink-0 rounded-full border border-red px-3 py-1 text-xs font-bold tracking-wider text-red uppercase">{badge}</span>
+        </Link>
+        <MemberActions
+          canDelete={isOwner}
+          member={m}
+          passId={runningSubId}
+          cancelSubId={runningSubId}
+          waHref={m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}! ${message}`) : null}
+          branches={b.filter((x) => !branchId || x.id === branchId)}
+          plans={(plans.data ?? []) as Plan[]}
+          offers={(offers.data ?? []) as Offer[]}
+          trainers={trainers}
+          admissionPaise={null}
+        />
+      </li>
+    );
+  };
 
   return (
     <>
@@ -116,38 +168,25 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         {ending.length ? (
           <ul className="divide-y divide-line">
             {ending.map((e) => {
-              const m = e.profiles;
-              if (!m) return null;
               const days = Math.round((Date.parse(e.ends_on) - Date.parse(today)) / 864e5) + 1;
-              return (
-                <li key={e.id} className="flex items-center gap-2 pr-3 transition-colors hover:bg-steel/60 sm:pr-5">
-                  <Link href={`/admin/members/${e.user_id}`} className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-5">
-                    <Avatar src={pic(m.photo_path)} name={m.full_name || "?"} size="size-12" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-bold">{m.full_name || "—"}</span>
-                      <span className="block truncate text-xs text-ash">{[branchName(m.home_branch_id ?? ""), ageOf(m) != null && `${ageOf(m)} yrs`, GENDERS.find(([k]) => k === m.gender)?.[1]].filter(Boolean).join(" · ")}</span>
-                      <span className="block truncate text-sm text-ash">{[m.phone, m.email].filter(Boolean).join(" · ")}</span>
-                      <span className="block truncate text-sm text-ash">{planName(e.plans)} · till {prettyDay(e.ends_on)}</span>
-                    </span>
-                    <span className="shrink-0 rounded-full border border-red px-3 py-1 text-xs font-bold tracking-wider text-red uppercase">{days <= 1 ? "Ends today" : `${days}d left`}</span>
-                  </Link>
-                  <MemberActions
-                    canDelete={isOwner}
-                    member={m}
-                    passId={e.id}
-                    cancelSubId={e.id}
-                    waHref={m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}! Your Stars Gym plan ends on ${prettyDay(e.ends_on)}. Renew at the desk or online to keep your streak going.`) : null}
-                    branches={b.filter((x) => !branchId || x.id === branchId)}
-                    plans={(plans.data ?? []) as Plan[]}
-                    offers={(offers.data ?? []) as Offer[]}
-                    admissionPaise={null}
-                  />
-                </li>
-              );
+              return renewRow(e, days <= 1 ? "Ends today" : `${days}d left`, `Your Stars Gym plan ends on ${prettyDay(e.ends_on)}. Renew at the desk or online to keep your streak going.`, e.id);
             })}
           </ul>
         ) : (
           <Empty>No plans ending in the next 7 days.</Empty>
+        )}
+      </Panel>
+
+      <Panel title={`Lapsed · ${lapsed.length}`} intro="Plan ended in the last 30 days and they haven't renewed. Win them back." flush action={<Link href="/admin/members?show=expired" className="text-sm font-bold text-red hover:text-chalk">All →</Link>}>
+        {lapsed.length ? (
+          <ul className="divide-y divide-line">
+            {lapsed.map((e) => {
+              const ago = Math.round((Date.parse(today) - Date.parse(e.ends_on)) / 864e5);
+              return renewRow(e, ago <= 1 ? "Ended yesterday" : `${ago}d ago`, `We miss you at Stars Gym! Your plan ended on ${prettyDay(e.ends_on)}. Renew at the desk or online and pick up where you left off.`, null);
+            })}
+          </ul>
+        ) : (
+          <Empty>Nobody lapsed in the last 30 days.</Empty>
         )}
       </Panel>
 

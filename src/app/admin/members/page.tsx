@@ -4,6 +4,7 @@ import { ageOf, GENDERS, gymDate, gymDateIn, waLink, type Branch, type Offer, ty
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, waNumber } from "../kit";
 import { AddMemberForm, AdminModal, MemberActions, MemberFilters } from "../ui";
+import { getTrainers } from "../data";
 
 export const metadata = { title: "Members — Stars Gym admin" };
 
@@ -49,7 +50,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
 
   // ponytail: loads every member and filters/sorts here — a gym has hundreds, not tens of thousands.
   // Supabase caps a response at 1000 rows by default; page the query with .range() past that.
-  const [list, branches, plans, offers, settings] = await Promise.all([
+  const [list, branches, plans, offers, settings, trainers] = await Promise.all([
     supabase
       .from("profiles")
       .select("*,checkins(session),subscriptions!subscriptions_user_id_fkey(id,status,starts_on,ends_on)")
@@ -61,6 +62,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
     supabase.from("plans").select("*").eq("active", true).order("track").order("duration_days"),
     supabase.from("offers").select("*").eq("active", true),
     supabase.from("site_settings").select("*").eq("id", 1).maybeSingle(),
+    getTrainers(supabase, view),
   ]);
 
   // each member's plan state: the plan covering today, else the next one, else the last one that ended
@@ -119,9 +121,10 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
   return (
     <>
       <PageHeader title="Members" intro="Look anyone up, see who's in today, sign up walk-ins.">
+        {isOwner && <a href="/admin/members/export" download className="btn-ghost">Download CSV</a>}
         <AdminModal label="+ New member" title="New member" startOpen={sp.new === "1"}>
           <p className="-mt-1 mb-5 text-sm text-ash">Details → photo → pass → payment. Ends on their ticket, ready to download or share.</p>
-          <AddMemberForm branches={branchList} plans={planList} offers={offerList} admissionPaise={fee} />
+          <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} admissionPaise={fee} />
         </AdminModal>
       </PageHeader>
 
@@ -189,6 +192,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
                     branches={branchList}
                     plans={planList}
                     offers={offerList}
+                    trainers={trainers}
                     admissionPaise={m.hadPlan ? null : fee}
                   />
                 </li>

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false, // don't advertise the framework
   // ponytail: Cache Components off — every page here reads the Supabase session cookie, so the
   // classic dynamic model is simpler. Turn it on per the Next docs if the static shell matters later.
   // lets a phone on the same Wi-Fi open the dev server (scanning pass / entrance QR codes while testing)
@@ -24,6 +25,9 @@ const nextConfig: NextConfig = {
         { key: "X-Frame-Options", value: "DENY" },
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }, // HTTPS only (ignored on http://localhost)
+        // no plugins, no <base> hijacking, never framed; scripts/styles aren't restricted (Razorpay, embeds, Next inline data)
+        { key: "Content-Security-Policy", value: "object-src 'none'; base-uri 'self'; frame-ancestors 'none'" },
         { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=(), payment=(self \"https://checkout.razorpay.com\")" },
       ],
     },

@@ -3,6 +3,7 @@ import { Logo } from "@/components/site";
 import { OpenStatus } from "@/components/client";
 import { getNotices } from "@/lib/data";
 import { adminDb, currentUserId, db } from "@/lib/supabase";
+import { AccountPrompt } from "@/components/account-prompt";
 import { photoUrl } from "@/lib/photo";
 import { hoursLabel, ladiesLabel, weekHolidays, type Branch } from "@/lib/gym";
 import { DoorCheckIn } from "./ui";
@@ -31,6 +32,7 @@ export default async function CheckInPage({ searchParams }: PageProps<"/checkin"
 
   return (
     <main className="dark-zone relative isolate flex min-h-dvh flex-col overflow-hidden bg-ink text-chalk">
+      {uid && <AccountPrompt />}
       {/* backdrop: brand glow + giant outlined word */}
       <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_55%_at_50%_0%,rgb(227_20_28/0.35),transparent_70%)]" />
       <div aria-hidden="true" className="outline-text pointer-events-none absolute -bottom-8 left-1/2 -z-10 -translate-x-1/2 font-display text-[42vw] leading-none whitespace-nowrap opacity-60 sm:text-[22vw]">CHECK IN</div>

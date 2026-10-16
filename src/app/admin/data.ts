@@ -20,3 +20,10 @@ export async function getPending(supabase: SupabaseClient, limit = 100, branchId
   }));
   return { rows, count: count ?? rows.length };
 }
+
+/** Trainer cards for the PT trainer picker: [id, name], this branch's plus both-branch ones. */
+export async function getTrainers(supabase: SupabaseClient, branchId: string | null = null): Promise<[string, string][]> {
+  const q = supabase.from("site_items").select("id,title").eq("kind", "trainer").order("sort");
+  const { data } = await (branchId ? q.or(`branch_id.is.null,branch_id.eq.${branchId}`) : q);
+  return (data ?? []).map((t) => [t.id as string, (t.title as string) || "Trainer"]);
+}

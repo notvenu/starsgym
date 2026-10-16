@@ -105,7 +105,7 @@ export function Feedback() {
           <div className="flex flex-col gap-5 p-6">
             <div className="flex flex-col gap-2">
               <h2 className="font-display text-2xl uppercase">{q.title}</h2>
-              {q.body && <p className="text-sm text-ash">{q.body}</p>}
+              {q.body && <p className="text-sm whitespace-pre-line text-ash">{q.body}</p>}
             </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => answer(false)} className="btn-ghost min-h-11 px-5 text-sm">Cancel</button>

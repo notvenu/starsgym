@@ -2,12 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { adminDb, requireUser } from "@/lib/supabase";
+import { allow, SLOW_DOWN } from "@/lib/rate-limit";
 import { activateByOrder, createOrder, razorpayEnabled, verifyCheckout } from "@/lib/razorpay";
 
 type Pending = { id: string; amount_paise: number };
 
 async function createPending(planId: string, branchId: string, method: "razorpay" | "upi_qr") {
   const { supabase, user, profile } = await requireUser(`/buy/${planId}`);
+  if (!(await allow([`order:${user.id}`], 10, 3600))) return { error: SLOW_DOWN } as const; // unpaid orders pile up at the desk
   const { data, error } = await supabase.rpc("create_pending_subscription", {
     p_plan: planId,
     p_branch: branchId || null,

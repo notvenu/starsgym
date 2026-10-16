@@ -1,10 +1,13 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { adminDb, requireAdmin } from "@/lib/supabase";
 import { sitePhoto } from "../content/upload";
 
-export type Result = { error?: string; ok?: string } | undefined;
+export type Result = { error?: string; ok?: string; password?: string } | undefined;
+/** A one-time password for a desk account, shown to the owner once; they're asked to change it at first sign-in. */
+const tempPassword = () => randomBytes(9).toString("base64url");
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -23,6 +26,7 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
   const itemId = s(form, "item_id") || null;
   const all = branch === "all";
   const isNew = !profileId && !itemId;
+  let password: string | undefined; // set when a new desk account is created
 
   if (!name) return { error: "Name is required." };
   if (!all && !UUID.test(branch)) return { error: "Pick a branch, or both." };
@@ -43,7 +47,8 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
         if (existing?.id === me.id) return { error: "That's your own account." };
         if (existing) profileId = existing.id as string;
         else {
-          const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true, user_metadata: { full_name: name } });
+          password = tempPassword();
+          const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true, password, app_metadata: { temp_password: true }, user_metadata: { full_name: name } });
           if (error) return { error: error.message };
           profileId = data.user.id;
         }
@@ -84,5 +89,17 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
   }
 
   revalidatePath("/", "layout"); // the website's trainer pages and the admin
-  return { ok: isNew ? "Added to the team" : "Saved" };
+  return { ok: isNew ? "Added to the team" : "Saved", password };
+}
+
+/** Owner: a staff member (or co-owner) can't sign in. Sets a one-time password to hand over in person. */
+export async function resetStaffPassword(profileId: string): Promise<Result> {
+  const { profile: me } = await requireAdmin();
+  if (!UUID.test(profileId) || profileId === me.id) return { error: "Change your own password from the pop-up or your dashboard." };
+  const admin = adminDb();
+  const { data: p } = await admin.from("profiles").select("role").eq("id", profileId).maybeSingle();
+  if (!p || p.role === "member") return { error: "Members reset from the Members list." };
+  const password = tempPassword();
+  const { error } = await admin.auth.admin.updateUserById(profileId, { password, app_metadata: { temp_password: true } });
+  return error ? { error: error.message } : { ok: "Password reset", password };
 }

@@ -10,7 +10,7 @@ import { confirmDialog, ResultToast, toastResult } from "@/components/feedback";
 import { PhotoCapture } from "@/components/photo";
 import type { Profile } from "@/lib/supabase";
 import { bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
-import { addHoliday, addMember, adminChangePhoto, adminSaveMember, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
+import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
 
@@ -79,7 +79,7 @@ const KINDS: [Kind, string, string][] = [
 const MEMBERSHIPS: Track[] = ["strength", "strength_cardio", "couples", "personal_training"];
 
 /** Desk onboarding: details → pass → payment, then straight to the member's ticket. */
-export function AddMemberForm({ branches, plans, offers, admissionPaise = 0 }: { branches: Branch[]; plans: Plan[]; offers: Offer[]; admissionPaise?: number }) {
+export function AddMemberForm({ branches, plans, offers, trainers, admissionPaise = 0 }: { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise?: number }) {
   const [state, action, pending] = useActionState(addMember, undefined);
   return (
     <form action={action} className="flex flex-col gap-8">
@@ -94,26 +94,26 @@ export function AddMemberForm({ branches, plans, offers, admissionPaise = 0 }: {
           </div>
         </div>
       </Step>
-      <PlanSteps plans={plans} offers={offers} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
     </form>
   );
 }
 
 /** Members list → Renew: sell an existing member their next plan. Starts the day after their current one ends. */
-export function RenewForm({ userId, branchId, plans, offers, admissionPaise }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; admissionPaise: number | null }) {
+export function RenewForm({ userId, branchId, plans, offers, trainers, admissionPaise }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise: number | null }) {
   const [state, action, pending] = useActionState(renewMember, undefined);
   return (
     <form action={action} className="flex flex-col gap-8">
       <input type="hidden" name="user_id" value={userId} />
       <input type="hidden" name="branch_id" value={branchId ?? ""} />
-      <PlanSteps plans={plans} offers={offers} admissionPaise={admissionPaise} kinds={KINDS.filter(([k]) => k === "membership" || k === "day_pass")} first={1} verb="Renew" pending={pending} state={state} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} kinds={KINDS.filter(([k]) => k === "membership" || k === "day_pass")} first={1} verb="Renew" pending={pending} state={state} />
     </form>
   );
 }
 
 /** Pass → payment → submit. admissionPaise null = they've had a membership, so no admission field. */
-function PlanSteps({ plans, offers, admissionPaise, kinds, first, verb, pending, state }: {
-  plans: Plan[]; offers: Offer[]; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result;
+function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb, pending, state }: {
+  plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result;
 }) {
   const [kind, setKind] = useState<Kind>("membership");
   const [track, setTrack] = useState<Track>("strength");
@@ -145,21 +145,33 @@ function PlanSteps({ plans, offers, admissionPaise, kinds, first, verb, pending,
             admission={MEMBERSHIPS.includes(plan.track) ? admissionPaise : null}
           />
         )}
+        {plan?.track === "personal_training" && trainers.length > 0 && <Select label="Trainer" name="trainer_id" options={[["", "Not assigned yet"], ...trainers]} />}
         {kind !== "none" && !plan && <p className="text-red">That plan isn&apos;t available.</p>}
         <input type="hidden" name="plan_id" value={plan?.id ?? ""} />
       </Step>
 
       {plan && (
         <Step n={n(1)} title="Payment">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               ["cash", "Cash received", "Activates now"],
               ["upi_paid", "UPI received", "Activates now"],
+              ["split", "Cash + UPI", "Part of each"],
               ["qr", "Show UPI QR", "Mark paid after"],
             ].map(([v, label, sub]) => (
               <Choice key={v} name="payment" value={v} checked={payment === v} onChange={() => setPayment(v)} label={label} sub={sub} />
             ))}
           </div>
+          {payment === "split" && (
+            <label className="flex flex-col gap-1.5 sm:w-64">
+              <span className="label">Cash part</span>
+              <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
+                <span className="pl-3 text-ash">₹</span>
+                <input name="cash" type="number" inputMode="decimal" min="1" step="any" required className="min-h-11 w-full min-w-0 bg-transparent px-2 font-bold text-chalk outline-none" />
+              </span>
+              <span className="text-xs text-ash">The rest is recorded as UPI.</span>
+            </label>
+          )}
         </Step>
       )}
 
@@ -401,8 +413,8 @@ const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
 );
 
 /** Members list: the ⋯ menu on each row. Edit and renew open in a pop-up without leaving the list. */
-export function MemberActions({ member, passId, cancelSubId, waHref, branches, plans, offers, admissionPaise, canDelete }: {
-  canDelete: boolean; member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; branches: Branch[]; plans: Plan[]; offers: Offer[]; admissionPaise: number | null;
+export function MemberActions({ member, passId, cancelSubId, waHref, branches, plans, offers, trainers, admissionPaise, canDelete }: {
+  canDelete: boolean; member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise: number | null;
 }) {
   const [sheet, setSheet] = useState<"edit" | "renew" | null>(null);
   const [pending, start] = useTransition();
@@ -428,6 +440,12 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
             {passId && <Link href={`/pass/${passId}`} className={MENU_ITEM}>Show pass</Link>}
             {waHref && <a href={waHref} target="_blank" rel="noreferrer" className={MENU_ITEM}>WhatsApp</a>}
             {member.phone && <a href={`tel:${member.phone}`} className={MENU_ITEM}>Call</a>}
+            {member.role === "member" && (
+              <button type="button" className={MENU_ITEM}
+                onClick={async () => (close(), (await confirmDialog({ title: `Reset ${member.full_name}'s password?`, body: "It goes back to the starting password (first 4 letters of their name, without initials, + last 4 phone digits). You'll see it next. They'll be asked to change it.", confirm: "Reset password" })) && start(async () => toastResult(await resetPassword(member.id))))}>
+                Reset password
+              </button>
+            )}
             {cancelSubId && (
               <button type="button" className={`${MENU_ITEM} text-red`}
                 onClick={async () => (close(), (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops now. Payment records stay.", confirm: "Cancel plan", danger: true })) && start(async () => toastResult(await cancelPlan(cancelSubId))))}>
@@ -448,7 +466,7 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
           {sheet === "edit" ? (
             <MemberEditForm member={member} branches={branches} />
           ) : (
-            <RenewForm userId={member.id} branchId={member.home_branch_id} plans={plans} offers={offers} admissionPaise={admissionPaise} />
+            <RenewForm userId={member.id} branchId={member.home_branch_id} plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} />
           )}
         </Sheet>
       )}
@@ -835,6 +853,18 @@ export function BranchForm({ branch }: { branch?: Branch }) {
         <Status state={state} />
       </div>
     </form>
+  );
+}
+
+/** Team → Personal training: move a client to another trainer, saved as soon as it changes. */
+export function TrainerPick({ subId, value, trainers }: { subId: string; value: string; trainers: [string, string][] }) {
+  const [pending, start] = useTransition();
+  return (
+    <select aria-label="Trainer" defaultValue={value} disabled={pending} className="field min-h-10 w-full sm:w-44"
+      onChange={(e) => { const v = e.target.value; start(async () => toastResult(await assignTrainer(subId, v))); }}>
+      <option value="">Not assigned</option>
+      {trainers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+    </select>
   );
 }
 

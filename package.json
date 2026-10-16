@@ -14,7 +14,10 @@
     "check:insights": "node supabase/check-insights.mjs",
     "check:redirects": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON supabase/check-redirects.mjs",
     "check:scan": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON supabase/check-scan.mjs",
-    "check:requests": "node supabase/check-requests.mjs"
+    "check:requests": "node supabase/check-requests.mjs",
+    "passwords": "node --env-file=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON supabase/set-passwords.mjs",
+    "check:auth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON supabase/check-auth.mjs",
+    "check:desk": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON supabase/check-desk.mjs"
   },
   "dependencies": {
     "@fontsource/anton": "^5.3.0",

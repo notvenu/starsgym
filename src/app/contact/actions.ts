@@ -1,6 +1,7 @@
 "use server";
 
-import { publicDb } from "@/lib/supabase";
+import { adminDb } from "@/lib/supabase";
+import { allow, clientIp, SLOW_DOWN } from "@/lib/rate-limit";
 
 export type EnquiryState = { error?: string; ok?: boolean } | undefined;
 const TOPICS = ["general", "membership", "personal_training", "corporate"];
@@ -11,8 +12,9 @@ export async function sendEnquiry(_: EnquiryState, form: FormData): Promise<Enqu
   const phone = s("phone").replace(/[^\d+]/g, "");
   if (!s("name")) return { error: "Tell us your name." };
   if (phone.length < 6) return { error: "Add a phone number we can call or WhatsApp." };
+  if (!(await allow([`enquiry:ip:${await clientIp()}`], 5, 3600))) return { error: SLOW_DOWN };
 
-  const { error } = await publicDb()
+  const { error } = await adminDb() // server-only insert (0017), after the rate limit
     .from("enquiries")
     .insert({
       name: s("name").slice(0, 100),

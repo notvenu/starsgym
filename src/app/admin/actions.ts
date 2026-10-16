@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { adminDb, requireAdmin, requireStaff, UUID } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
-import { prettyDay, readMemberDetails, type Track } from "@/lib/gym";
+import { prettyDay, readMemberDetails, starterPassword, type Track } from "@/lib/gym";
+import { allow, SLOW_DOWN } from "@/lib/rate-limit";
 
 export type Result = { error?: string; ok?: string } | undefined;
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -52,9 +53,12 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   const { data: existing } = await supabase.from("profiles").select("id").eq("email", email).maybeSingle();
   let userId = existing?.id as string | undefined;
   if (!userId) {
+    const password = starterPassword(s(form, "full_name"), read.details.phone);
     const { data, error } = await adminDb().auth.admin.createUser({
       email,
-      email_confirm: true, // they sign in with an emailed link; no password to hand over
+      email_confirm: true,
+      // the gym's starting password (name + phone); they're asked to change it when they first sign in
+      ...(password && { password, app_metadata: { temp_password: true } }),
       user_metadata: { full_name: s(form, "full_name"), ...read.details },
     });
     if (error) return { error: branchId && /already/i.test(error.message) ? "That email belongs to a member of another branch — ask the owner." : error.message };
@@ -72,7 +76,7 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
     await removePhoto(old as string | null);
   }
 
-  if (!s(form, "plan_id")) return done(existing ? "Member already exists — updated." : "Member added. They can sign in with Google or an email link.");
+  if (!s(form, "plan_id")) return done(existing ? "Member already exists — updated." : starterNote(s(form, "full_name"), read.details.phone));
   return sellPlan(supabase, userId, branch || null, form);
 }
 
@@ -100,11 +104,16 @@ export async function deleteMember(id: string): Promise<Result> {
 /** Creates the order for form's plan_id at the desk price, then activates it (cash / UPI received) or shows the QR. */
 async function sellPlan(supabase: Db, userId: string, branchId: string | null, form: FormData): Promise<Result> {
   const planId = s(form, "plan_id");
-  const pay = s(form, "payment"); // "cash" | "upi_paid" | "qr"
+  const pay = s(form, "payment"); // "cash" | "upi_paid" | "split" (part cash, rest UPI) | "qr"
   // negotiated at the desk: staff can set the plan price and the admission fee (blank = standard)
   const price = s(form, "price") === "" ? null : Number(s(form, "price"));
   const admission = s(form, "admission") === "" ? null : Number(s(form, "admission"));
   if ([price, admission].some((v) => v !== null && (!Number.isFinite(v) || v < 0))) return { error: "Prices must be zero or more." };
+  const cash = pay === "split" ? Math.round(Number(s(form, "cash")) * 100) : null;
+  if (cash !== null && !(cash > 0)) return { error: "Enter the cash part of the payment." };
+  const trainerId = s(form, "trainer_id") || null; // personal training: who coaches them
+  if (trainerId && !(UUID.test(trainerId) && (await supabase.from("site_items").select("id").eq("id", trainerId).eq("kind", "trainer").maybeSingle()).data))
+    return { error: "Pick a trainer from the list." };
   const { data: sub, error } = await supabase.rpc("create_pending_subscription", {
     p_plan: planId,
     p_branch: branchId,
@@ -112,14 +121,18 @@ async function sellPlan(supabase: Db, userId: string, branchId: string | null, f
     p_user: userId,
   });
   if (error) return { error: error.message };
-  if (price !== null || admission !== null) {
-    const fee = (sub.admission_paise as number | undefined) ?? 0; // the database only adds it on a first membership
-    const planPart = price !== null ? Math.round(price * 100) : sub.amount_paise - fee;
-    const adm = fee > 0 ? (admission !== null ? Math.round(admission * 100) : fee) : 0;
+  const fee = (sub.admission_paise as number | undefined) ?? 0; // the database only adds it on a first membership
+  const planPart = price !== null ? Math.round(price * 100) : sub.amount_paise - fee;
+  const adm = fee > 0 ? (admission !== null ? Math.round(admission * 100) : fee) : 0;
+  if (cash !== null && cash >= planPart + adm) {
+    await supabase.from("subscriptions").update({ status: "cancelled" }).eq("id", sub.id).eq("status", "pending");
+    return { error: "The cash part must be less than the total — otherwise pick Cash received." };
+  }
+  if (price !== null || admission !== null || cash !== null || trainerId) {
     // service key: desk-only path (requireStaff + branch check above), and it doesn't depend on column grants
     const { error: e } = await adminDb()
       .from("subscriptions")
-      .update({ amount_paise: planPart + adm, ...(fee > 0 && { admission_paise: adm }) })
+      .update({ amount_paise: planPart + adm, ...(fee > 0 && { admission_paise: adm }), ...(cash !== null && { cash_paise: cash }), ...(trainerId && { trainer_id: trainerId }) })
       .eq("id", sub.id);
     if (e) return { error: e.message };
   }
@@ -351,6 +364,36 @@ export async function decideRequest(id: string, approve: boolean): Promise<Resul
   if (error) return { error: error.message };
   revalidatePath(`/admin/members/${r.user_id}`);
   return done(approve ? "Change approved" : "Request declined");
+}
+
+/** Owner: who coaches a personal-training client (empty = not assigned). */
+export async function assignTrainer(subId: string, trainerId: string): Promise<Result> {
+  const { supabase } = await requireAdmin();
+  if (!UUID.test(subId) || (trainerId && !UUID.test(trainerId))) return { error: "Reload and try again." };
+  if (trainerId && !(await supabase.from("site_items").select("id").eq("id", trainerId).eq("kind", "trainer").maybeSingle()).data) return { error: "That trainer is gone." };
+  const { error } = await adminDb().from("subscriptions").update({ trainer_id: trainerId || null }).eq("id", subId);
+  if (error) return { error: error.message };
+  revalidatePath("/admin/team");
+  return { ok: "Trainer updated" };
+}
+
+const starterNote = (name: string, phone: string) => {
+  const password = starterPassword(name, phone);
+  return password ? `Member added. They sign in with their email or phone and the password ${password}.` : "Member added. They sign in with Google.";
+};
+
+/** Desk: a member forgot their password. Back to the starting one (name + phone); they're asked to change it again. */
+export async function resetPassword(userId: string): Promise<Result> {
+  const { supabase, profile: me } = await requireStaff();
+  if (!UUID.test(userId)) return { error: "Reload and try again." };
+  if (!(await allow([`reset:${me.id}`], 30, 3600))) return { error: SLOW_DOWN };
+  const { data: m } = await supabase.from("profiles").select("full_name,phone,role").eq("id", userId).maybeSingle(); // RLS: this desk's members
+  if (!m) return NOT_YOURS;
+  if (m.role !== "member") return { error: "Staff and owner passwords can't be reset from the desk." };
+  const password = starterPassword(m.full_name, m.phone);
+  if (!password) return { error: "Add their phone number first — the starting password uses it." };
+  const { error } = await adminDb().auth.admin.updateUserById(userId, { password, app_metadata: { temp_password: true } });
+  return error ? { error: error.message } : { ok: `Password reset to ${password} — tell them, they'll be asked to change it.` };
 }
 
 /** Sidebar branch switch: one branch or (empty) both. Owner and both-branch staff only. */

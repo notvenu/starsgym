@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
-import type { Gender } from "@/lib/gym";
+import { LOGIN_EMAIL_DOMAIN, type Gender } from "@/lib/gym";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
@@ -64,6 +64,17 @@ export const ROLE_LABEL: Record<Role, string> = { member: "Member", staff: "Staf
 export const currentUserId = cache(async () => {
   const { data } = await (await db()).auth.getClaims();
   return data?.claims?.sub ?? null;
+});
+
+/** What the signed-in account still needs: its own password (still on the gym's starting one) and/or a real email (phone
+ *  accounts imported from GymPro only have the hidden sign-in one). null = nothing. Read from the session token, so no
+ *  extra round trip. Cleared by finishAccount. */
+export const accountTodo = cache(async () => {
+  const claims = (await (await db()).auth.getClaims()).data?.claims;
+  if (!claims?.sub) return null;
+  const password = (claims.app_metadata as { temp_password?: boolean } | undefined)?.temp_password === true;
+  const email = !claims.email || String(claims.email).endsWith(`@${LOGIN_EMAIL_DOMAIN}`);
+  return password || email ? { password, email } : null;
 });
 
 const session = cache(async () => {

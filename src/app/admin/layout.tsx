@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/site";
 import { requireStaff } from "@/lib/supabase";
+import { AccountPrompt } from "@/components/account-prompt";
 import { BranchSwitch } from "./ui";
 import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
@@ -66,6 +67,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[260px_1fr]">
+      <AccountPrompt />
       <AdminMobileNav groups={groups} logo={<Logo size={40} />} footer={footer} switcher={switcher} />
       <aside className="border-r border-line bg-panel max-lg:hidden lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
         <div className="flex min-h-full flex-col gap-6 px-4 py-6">

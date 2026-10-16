@@ -7,7 +7,12 @@ import type { Branch, SiteItem } from "@/lib/gym";
 import { deleteItem } from "../content/actions";
 import { PhotoInput } from "../content/ui";
 import { Segmented, Sheet } from "../ui";
-import { saveTeam, type Result } from "./actions";
+import { resetStaffPassword, saveTeam, type Result } from "./actions";
+
+const showPassword = (password: string) =>
+  confirmDialog({ title: "Temporary password", body: `${password}
+
+Give it to them in person. It won't be shown again; they'll be asked to set their own when they sign in.`, confirm: "Done" });
 
 export type Person = {
   key: string;
@@ -40,6 +45,7 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
   const [pending, start] = useTransition();
   const [state, action, saving] = useActionState(async (prev: Result, form: FormData) => {
     const res = await saveTeam(prev, form);
+    if (res?.password) await showPassword(res.password);
     if (res?.ok) onDone?.();
     return res;
   }, undefined);
@@ -115,6 +121,13 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
             onClick={async () => (await confirmDialog({ title: `Delete ${item.title}'s trainer card?`, body: "It comes off the website for good. Sign-in access isn't touched. Pick “Desk staff” to just hide the card.", confirm: "Delete card", danger: true }))
               && start(async () => { const r = await deleteItem(item.id); toastResult(r); if (r?.ok) onDone?.(); })}>
             Delete trainer card
+          </button>
+        )}
+        {person?.profileId && person.role && !person.self && (
+          <button type="button" disabled={saving || pending} className="min-h-11 cursor-pointer text-sm font-semibold text-ash hover:text-red"
+            onClick={async () => (await confirmDialog({ title: `Reset ${person.name}'s password?`, body: "You'll get a one-time password to give them. Their old one stops working.", confirm: "Reset password" }))
+              && start(async () => { const r = await resetStaffPassword(person.profileId!); if (r?.password) await showPassword(r.password); else toastResult(r); })}>
+            Reset password
           </button>
         )}
         <ResultToast state={state} />

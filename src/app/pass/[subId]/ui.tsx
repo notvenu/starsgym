@@ -42,7 +42,7 @@ export function LiveQr({ subId }: { subId: string }) {
   );
 }
 
-export function PassActions({ subId, ref_, phone, name }: { subId: string; ref_: string; phone: string | null; name: string }) {
+export function PassActions({ subId, ref_, phone, name, receipt }: { subId: string; ref_: string; phone: string | null; name: string; receipt: string }) {
   const [busy, setBusy] = useState(false);
   const file = `stars-gym-pass-${ref_}.png`;
 
@@ -61,7 +61,7 @@ export function PassActions({ subId, ref_, phone, name }: { subId: string; ref_:
   }
 
   const whatsapp = () => {
-    const text = `Hi ${name.split(" ")[0] || ""}! Your Stars Gym pass is ready (REF ${ref_}). Sign in to see it: ${location.origin}/pass/${subId}`;
+    const text = `Hi ${name.split(" ")[0] || ""}! Your Stars Gym pass is ready (REF ${ref_}). ${receipt ? `${receipt} ` : ""}Sign in to see it: ${location.origin}/pass/${subId}`;
     const to = phone?.replace(/\D/g, "").replace(/^(\d{10})$/, "91$1") ?? "";
     return `https://wa.me/${to}?text=${encodeURIComponent(text)}`;
   };

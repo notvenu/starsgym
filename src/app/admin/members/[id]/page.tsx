@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
-import { ageOf, GENDERS, inr, planName, prettyDay, recentGymDates, waLink, type Branch, type Plan } from "@/lib/gym";
+import { adminDb, requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
+import { ageOf, GENDERS, inr, payMethod, planName, starterPassword, prettyDay, recentGymDates, waLink, type Branch, type Plan } from "@/lib/gym";
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, waNumber } from "../../kit";
@@ -10,7 +10,7 @@ import { MemberEditForm, MemberPhotoForm } from "../../ui";
 
 export const metadata = { title: "Member — Stars Gym admin" };
 
-type Sub = { id: string; status: string; method: string; starts_on: string | null; ends_on: string | null; amount_paise: number; created_at: string; plans: Plan };
+type Sub = { id: string; status: string; method: string; cash_paise: number | null; starts_on: string | null; ends_on: string | null; amount_paise: number; created_at: string; plans: Plan };
 type Visit = { day: string; session: string; branch_id: string; created_at: string };
 
 /** One member: photo, details, plans, and the last 30 days of visits. Staff can retake the photo and edit details. */
@@ -22,7 +22,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
 
   const [{ data: member }, subs, visits, branches, streak] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", id).maybeSingle<Profile & { created_at: string }>(),
-    supabase.from("subscriptions").select("id,status,method,starts_on,ends_on,amount_paise,created_at,plans(*)").eq("user_id", id).order("created_at", { ascending: false }),
+    supabase.from("subscriptions").select("id,status,method,cash_paise,starts_on,ends_on,amount_paise,created_at,plans(*)").eq("user_id", id).order("created_at", { ascending: false }),
     supabase.from("checkins").select("day,session,branch_id,created_at").eq("user_id", id).gte("day", days[0]).order("created_at", { ascending: false }),
     supabase.from("branches").select("*").order("created_at"),
     supabase.rpc("current_streak", { uid: id }),
@@ -33,6 +33,10 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const back = `/admin/members${view.startsWith("?") ? view : ""}`;
 
   const photo = await photoUrl(member.photo_path);
+  // the starting password, for the desk to tell a member who forgot it — and whether they've replaced it since.
+  // Only reached once RLS has shown this member to this desk (notFound above).
+  const starter = member.role === "member" ? starterPassword(member.full_name, member.phone) : null;
+  const onStarter = starter ? (await adminDb().auth.admin.getUserById(member.id)).data.user?.app_metadata?.temp_password === true : false;
   const plans = (subs.data ?? []) as unknown as Sub[];
   const v = (visits.data ?? []) as Visit[];
   const b = (branches.data ?? []) as Branch[];
@@ -78,6 +82,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
               <Info label="Member since" value={new Date(member.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" })} />
               <Info label="Emergency contact" value={member.emergency_contact} wide />
               <Info label="Role" value={ROLE_LABEL[member.role]} />
+              {starter && <Info label="Starting password" value={onStarter ? `${starter} · still using it` : `${starter} · they've set their own`} wide />}
             </dl>
             <div className="border-t border-line pt-4">
               <MemberPhotoForm id={member.id} url={photo} />
@@ -117,7 +122,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
                       <span className="min-w-0 flex-1">
                         <span className="block font-bold">{planName(p.plans)}</span>
                         <span className="block text-sm text-ash">
-                          {p.starts_on ? `${prettyDay(p.starts_on)} – ${prettyDay(p.ends_on!)}` : "Not started"} · {inr(p.amount_paise)} · {p.method.replace("_", " ")} · REF {p.id.slice(0, 8).toUpperCase()}
+                          {p.starts_on ? `${prettyDay(p.starts_on)} – ${prettyDay(p.ends_on!)}` : "Not started"} · {inr(p.amount_paise)} · {payMethod(p)} · REF {p.id.slice(0, 8).toUpperCase()}
                         </span>
                       </span>
                       <span className={`rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${state === "Active" ? "border-red text-red" : state === "Awaiting payment" ? "border-red bg-redwash" : "border-line text-ash"}`}>{state}</span>
