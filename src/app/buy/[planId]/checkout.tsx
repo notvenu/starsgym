@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Script from "next/script";
+import { toast, toastResult } from "@/components/feedback";
 import type { Branch } from "@/lib/gym";
 import { confirmOnline, payAtDesk, startOnline } from "./actions";
 
@@ -14,14 +15,12 @@ declare global {
 
 export function Checkout({ online: onlineEnabled, planId, branches, homeBranch }: { online: boolean; planId: string; branches: Branch[]; homeBranch: string | null }) {
   const [branchId, setBranchId] = useState(homeBranch ?? branches[0]?.id ?? "");
-  const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
   const online = () =>
     start(async () => {
-      setError("");
       const res = await startOnline(planId, branchId);
-      if ("error" in res) return setError(res.error!);
+      if ("error" in res) return toast(res.error!, "error");
       const { order } = res;
       const rzp = new window.Razorpay({
         key: order.key,
@@ -36,18 +35,17 @@ export function Checkout({ online: onlineEnabled, planId, branches, homeBranch }
         handler: (r: RazorpayResponse) =>
           start(async () => {
             const done = await confirmOnline(r.razorpay_order_id, r.razorpay_payment_id, r.razorpay_signature);
-            if (done?.error) setError(done.error);
+            toastResult(done);
           }),
       });
-      rzp.on("payment.failed", (r) => setError(r.error.description));
+      rzp.on("payment.failed", (r) => toast(r.error.description, "error"));
       rzp.open();
     });
 
   const desk = () =>
     start(async () => {
-      setError("");
       const res = await payAtDesk(planId, branchId);
-      if (res?.error) setError(res.error);
+      toastResult(res);
     });
 
   return (
@@ -73,7 +71,6 @@ export function Checkout({ online: onlineEnabled, planId, branches, homeBranch }
       <button onClick={desk} disabled={pending} className={onlineEnabled ? "btn-ghost min-h-14" : "btn-red min-h-16 text-lg"}>
         {pending && !onlineEnabled ? "Working…" : "Pay at the desk"}
       </button>
-      {error && <p role="alert" className="text-red">{error}</p>}
     </div>
   );
 }

@@ -5,13 +5,14 @@ import { inr, planName, type Plan } from "@/lib/gym";
 type PendingSub = { id: string; amount_paise: number; method: string; created_at: string; plans: Plan; profiles: { full_name: string; email: string | null } };
 
 /** Orders waiting for staff to confirm payment, shaped for <PendingRow>. */
-export async function getPending(supabase: SupabaseClient, limit = 100) {
-  const { data, count } = await supabase
+export async function getPending(supabase: SupabaseClient, limit = 100, branchId: string | null = null) {
+  const q = supabase
     .from("subscriptions")
     .select("id,amount_paise,method,created_at,plans(*),profiles!subscriptions_user_id_fkey(full_name,email)", { count: "exact" })
     .eq("status", "pending")
     .order("created_at", { ascending: false })
     .limit(limit);
+  const { data, count } = await (branchId ? q.eq("branch_id", branchId) : q);
   const rows = ((data ?? []) as unknown as PendingSub[]).map((s) => ({
     id: s.id,
     title: `${s.profiles.full_name || s.profiles.email} · ${planName(s.plans)}`,

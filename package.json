@@ -9,7 +9,10 @@
     "lint": "eslint",
     "check:db": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON supabase/check.mjs",
     "demo": "node --env-file=.env.local supabase/demo.mjs",
-    "demo:remove": "node --env-file=.env.local supabase/demo.mjs --remove"
+    "demo:remove": "node --env-file=.env.local supabase/demo.mjs --remove",
+    "check:staff": "node supabase/check-staff.mjs",
+    "check:insights": "node supabase/check-insights.mjs",
+    "check:redirects": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON supabase/check-redirects.mjs"
   },
   "dependencies": {
     "@fontsource/anton": "^5.3.0",

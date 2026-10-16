@@ -58,7 +58,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
       <Notices holidays={notices.holidays} offers={notices.offers} branches={(branches.data ?? []) as Branch[]} />
       <Nav>
         <div className="flex items-center gap-2.5">
-          {profile.role === "admin" && <Link href="/admin" className="btn-ghost">Admin</Link>}
+          {profile.role !== "member" && <Link href="/admin" className="btn-ghost">{profile.role === "admin" ? "Admin" : "Front desk"}</Link>}
           <form action={signOut}><button className="btn-ghost">Sign out</button></form>
         </div>
       </Nav>

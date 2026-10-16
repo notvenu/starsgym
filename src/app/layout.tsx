@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Anton, Barlow, Barlow_Condensed } from "next/font/google";
 import { SmoothScroll } from "@/components/client";
 import { Cursor } from "@/components/cursor";
+import { Feedback } from "@/components/feedback";
 import "./globals.css";
 
 const anton = Anton({ variable: "--font-anton", weight: "400", subsets: ["latin"] });
@@ -11,7 +12,17 @@ const barlowCondensed = Barlow_Condensed({ variable: "--font-barlow-condensed", 
 export const metadata: Metadata = {
   title: "Stars Gym — The Fitness Arena",
   description: "Strength, cardio and personal training. Buy your plan online, check in at the door, climb the streak wall.",
-  icons: { icon: "/logo-mark.png" },
+  icons: { icon: "/logo-mark.png", apple: "/apple-icon.png" },
+  appleWebApp: { capable: true, title: "Stars Gym", statusBarStyle: "black" },
+};
+
+// viewport-fit=cover so the admin tab bar can pad itself above the phone's home indicator
+export const viewport: Viewport = {
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f3ee" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -29,6 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <SmoothScroll />
         <Cursor />
         {children}
+        <Feedback />
       </body>
     </html>
   );

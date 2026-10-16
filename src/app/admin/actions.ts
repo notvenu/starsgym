@@ -1,8 +1,9 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { adminDb, requireAdmin } from "@/lib/supabase";
+import { adminDb, requireAdmin, requireStaff, UUID } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
 import { prettyDay, readMemberDetails, type Track } from "@/lib/gym";
@@ -10,22 +11,37 @@ import { prettyDay, readMemberDetails, type Track } from "@/lib/gym";
 export type Result = { error?: string; ok?: string } | undefined;
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const done = (ok: string): Result => (revalidatePath("/admin", "layout"), revalidatePath("/"), { ok });
+type Db = Awaited<ReturnType<typeof requireStaff>>["supabase"];
+// Staff act only on their branch. The signed-in client can't see other branches' members or orders (RLS, 0011), so
+// "can I see it?" is the check — needed before database functions that run with elevated rights.
+const sees = async (supabase: Db, table: "profiles" | "subscriptions", id: string) =>
+  !!(await supabase.from(table).select("id").eq("id", id).maybeSingle()).data;
+const NOT_YOURS = { error: "That member belongs to another branch." };
 
 export async function markPaid(subId: string): Promise<Result> {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireStaff();
+  if (!(await sees(supabase, "subscriptions", subId))) return NOT_YOURS;
   const { error } = await supabase.rpc("activate_subscription", { p_sub: subId });
   return error ? { error: error.message } : done("Marked paid");
 }
 
+/** Stop a paid plan that is running or booked (a mistaken sale, a refund). */
+export async function cancelPlan(subId: string): Promise<Result> {
+  const { supabase } = await requireStaff();
+  const { error } = await supabase.from("subscriptions").update({ status: "cancelled" }).eq("id", subId).eq("status", "active");
+  return error ? { error: error.message } : done("Plan cancelled");
+}
+
 export async function cancelSub(subId: string): Promise<Result> {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireStaff();
   const { error } = await supabase.from("subscriptions").update({ status: "cancelled" }).eq("id", subId).eq("status", "pending");
   return error ? { error: error.message } : done("Cancelled");
 }
 
 /** Desk sign-up: creates (or finds) the member, optionally sells a plan — paid now, or shown as a UPI QR. */
 export async function addMember(_: Result, form: FormData): Promise<Result> {
-  const { supabase } = await requireAdmin();
+  const { supabase, branchId } = await requireStaff();
+  const branch = branchId ?? s(form, "branch_id"); // staff sign people up at their own branch
   const email = s(form, "email").toLowerCase();
   if (!email) return { error: "Email is required — it's how the member signs in." };
   const read = readMemberDetails(form);
@@ -41,10 +57,10 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
       email_confirm: true, // they sign in with an emailed link; no password to hand over
       user_metadata: { full_name: s(form, "full_name"), ...read.details },
     });
-    if (error) return { error: error.message };
+    if (error) return { error: branchId && /already/i.test(error.message) ? "That email belongs to a member of another branch — ask the owner." : error.message };
     userId = data.user.id;
   }
-  await supabase.from("profiles").update({ ...read.details, ...(s(form, "branch_id") && { home_branch_id: s(form, "branch_id") }) }).eq("id", userId);
+  await supabase.from("profiles").update({ ...read.details, ...(branch && { home_branch_id: branch }) }).eq("id", userId);
   // photo taken at the desk: staff can set or replace it any time, without using up the member's own changes
   if (photo.file) {
     const path = await uploadPhoto(userId, photo.file);
@@ -56,9 +72,34 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
     await removePhoto(old as string | null);
   }
 
-  const planId = s(form, "plan_id");
-  if (!planId) return done(existing ? "Member already exists — updated." : "Member added. They can sign in with Google or an email link.");
+  if (!s(form, "plan_id")) return done(existing ? "Member already exists — updated." : "Member added. They can sign in with Google or an email link.");
+  return sellPlan(supabase, userId, branch || null, form);
+}
 
+/** Sell an existing member their next plan (from the members list). Queued after their current plan if one is running. */
+export async function renewMember(_: Result, form: FormData): Promise<Result> {
+  const { supabase, branchId } = await requireStaff();
+  if (!s(form, "plan_id")) return { error: "Pick a plan." };
+  const userId = s(form, "user_id");
+  if (!(await sees(supabase, "profiles", userId))) return NOT_YOURS;
+  return sellPlan(supabase, userId, branchId ?? (s(form, "branch_id") || null), form);
+}
+
+/** Owner only. Deletes the member's account, plans, visits and photo. Staff and admin accounts can't be deleted here. */
+export async function deleteMember(id: string): Promise<Result> {
+  const { supabase } = await requireAdmin();
+  const { data: m } = await supabase.from("profiles").select("role,photo_path").eq("id", id).maybeSingle();
+  if (!m) return { error: "Member not found." };
+  if (m.role !== "member") return { error: "Remove their desk access on the Team page first." };
+  const { error } = await adminDb().auth.admin.deleteUser(id); // cascades to profile, plans, check-ins
+  if (error) return { error: error.message };
+  await removePhoto(m.photo_path);
+  return done("Member deleted");
+}
+
+/** Creates the order for form's plan_id at the desk price, then activates it (cash / UPI received) or shows the QR. */
+async function sellPlan(supabase: Db, userId: string, branchId: string | null, form: FormData): Promise<Result> {
+  const planId = s(form, "plan_id");
   const pay = s(form, "payment"); // "cash" | "upi_paid" | "qr"
   // negotiated at the desk: staff can set the plan price and the admission fee (blank = standard)
   const price = s(form, "price") === "" ? null : Number(s(form, "price"));
@@ -66,7 +107,7 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   if ([price, admission].some((v) => v !== null && (!Number.isFinite(v) || v < 0))) return { error: "Prices must be zero or more." };
   const { data: sub, error } = await supabase.rpc("create_pending_subscription", {
     p_plan: planId,
-    p_branch: s(form, "branch_id") || null,
+    p_branch: branchId,
     p_method: pay === "cash" ? "cash" : "upi_qr",
     p_user: userId,
   });
@@ -75,7 +116,7 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
     const fee = (sub.admission_paise as number | undefined) ?? 0; // the database only adds it on a first membership
     const planPart = price !== null ? Math.round(price * 100) : sub.amount_paise - fee;
     const adm = fee > 0 ? (admission !== null ? Math.round(admission * 100) : fee) : 0;
-    // service key: staff-only path (requireAdmin above), and it doesn't depend on column grants
+    // service key: desk-only path (requireStaff + branch check above), and it doesn't depend on column grants
     const { error: e } = await adminDb()
       .from("subscriptions")
       .update({ amount_paise: planPart + adm, ...(fee > 0 && { admission_paise: adm }) })
@@ -112,6 +153,7 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
     active: form.get("active") === "on",
   };
   if (!row.name) return { error: "Branch name is required." };
+  if (![row.maps_url, row.image_url].every((u) => !u || u.startsWith("https://"))) return { error: "Links must start with https://" };
   if (!row.evening_open !== !row.evening_close) return { error: "Set both evening times, or leave both blank." };
   const id = s(form, "id");
   const { error } = id ? await supabase.from("branches").update(row).eq("id", id) : await supabase.from("branches").insert(row);
@@ -121,8 +163,9 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
 /** Saves every plan's price and on/off switch from the pricing grid. */
 /** Staff retake a member's photo (doesn't use up the member's own two changes). */
 export async function adminChangePhoto(_: Result, form: FormData): Promise<Result> {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireStaff();
   const userId = s(form, "id");
+  if (!(await sees(supabase, "profiles", userId))) return NOT_YOURS;
   const photo = formPhoto(form);
   if (photo.error) return { error: photo.error };
   if (!photo.file) return { error: "Take or upload a photo first." };
@@ -139,18 +182,20 @@ export async function adminChangePhoto(_: Result, form: FormData): Promise<Resul
 
 /** Staff edit a member's details and home branch. */
 export async function adminSaveMember(_: Result, form: FormData): Promise<Result> {
-  const { supabase } = await requireAdmin();
+  const { supabase, branchId } = await requireStaff();
   const read = readMemberDetails(form);
   if ("error" in read) return read;
   const full_name = s(form, "full_name");
   if (!full_name) return { error: "Name is required." };
   const userId = s(form, "id");
+  const age = Number(s(form, "age")) || null;
+  if (age !== null && !(Number.isInteger(age) && age >= 1 && age <= 120)) return { error: "Check the age." };
   const { error } = await supabase
     .from("profiles")
-    .update({ full_name, ...read.details, home_branch_id: s(form, "home_branch_id") || null })
+    .update({ full_name, ...read.details, age, home_branch_id: branchId ?? (s(form, "home_branch_id") || null) }) // staff can't move members away
     .eq("id", userId);
   if (error) return { error: error.message };
-  revalidatePath(`/admin/members/${userId}`);
+  revalidatePath("/admin/members", "layout"); // the list and this member's page
   return { ok: "Saved" };
 }
 
@@ -200,7 +245,7 @@ export async function savePrices(_: Result, form: FormData): Promise<Result> {
 
 /** Staff change what a pending order will cost (a price agreed at the desk). Admission stays as it was. */
 export async function setOrderPrice(id: string, rupees: number): Promise<Result> {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireStaff(); // the lookup below only finds this branch's orders for staff
   if (!Number.isFinite(rupees) || rupees < 0) return { error: "Enter 0 or more." };
   const { data: sub } = await supabase.from("subscriptions").select("*").eq("id", id).eq("status", "pending").maybeSingle();
   if (!sub) return { error: "That order isn't awaiting payment any more." };
@@ -273,3 +318,12 @@ export async function setOfferActive(id: string, active: boolean): Promise<Resul
   const { error } = await supabase.from("offers").update({ active }).eq("id", id);
   return error ? { error: error.message } : done(active ? "Offer resumed" : "Offer paused");
 }
+
+/** Sidebar branch switch: one branch or (empty) both. Owner and both-branch staff only. */
+export async function switchBranch(branchId: string) {
+  const { canSwitch } = await requireStaff();
+  if (!canSwitch || (branchId && !UUID.test(branchId))) return;
+  (await cookies()).set("admin_branch", branchId, { path: "/admin", maxAge: 31536000, httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+  revalidatePath("/admin", "layout");
+}
+

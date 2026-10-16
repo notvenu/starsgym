@@ -1,20 +1,21 @@
 import Link from "next/link";
 import { PageHero, Shell } from "@/components/site";
 import { FinalCta, STOCK, TrainerCard } from "@/components/sections";
-import { getItems } from "@/lib/data";
+import { getBranches, getItems } from "@/lib/data";
+import { coachesAt } from "@/lib/gym";
 
 export const revalidate = 300;
 export const metadata = { title: "Our trainers — Stars Gym", description: "Meet the certified coaches on the Stars Gym floor." };
 
 export default async function TrainersPage() {
-  const { trainer } = await getItems(["trainer"]);
+  const [{ trainer }, branches] = await Promise.all([getItems(["trainer"]), getBranches()]);
   return (
     <Shell>
       <PageHero eyebrow="Our trainers" title="The coaches" accent="behind the reps." intro="Certified, competitive and on the floor every session. Pick a coach for personal training or just ask for a form check." image={STOCK.male} />
       <section className="wrap py-20">
         {trainer.length ? (
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {trainer.map((t, i) => <TrainerCard key={t.id} t={t} i={i} />)}
+            {trainer.map((t, i) => <TrainerCard key={t.id} t={t} i={i} where={coachesAt(branches, t.branch_id)} />)}
           </div>
         ) : (
           <div className="stripes flex min-h-60 flex-col items-center justify-center gap-4 rounded-md border border-dashed border-strong p-8 text-center">

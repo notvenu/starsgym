@@ -15,7 +15,7 @@ export type DoorResult = {
   monthVisits?: number;
   plan?: string | null;
   endsOn?: string | null;
-  photo?: string | null; // so staff at the door can match the face, however they checked in
+  photo?: string | null; // their own check-in, or desk staff matching the face — never to whoever typed a phone number
   at?: string; // ISO time of the check-in
 };
 
@@ -28,6 +28,13 @@ export async function doorCheckIn(key: string, by: "me" | "phone" | "ref", value
     p_ref: by === "ref" ? value : null,
   });
   if (error) return { error: error.message };
+  // The entrance link is printed on the wall, so anyone can type any member's phone here. The face photo goes only
+  // to the member signed in on this phone, or to desk staff.
+  let showPhoto = by === "me";
+  if (!showPhoto) {
+    const { data: auth } = await supabase.auth.getUser();
+    if (auth.user) showPhoto = (await supabase.from("profiles").select("role").eq("id", auth.user.id).maybeSingle()).data?.role !== "member";
+  }
   const r = (data as {
     first_name: string; branch: string; streak: number; already: boolean; session: Session; sessions_today: Session[] | null;
     month_visits: number; track: Track | null; duration_days: number | null; ends_on: string | null; photo_path: string | null;
@@ -42,7 +49,7 @@ export async function doorCheckIn(key: string, by: "me" | "phone" | "ref", value
     monthVisits: r.month_visits,
     plan: r.track && r.duration_days ? planName({ track: r.track, duration_days: r.duration_days }) : null,
     endsOn: r.ends_on,
-    photo: await photoUrl(r.photo_path),
+    photo: showPhoto ? await photoUrl(r.photo_path) : null,
     at: new Date().toISOString(),
   };
 }

@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/supabase";
 import { reelEmbed, videoEmbed, type ItemKind } from "@/lib/gym";
+import { sitePhoto } from "./upload";
 
 export type Result = { error?: string; ok?: string } | undefined;
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const KINDS: ItemKind[] = ["trainer", "client", "gallery", "reel"];
-const TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 const refresh = (ok: string): Result => (revalidatePath("/", "layout"), { ok });
 
 const https = (v: string) => !v || v.startsWith("https://");
@@ -38,22 +38,8 @@ export async function saveItem(_: Result, form: FormData): Promise<Result> {
   if (kind === "reel" && !reelEmbed(url)) return { error: "Paste an Instagram reel link, e.g. https://www.instagram.com/reel/…" };
   if (kind === "gallery" && url && !videoEmbed(url)) return { error: "Video links must be YouTube or a direct .mp4 / .webm file." };
 
-  // a photo is an upload ("photo" / "after_photo") or a pasted URL ("image_url" / "after_image_url"); blank keeps the current one
-  async function photo(fileKey: string, urlKey: string): Promise<{ path?: string; error?: string }> {
-    const file = form.get(fileKey);
-    if (file instanceof File && file.size) {
-      if (!TYPES[file.type]) return { error: "Photos must be JPG, PNG or WebP." };
-      if (file.size > 5 * 1024 * 1024) return { error: "Each photo must be under 5 MB." };
-      const path = `${kind}/${crypto.randomUUID()}.${TYPES[file.type]}`;
-      const up = await supabase.storage.from("site").upload(path, file, { contentType: file.type });
-      return up.error ? { error: up.error.message } : { path };
-    }
-    const pasted = s(form, urlKey);
-    if (pasted && !pasted.startsWith("https://")) return { error: "Photo URLs must start with https://" };
-    return { path: pasted || undefined };
-  }
-  const before = await photo("photo", "image_url");
-  const after = await photo("after_photo", "after_image_url");
+  const before = await sitePhoto(supabase, form, kind, "photo", "image_url");
+  const after = await sitePhoto(supabase, form, kind, "after_photo", "after_image_url");
   if (before.error || after.error) return { error: before.error ?? after.error };
   const image_path = before.path;
   const trainer_id = s(form, "trainer_id");

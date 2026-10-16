@@ -22,6 +22,7 @@ const ICONS = {
   reels: "M3 3h18v18H3zM3 8h18M8 3l3 5M14 3l3 5M10 12v6l5-3z",
   settings: "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7",
   enquiries: "M4 4h16v12H5.2L4 17.2zM8 9h8M8 12h5",
+  staff: "M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6zM9 12l2 2 4-4",
   menu: "M4 6h16M4 12h16M4 18h16",
   close: "M6 6l12 12M18 6L6 18",
 };

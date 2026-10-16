@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { requireAdmin, type Profile } from "@/lib/supabase";
-import { DAY_NAMES, GENDERS, inr, planName, prettyDay, recentGymDates, waLink, type Branch, type Plan } from "@/lib/gym";
+import { requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
+import { ageOf, DAY_NAMES, GENDERS, inr, planName, prettyDay, recentGymDates, waLink, type Branch, type Plan } from "@/lib/gym";
 import { photoUrl } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, waNumber } from "../../kit";
 import { MemberEditForm, MemberPhotoForm } from "../../ui";
@@ -14,7 +15,7 @@ type Visit = { day: string; session: string; branch_id: string; created_at: stri
 /** One member: photo, details, plans, and the last 30 days of visits. Staff can retake the photo and edit details. */
 export default async function MemberPage({ params }: PageProps<"/admin/members/[id]">) {
   const { id } = await params;
-  const { supabase } = await requireAdmin();
+  const { supabase, branchId } = await requireStaff();
   const days = recentGymDates(30);
   const today = days.at(-1)!;
 
@@ -26,6 +27,9 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
     supabase.rpc("current_streak", { uid: id }),
   ]);
   if (!member) notFound();
+  // back to the list as they left it (saved by the list's filters); only ever a query string
+  const view = (await cookies()).get("members_view")?.value ?? "";
+  const back = `/admin/members${view.startsWith("?") ? view : ""}`;
 
   const photo = await photoUrl(member.photo_path);
   const plans = (subs.data ?? []) as unknown as Sub[];
@@ -35,13 +39,13 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const daysLeft = current ? Math.round((Date.parse(current.ends_on!) - Date.parse(today)) / 864e5) + 1 : 0;
   const byDay = new Map<string, string[]>();
   v.forEach((x) => byDay.set(x.day, [...(byDay.get(x.day) ?? []), x.session]));
-  const age = member.date_of_birth ? Math.floor((Date.parse(today) - Date.parse(member.date_of_birth)) / (365.25 * 864e5)) : null;
+  const age = ageOf(member);
   const home = b.find((x) => x.id === member.home_branch_id)?.name;
   const first = member.full_name.split(" ")[0] || "there";
 
   return (
     <>
-      <Link href="/admin/members" className="-mb-4 self-start text-sm font-bold text-ash hover:text-chalk">← Members</Link>
+      <Link href={back} className="-mb-4 self-start text-sm font-bold text-ash hover:text-chalk">← Members</Link>
       <PageHeader title={member.full_name || "Member"} intro={[member.email, member.phone].filter(Boolean).join(" · ")}>
         {member.phone && <a href={waLink(waNumber(member.phone), `Hi ${first}!`)} target="_blank" rel="noreferrer" className="btn-ghost">WhatsApp</a>}
         {member.phone && <a href={`tel:${member.phone}`} className="btn-ghost">Call</a>}
@@ -68,12 +72,12 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <Info label="Gender" value={GENDERS.find(([g]) => g === member.gender)?.[1]} />
-              <Info label="Age" value={age !== null ? `${age} · ${prettyDay(member.date_of_birth!)}` : null} />
+              <Info label="Age" value={age != null ? (member.date_of_birth ? `${age} · ${prettyDay(member.date_of_birth)}` : `${age}`) : null} />
               <Info label="Home branch" value={home} />
               <Info label="Member since" value={new Date(member.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" })} />
               <Info label="Emergency contact" value={member.emergency_contact} wide />
               <Info label="Photo changes used" value={`${member.photo_changes} of 2`} />
-              <Info label="Role" value={member.role === "admin" ? "Staff" : "Member"} />
+              <Info label="Role" value={ROLE_LABEL[member.role]} />
             </dl>
             <div className="border-t border-line pt-4">
               <MemberPhotoForm id={member.id} url={photo} />
@@ -149,7 +153,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
           </Panel>
 
           <Panel title="Edit details">
-            <MemberEditForm member={member} branches={b.filter((x) => x.active)} />
+            <MemberEditForm member={member} branches={b.filter((x) => x.active && (!branchId || x.id === branchId))} />
           </Panel>
         </div>
       </div>

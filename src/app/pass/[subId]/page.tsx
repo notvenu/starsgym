@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ToastOnMount } from "@/components/feedback";
 import { Nav } from "@/components/site";
 import { requireUser } from "@/lib/supabase";
 import { getPass } from "./data";
@@ -18,11 +19,11 @@ export default async function PassPage({ params, searchParams }: PageProps<"/pas
   return (
     <main className="min-h-dvh pb-20">
       <Nav>
-        <Link href={profile.role === "admin" ? "/admin" : "/dashboard"} className="btn-ghost">{profile.role === "admin" ? "Front desk" : "Dashboard"}</Link>
+        <Link href={profile.role !== "member" ? "/admin" : "/dashboard"} className="btn-ghost">{profile.role !== "member" ? "Front desk" : "Dashboard"}</Link>
       </Nav>
 
       <div className="wrap flex flex-col items-center gap-6 pt-4">
-        {isNew && <p role="status" className="animate-rise font-label text-lg font-bold uppercase tracking-[0.2em] text-red">Pass issued — download or share it</p>}
+        {isNew && <ToastOnMount text="Pass issued — download or share it" />}
         <Ticket pass={pass} />
       </div>
     </main>

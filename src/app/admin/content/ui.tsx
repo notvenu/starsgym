@@ -2,14 +2,11 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Field } from "@/components/client";
+import { confirmDialog, ResultToast, toastResult } from "@/components/feedback";
 import { itemImage, type ItemKind, type Settings, type SiteItem } from "@/lib/gym";
 import { deleteItem, markEnquiry, saveItem, saveSettings, setItemActive, type Result } from "./actions";
 
-function Status({ state }: { state: Result }) {
-  if (state?.error) return <p role="alert" className="text-sm text-red">{state.error}</p>;
-  if (state?.ok) return <p role="status" className="text-sm text-ash">{state.ok}</p>;
-  return null;
-}
+const Status = ResultToast; // results show as toasts
 
 export function SettingsForm({ settings }: { settings: Settings }) {
   const [state, action, pending] = useActionState(saveSettings, undefined);
@@ -37,7 +34,7 @@ export function EnquiryRow({ id, children }: { id: string; children: React.React
   return (
     <li className={`flex flex-wrap items-start justify-between gap-3 py-4 ${done ? "opacity-40" : ""}`}>
       <div className="min-w-0 flex-1">{children}</div>
-      {!done && <button disabled={pending} onClick={() => start(async () => setDone(!(await markEnquiry(id))?.error))} className="btn-ghost max-sm:w-full">Mark handled</button>}
+      {!done && <button disabled={pending} onClick={() => start(async () => { const r = await markEnquiry(id); toastResult(r?.error ? r : { ok: "Enquiry marked handled" }); setDone(!r?.error); })} className="btn-ghost max-sm:w-full">Mark handled</button>}
     </li>
   );
 }
@@ -95,7 +92,7 @@ export function ItemForm({ kind, item, trainers = [], onDone }: { kind: ItemKind
   );
 }
 
-function PhotoInput({ label, file, url, current }: { label: string; file: string; url: string; current: string | null }) {
+export function PhotoInput({ label, file, url, current }: { label: string; file: string; url: string; current: string | null }) {
   const src = itemImage(current);
   return (
     <div className="grid items-end gap-4 sm:grid-cols-[auto_1fr_1fr]">
@@ -133,8 +130,8 @@ export function ItemRow({ item, trainers = [] }: { item: SiteItem; trainers?: Si
         </div>
         <div className="flex gap-2 max-sm:w-full max-sm:[&>*]:min-h-10 max-sm:[&>*]:flex-1 max-sm:[&>*]:px-2 max-sm:[&>*]:text-xs">
           <button onClick={() => setEditing((e) => !e)} className="btn-ghost">{editing ? "Close" : "Edit"}</button>
-          <button disabled={pending} onClick={() => start(async () => void (await setItemActive(item.id, !item.active)))} className="btn-ghost">{item.active ? "Hide" : "Show"}</button>
-          <button disabled={pending} onClick={() => confirm("Delete this for good?") && start(async () => void (await deleteItem(item.id)))} className="btn-ghost">Delete</button>
+          <button disabled={pending} onClick={() => start(async () => toastResult(await setItemActive(item.id, !item.active)))} className="btn-ghost">{item.active ? "Hide" : "Show"}</button>
+          <button disabled={pending} onClick={async () => (await confirmDialog({ title: `Delete ${item.title || "this item"}?`, body: "It comes off the website for good. Use Hide to take it down for now.", confirm: "Delete", danger: true })) && start(async () => toastResult(await deleteItem(item.id)))} className="btn-ghost">Delete</button>
         </div>
       </div>
       {editing && <div className="mt-4 rounded border border-line p-4"><ItemForm kind={item.kind} item={item} trainers={trainers} onDone={() => setEditing(false)} /></div>}

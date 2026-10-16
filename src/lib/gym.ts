@@ -197,6 +197,10 @@ export function openState(b: Hours, holidays: Holiday[] = [], now = new Date()) 
   return { open: false, label: next ? `opens ${next[0]}` : "closed for today" };
 }
 
+/** Years old: from the date of birth, else the age on file (GymPro imports, desk entry). */
+export const ageOf = (m: { date_of_birth: string | null; age: number | null }) =>
+  m.date_of_birth ? Math.floor((Date.parse(gymDate()) - Date.parse(m.date_of_birth)) / (365.25 * 864e5)) : m.age;
+
 export type MemberDetails = { gender: Gender; phone: string; date_of_birth: string | null; emergency_contact: string | null };
 
 /** Validates the member-details fields (sign-up, profile, desk entry). Gender decides ladies'-hours access. */
@@ -239,10 +243,20 @@ export type SiteItem = {
   after_image_path: string | null;
   duration: string;
   trainer_id: string | null;
+  branch_id: string | null; // trainers: their branch, null = both (0014)
+  profile_id: string | null; // trainers who also have desk access (0014)
   url: string | null;
   sort: number;
   active: boolean;
 };
+
+/** Where a trainer coaches, for their card — only worth saying when there's more than one branch. */
+export const coachesAt = (branches: { id: string; name: string }[], id: string | null) =>
+  branches.length > 1 ? branches.find((b) => b.id === id)?.name ?? "Both branches" : undefined;
+
+/** A same-site path to go to after sign-in, or the fallback. Rejects "//x" and "/\x" (browsers read both as another site). */
+export const safeNext = (v: unknown, fallback = "/dashboard") =>
+  typeof v === "string" && /^\/(?![\\/])[^\s\\]*$/.test(v) ? v : fallback;
 
 export type Settings = {
   instagram_url: string | null;

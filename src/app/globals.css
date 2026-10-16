@@ -93,6 +93,13 @@ html { color-scheme: dark; }
 /* the hero title's drop shadow is for dark only */
 :root[data-theme="light"] .door-title { filter: none; }
 body { background: var(--color-ink); color: var(--color-chalk); font-family: var(--font-sans); }
+/* app feel on phones: no grey flash on tap, no double-tap zoom delay */
+html { -webkit-tap-highlight-color: transparent; }
+a, button, select, label, summary { touch-action: manipulation; }
+/* opened from the home screen: no long-press link previews (pull-to-refresh stays — it's the app's reload) */
+@media (display-mode: standalone) {
+  a, img { -webkit-touch-callout: none; }
+}
 ::selection { background: var(--color-red); color: #fff; }
 
 @layer components {
@@ -174,6 +181,8 @@ body { background: var(--color-ink); color: var(--color-chalk); font-family: var
 @keyframes ticker-in { from { transform: translateY(110%); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ── Circle cursor (see components/cursor.tsx) ── */
+/* the popover wrapper that keeps it above dialogs and menus: a click-through, unstyled full-screen layer */
+.cursor-layer { position: fixed; inset: 0; width: auto; height: auto; margin: 0; padding: 0; border: 0; background: none; overflow: visible; pointer-events: none; }
 .cursor-dot, .cursor-ring { position: fixed; top: 0; left: 0; z-index: 9999; pointer-events: none; opacity: 0; border-radius: 9999px; will-change: transform; }
 /* solid white with a faint dark edge: reads on the dark photo, on red buttons and on light areas, no colour shift */
 .cursor-dot { width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35); }

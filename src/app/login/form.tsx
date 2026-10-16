@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { Field, MemberDetailsFields } from "@/components/client";
+import { ResultToast } from "@/components/feedback";
 import { magicLink, signIn, signUp } from "./actions";
 
 const ACTIONS = { signin: signIn, signup: signUp, link: magicLink };
@@ -22,8 +23,7 @@ export function AuthForm({ mode, next }: { mode: keyof typeof ACTIONS; next: str
       {mode !== "link" && (
         <Field label="Password" name="password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} minLength={mode === "signup" ? 8 : undefined} required />
       )}
-      {state?.error && <p role="alert" className="text-red">{state.error}</p>}
-      {state?.message && <p role="status" className="text-chalk">{state.message}</p>}
+      <ResultToast state={state} />
       <button disabled={pending} className="btn-red mt-2 min-h-14 text-base">
         {pending ? "One sec…" : mode === "signup" ? "Create account" : mode === "link" ? "Email me a link" : "Sign in"}
       </button>

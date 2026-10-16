@@ -3,17 +3,13 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/supabase";
-import { readMemberDetails } from "@/lib/gym";
+import { readMemberDetails, safeNext } from "@/lib/gym";
 
 export type AuthState = { error?: string; message?: string } | undefined;
 
 const origin = async () => process.env.NEXT_PUBLIC_SITE_URL ?? (await headers()).get("origin") ?? "";
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-// only same-site paths, never "//evil.com"
-const nextPath = (f: FormData) => {
-  const n = str(f, "next");
-  return n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard";
-};
+const nextPath = (f: FormData) => safeNext(str(f, "next"));
 
 export async function signIn(_: AuthState, form: FormData): Promise<AuthState> {
   const supabase = await db();

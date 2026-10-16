@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/supabase";
+import { requireStaff } from "@/lib/supabase";
 import { inr, planName, type Plan } from "@/lib/gym";
 import { getPending } from "../data";
 import { Empty, PageHeader, Panel } from "../kit";
@@ -11,16 +11,17 @@ type Paid = { id: string; amount_paise: number; method: string; paid_at: string;
 const METHOD: Record<string, string> = { razorpay: "Online", upi_qr: "UPI", cash: "Cash" };
 
 export default async function PaymentsPage() {
-  const { supabase } = await requireAdmin();
+  const { supabase, view } = await requireStaff();
+  const recent = supabase
+    .from("subscriptions")
+    .select("id,amount_paise,method,paid_at,plans(*),profiles!subscriptions_user_id_fkey(full_name,email)")
+    .eq("status", "active")
+    .not("paid_at", "is", null)
+    .order("paid_at", { ascending: false })
+    .limit(30);
   const [pending, paid] = await Promise.all([
-    getPending(supabase),
-    supabase
-      .from("subscriptions")
-      .select("id,amount_paise,method,paid_at,plans(*),profiles!subscriptions_user_id_fkey(full_name,email)")
-      .eq("status", "active")
-      .not("paid_at", "is", null)
-      .order("paid_at", { ascending: false })
-      .limit(30),
+    getPending(supabase, 100, view),
+    view ? recent.eq("branch_id", view) : recent,
   ]);
 
   return (

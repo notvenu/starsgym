@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/supabase";
+import { safeNext as safe } from "@/lib/gym";
 
 // Email confirmation and magic links land here with a one-time code.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  const safeNext = safe(searchParams.get("next"));
 
   if (code) {
     const supabase = await db();

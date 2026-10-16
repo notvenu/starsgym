@@ -4,20 +4,19 @@ import type { ItemKind, SiteItem } from "@/lib/gym";
 import { Empty, PageHeader, Panel } from "../../kit";
 import { ItemForm, ItemRow } from "../ui";
 
-const SECTIONS: Record<ItemKind, { title: string; intro: string; add: string; where: string }> = {
-  trainer: { title: "Trainers", intro: "Coach profiles: photo, role, bio and Instagram.", add: "Add a trainer", where: "Our Trainers, Personal Training and the homepage coaching section" },
+const SECTIONS: Record<Exclude<ItemKind, "trainer">, { title: string; intro: string; add: string; where: string }> = {
   client: { title: "Transformations", intro: "Personal-training results: before & after, journey length, coach and a short note.", add: "Add a transformation", where: "Personal Training and the homepage" },
   gallery: { title: "Gallery", intro: "Photos (upload) and videos (YouTube or .mp4 link).", add: "Add to gallery", where: "the Gallery page; the first six also on the homepage" },
   reel: { title: "Instagram reels", intro: "Paste reel links. The reels section hides itself when this list is empty.", add: "Add a reel", where: "the homepage and Gallery" },
 };
 
 export async function generateMetadata({ params }: PageProps<"/admin/content/[kind]">) {
-  const s = SECTIONS[(await params).kind as ItemKind];
+  const s = SECTIONS[(await params).kind as keyof typeof SECTIONS];
   return { title: `${s?.title ?? "Content"} — Stars Gym admin` };
 }
 
 export default async function ContentPage({ params }: PageProps<"/admin/content/[kind]">) {
-  const kind = (await params).kind as ItemKind;
+  const kind = (await params).kind as keyof typeof SECTIONS; // trainers live on /admin/team
   const section = SECTIONS[kind];
   if (!section) notFound();
 

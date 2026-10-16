@@ -150,7 +150,7 @@ export function Heatmap({ cells }: { cells: { dow: number; h: number; v: number 
                         onBlur={() => setHover(null)}
                         aria-label={`${DAYS[row]} ${hh(h)}: ${v} check-ins`}
                         className={`block aspect-square w-full max-w-6 cursor-default rounded-[3px] outline-none ${hover === key ? "ring-2 ring-chalk" : ""}`}
-                        style={{ background: v ? `rgb(227 20 28 / ${step})` : "#1a1a1a" }}
+                        style={{ background: v ? `rgb(227 20 28 / ${step})` : "var(--color-steel)" }}
                       />
                       {hover === key && (
                         <span className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 rounded-md border border-line bg-ink px-3 py-2 text-center whitespace-nowrap shadow-xl ${row < 2 ? "top-full mt-2" : "bottom-full mb-2"}`}>

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Logo } from "@/components/site";
 import { db, type Profile } from "@/lib/supabase";
 import { photoUrl } from "@/lib/photo";
+import { safeNext } from "@/lib/gym";
 import { WelcomeForm } from "./ui";
 
 export const metadata = { title: "A few details — Stars Gym", robots: { index: false } };
@@ -9,7 +10,7 @@ export const metadata = { title: "A few details — Stars Gym", robots: { index:
 /** One-time step for accounts created with Google, which don't give us gender or phone. */
 export default async function WelcomePage({ searchParams }: PageProps<"/welcome">) {
   const n = (await searchParams).next;
-  const next = typeof n === "string" && n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard";
+  const next = safeNext(n);
   const supabase = await db();
   const { data } = await supabase.auth.getUser();
   if (!data.user) redirect(`/login?next=${encodeURIComponent(next)}`);

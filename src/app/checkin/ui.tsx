@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Check, WeekHolidays } from "@/components/client";
+import { toast } from "@/components/feedback";
 import { prettyDay, type Holiday, type Session } from "@/lib/gym";
 import { doorCheckIn, type DoorResult } from "./actions";
 
@@ -20,7 +21,8 @@ export function DoorCheckIn({ doorKey, member, memberPhoto, holidays, next }: { 
     start(async () => {
       const r = await doorCheckIn(doorKey, how, value);
       setRes(r);
-      if (!r.error) navigator.vibrate?.(r.already ? 30 : [60, 40, 60]);
+      if (r.error) toast(r.error, "error");
+      else navigator.vibrate?.(r.already ? 30 : [60, 40, 60]);
     });
 
   if (res && !res.error) return <Welcome r={res} holidays={holidays} signedIn={!!member && !asGuest} onAgain={() => { setRes(undefined); setValue(""); }} />;
@@ -77,7 +79,6 @@ export function DoorCheckIn({ doorKey, member, memberPhoto, holidays, next }: { 
         </form>
       )}
       {holidays.length > 0 && <div className="mt-5"><WeekHolidays holidays={holidays} /></div>}
-      {res?.error && <p role="alert" className="mt-4 rounded-md border border-red/40 bg-redwash px-4 py-3 text-center text-sm text-chalk">{res.error}</p>}
     </div>
   );
 }

@@ -11,14 +11,27 @@ const TEXT = "input, textarea, [contenteditable=true]";
  * Mouse/trackpad only, and off when the visitor prefers reduced motion.
  */
 export function Cursor() {
+  const layer = useRef<HTMLDivElement>(null);
   const dot = useRef<HTMLDivElement>(null);
   const ring = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!matchMedia("(pointer: fine)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const d = dot.current!, r = ring.current!;
+    const d = dot.current!, r = ring.current!, l = layer.current!;
     const root = document.documentElement;
     root.classList.add("has-cursor");
+
+    // Dialogs and popovers sit in the browser's top layer, above any z-index. The cursor is a (manual) popover too,
+    // and re-enters the top layer whenever something else opens, so it always draws last.
+    const raise = () => {
+      if (l.matches(":popover-open")) l.hidePopover();
+      l.showPopover();
+    };
+    raise();
+    const onToggle = (e: Event) => e.target !== l && (e as ToggleEvent).newState === "open" && raise();
+    document.addEventListener("toggle", onToggle, true); // popovers (toggle doesn't bubble, so capture)
+    const dialogs = new MutationObserver((list) => list.some((m) => (m.target as HTMLDialogElement).open) && raise());
+    dialogs.observe(document.body, { subtree: true, attributeFilter: ["open"] }); // showModal() sets [open]
 
     let mx = 0, my = 0, rx = 0, ry = 0, raf = 0, shown = false;
     let state = "";
@@ -66,14 +79,17 @@ export function Cursor() {
       removeEventListener("pointerdown", down);
       removeEventListener("pointerup", up);
       document.removeEventListener("mouseout", out);
+      document.removeEventListener("toggle", onToggle, true);
+      dialogs.disconnect();
+      if (l.matches(":popover-open")) l.hidePopover();
       root.classList.remove("has-cursor", "cursor-shown");
     };
   }, []);
 
   return (
-    <>
-      <div ref={ring} aria-hidden="true" className="cursor-ring" />
-      <div ref={dot} aria-hidden="true" className="cursor-dot" />
-    </>
+    <div ref={layer} popover="manual" aria-hidden="true" className="cursor-layer">
+      <div ref={ring} className="cursor-ring" />
+      <div ref={dot} className="cursor-dot" />
+    </div>
   );
 }

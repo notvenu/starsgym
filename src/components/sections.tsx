@@ -65,7 +65,7 @@ export function SectionHead({ n, eyebrow, title, accent, aside, href, cta }: { n
   );
 }
 
-export function TrainerCard({ t, i = 0 }: { t: SiteItem; i?: number }) {
+export function TrainerCard({ t, i = 0, where }: { t: SiteItem; i?: number; where?: string }) {
   return (
     <article className="group lift flex flex-col overflow-hidden rounded-md border border-line bg-carbon" data-reveal style={{ transitionDelay: `${(i % 3) * 80}ms` }}>
       <div className="relative h-[440px] overflow-hidden">
@@ -74,7 +74,7 @@ export function TrainerCard({ t, i = 0 }: { t: SiteItem; i?: number }) {
         <h3 className="absolute bottom-4 left-5 font-display text-5xl leading-none uppercase dark-shadow">{t.title}</h3>
       </div>
       <div className="flex flex-1 flex-col gap-3 p-6">
-        <p className="label text-red">{t.subtitle}</p>
+        <p className="label text-red">{[t.subtitle, where].filter(Boolean).join(" · ")}</p>
         {t.body && <p className="leading-relaxed text-body">{t.body}</p>}
         {t.url && (
           <a href={t.url} target="_blank" rel="noreferrer" className="mt-auto text-sm font-bold tracking-wider text-chalk uppercase hover:text-red">

@@ -1,30 +1,41 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { Field, MemberDetailsFields } from "@/components/client";
+import { confirmDialog, ResultToast, toastResult } from "@/components/feedback";
 import { PhotoCapture } from "@/components/photo";
 import type { Profile } from "@/lib/supabase";
 import { bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
-import { addHoliday, addMember, adminChangePhoto, adminSaveMember, cancelSub, deleteHoliday, markPaid, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
+import { addHoliday, addMember, adminChangePhoto, adminSaveMember, cancelPlan, cancelSub, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
 
-function Status({ state }: { state: Result }) {
-  if (state?.error) return <p role="alert" className="text-sm text-red">{state.error}</p>;
-  if (state?.ok) return <p role="status" className="text-sm text-ash">{state.ok}</p>;
-  return null;
-}
+const Status = ResultToast; // results show as toasts
 
 /** A button that opens its content in a pop-up (a sheet from the bottom on phones). `startOpen` for deep links like ?new=1. */
 export function AdminModal({ label, title, className = "btn-red", startOpen, children }: { label: React.ReactNode; title: string; className?: string; startOpen?: boolean; children: React.ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (startOpen) ref.current?.showModal();
-  }, [startOpen]);
+  const [open, setOpen] = useState(!!startOpen);
   return (
     <>
-      <button type="button" onClick={() => ref.current?.showModal()} className={className}>{label}</button>
+      <button type="button" onClick={() => setOpen(true)} className={className}>{label}</button>
+      <Sheet title={title} open={open} onClose={() => setOpen(false)}>{children}</Sheet>
+    </>
+  );
+}
+
+/** The pop-up itself, opened by `open`. Escape, ✕ and tapping outside all call onClose. */
+export function Sheet({ title, open, onClose, children }: { title: string; open: boolean; onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (open && !ref.current?.open) ref.current?.showModal();
+    if (!open) ref.current?.close();
+  }, [open]);
+  return (
+    <>
       <dialog
         ref={ref}
         aria-label={title}
+        onClose={onClose}
         onClick={(e) => e.target === e.currentTarget && ref.current?.close()} // tap outside to close
         className="w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-carbon p-0 text-chalk backdrop:bg-black/75 backdrop:backdrop-blur-sm max-sm:mt-auto max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none sm:m-auto"
       >
@@ -79,8 +90,8 @@ export function PendingRow({ id, title, meta }: { id: string; title: string; met
       </div>
       <div className="flex shrink-0 gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
         <a href={`/pay/${id}`} className="btn-ghost min-h-10 px-3.5 text-xs">QR</a>
-        <button disabled={pending} onClick={() => confirm("Cancel this order?") && start(async () => setState(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>
-        <button disabled={pending} onClick={() => start(async () => setState(await markPaid(id)))} className="btn-red min-h-10 px-4 text-xs">Mark paid</button>
+        <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Cancel this order?", body: meta, confirm: "Cancel order", danger: true })) && start(async () => toastResult(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>
+        <button disabled={pending} onClick={() => start(async () => toastResult(await markPaid(id)))} className="btn-red min-h-10 px-4 text-xs">Mark paid</button>
       </div>
     </div>
   );
@@ -98,13 +109,6 @@ const MEMBERSHIPS: Track[] = ["strength", "strength_cardio", "couples", "persona
 /** Desk onboarding: details → pass → payment, then straight to the member's ticket. */
 export function AddMemberForm({ branches, plans, offers, admissionPaise = 0 }: { branches: Branch[]; plans: Plan[]; offers: Offer[]; admissionPaise?: number }) {
   const [state, action, pending] = useActionState(addMember, undefined);
-  const [kind, setKind] = useState<Kind>("membership");
-  const [track, setTrack] = useState<Track>("strength");
-  const [days, setDays] = useState(30);
-  const [payment, setPayment] = useState("cash");
-  const plan =
-    kind === "none" ? undefined : plans.find((p) => (kind === "membership" ? p.track === track && p.duration_days === days : p.track === kind));
-
   return (
     <form action={action} className="flex flex-col gap-8">
       <Step n="01" title="Member details">
@@ -118,10 +122,40 @@ export function AddMemberForm({ branches, plans, offers, admissionPaise = 0 }: {
           </div>
         </div>
       </Step>
+      <PlanSteps plans={plans} offers={offers} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
+    </form>
+  );
+}
 
-      <Step n="02" title="Pass">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {KINDS.map(([k, label, sub]) => (
+/** Members list → Renew: sell an existing member their next plan. Starts the day after their current one ends. */
+export function RenewForm({ userId, branchId, plans, offers, admissionPaise }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; admissionPaise: number | null }) {
+  const [state, action, pending] = useActionState(renewMember, undefined);
+  return (
+    <form action={action} className="flex flex-col gap-8">
+      <input type="hidden" name="user_id" value={userId} />
+      <input type="hidden" name="branch_id" value={branchId ?? ""} />
+      <PlanSteps plans={plans} offers={offers} admissionPaise={admissionPaise} kinds={KINDS.filter(([k]) => k === "membership" || k === "day_pass")} first={1} verb="Renew" pending={pending} state={state} />
+    </form>
+  );
+}
+
+/** Pass → payment → submit. admissionPaise null = they've had a membership, so no admission field. */
+function PlanSteps({ plans, offers, admissionPaise, kinds, first, verb, pending, state }: {
+  plans: Plan[]; offers: Offer[]; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result;
+}) {
+  const [kind, setKind] = useState<Kind>("membership");
+  const [track, setTrack] = useState<Track>("strength");
+  const [days, setDays] = useState(30);
+  const [payment, setPayment] = useState("cash");
+  const plan =
+    kind === "none" ? undefined : plans.find((p) => (kind === "membership" ? p.track === track && p.duration_days === days : p.track === kind));
+  const n = (i: number) => String(first + i).padStart(2, "0");
+
+  return (
+    <>
+      <Step n={n(0)} title="Pass">
+        <div className={`grid grid-cols-2 gap-2 ${kinds.length > 2 ? "sm:grid-cols-4" : ""}`}>
+          {kinds.map(([k, label, sub]) => (
             <Choice key={k} name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} label={label} sub={sub} />
           ))}
         </div>
@@ -144,7 +178,7 @@ export function AddMemberForm({ branches, plans, offers, admissionPaise = 0 }: {
       </Step>
 
       {plan && (
-        <Step n="03" title="Payment">
+        <Step n={n(1)} title="Payment">
           <div className="grid gap-2 sm:grid-cols-3">
             {[
               ["cash", "Cash received", "Activates now"],
@@ -159,11 +193,11 @@ export function AddMemberForm({ branches, plans, offers, admissionPaise = 0 }: {
 
       <div className="flex flex-wrap items-center gap-4">
         <button disabled={pending || (kind !== "none" && !plan)} className="btn-red min-h-14 px-8 text-base">
-          {pending ? "Saving…" : !plan ? "Create account" : payment === "qr" ? "Create & show QR" : "Create & issue pass"}
+          {pending ? "Saving…" : !plan ? "Create account" : payment === "qr" ? `${verb} & show QR` : `${verb} & issue pass`}
         </button>
         <Status state={state} />
       </div>
-    </form>
+    </>
   );
 }
 
@@ -220,7 +254,7 @@ function Choice({ label, sub, checked, ...input }: { label: string; sub: string;
   );
 }
 
-function Segmented({ label, options, value, onChange }: { label: string; options: [string, string][]; value: string; onChange: (v: string) => void }) {
+export function Segmented({ label, options, value, onChange }: { label: string; options: [string, string][]; value: string; onChange: (v: string) => void }) {
   return (
     // phones: an even 2-column grid (an odd last option spans both) instead of ragged wrapping
     <div role="group" aria-label={label} className="grid grid-cols-2 gap-1 rounded-md border border-line bg-panel p-1 sm:flex sm:flex-wrap [&>*:last-child:nth-child(odd)]:col-span-2">
@@ -262,13 +296,14 @@ export function HolidayForm({ branches, emailEnabled }: { branches: Branch[]; em
 
 export function HolidayRow({ holiday, where }: { holiday: Holiday; where: string }) {
   const [pending, start] = useTransition();
+  const title = `${prettyDay(holiday.day)}${holiday.note ? ` — ${holiday.note}` : ""}`;
   return (
     <li className="flex items-center justify-between gap-3 py-3">
       <span>
-        <span className="block font-bold">{prettyDay(holiday.day)}{holiday.note && ` — ${holiday.note}`}</span>
+        <span className="block font-bold">{title}</span>
         <span className="text-sm text-ash">{where}</span>
       </span>
-      <button disabled={pending} onClick={() => confirm("Remove this holiday?") && start(async () => void (await deleteHoliday(holiday.id)))} className="btn-ghost">
+      <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Remove this holiday?", body: `${title} · ${where}. The gym counts as open that day again.`, confirm: "Remove", danger: true })) && start(async () => toastResult((await deleteHoliday(holiday.id)) ?? { ok: "Holiday removed" }))} className="btn-ghost">
         Remove
       </button>
     </li>
@@ -291,8 +326,7 @@ export function LadiesHoursForm({ branch: b }: { branch: Branch }) {
       </div>
       <div className="flex items-center gap-4">
         <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Save ladies' timings"}</button>
-        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
-        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+        <ResultToast state={state} />
       </div>
     </form>
   );
@@ -307,8 +341,7 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
       <PhotoCapture current={url} label="Retake photo" />
       <div className="flex items-center gap-3">
         <button disabled={pending} className="btn-ghost min-h-10 px-4 text-sm">{pending ? "Saving…" : "Save photo"}</button>
-        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
-        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+        <ResultToast state={state} />
       </div>
     </form>
   );
@@ -329,12 +362,201 @@ export function MemberEditForm({ member, branches }: { member: Profile; branches
         </select>
       </label>
       <MemberDetailsFields d={member} />
+      <Field label="Age (if no date of birth)" name="age" type="number" min="1" max="120" defaultValue={member.age ?? ""} />
       <div className="flex items-center gap-4 sm:col-span-2">
         <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Save details"}</button>
-        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
-        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+        <ResultToast state={state} />
       </div>
     </form>
+  );
+}
+
+/** An icon button that opens a small panel in the top layer (never clipped by the list), pinned under the button —
+ *  or above it near the bottom of the screen. Escape and tapping outside close it (native popover). */
+function Pop({ id, label, icon, active, badge, disabled, width = "w-52", children }: {
+  id: string; label: string; icon: React.ReactNode; active?: boolean; badge?: number; disabled?: boolean; width?: string;
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const below = useRef(true); // decided on open, so the panel doesn't flip sides mid-scroll
+  const place = () => {
+    const r = button.current!.getBoundingClientRect();
+    const s = panel.current!.style;
+    s.right = `${Math.max(8, innerWidth - r.right)}px`;
+    s.top = below.current ? `${r.bottom + 6}px` : "auto";
+    s.bottom = below.current ? "auto" : `${innerHeight - r.top + 6}px`;
+  };
+  // fixed-position panel: follow the button while the page scrolls or resizes
+  const onToggle = (e: React.ToggleEvent<HTMLDivElement>) => {
+    if (e.newState === "open") {
+      fit(panel.current!.offsetHeight); // now it's visible, with its real height
+      addEventListener("scroll", place, { capture: true, passive: true });
+      addEventListener("resize", place);
+    } else {
+      removeEventListener("scroll", place, { capture: true });
+      removeEventListener("resize", place);
+    }
+  };
+  const fit = (height: number) => {
+    below.current = innerHeight - button.current!.getBoundingClientRect().bottom > height + 16;
+    place();
+  };
+  const open = () => fit(340); // a first guess before it opens (hidden panels measure 0)
+  return (
+    <>
+      <button ref={button} type="button" popoverTarget={id} onClick={open} disabled={disabled} aria-label={label} title={label}
+        className={`relative flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-40 ${active ? "border-red bg-redwash text-chalk" : "border-line text-ash hover:border-red hover:text-chalk"}`}>
+        {icon}
+        {!!badge && <span className="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-red text-[11px] font-bold text-white tabular-nums">{badge}</span>}
+      </button>
+      <div ref={panel} id={id} popover="auto" onToggle={onToggle} className={`fixed inset-auto m-0 ${width} max-w-[calc(100vw-1rem)] rounded-lg border border-line bg-carbon p-1.5 text-chalk shadow-2xl shadow-black/60`}>
+        {children(() => document.getElementById(id)?.hidePopover())}
+      </div>
+    </>
+  );
+}
+
+const MENU_ITEM = "flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 rounded px-3 text-left text-sm font-semibold hover:bg-steel";
+const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
+);
+
+/** Members list: the ⋯ menu on each row. Edit and renew open in a pop-up without leaving the list. */
+export function MemberActions({ member, passId, cancelSubId, waHref, branches, plans, offers, admissionPaise, canDelete }: {
+  canDelete: boolean; member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; branches: Branch[]; plans: Plan[]; offers: Offer[]; admissionPaise: number | null;
+}) {
+  const [sheet, setSheet] = useState<"edit" | "renew" | null>(null);
+  const [pending, start] = useTransition();
+  const remove = async () => {
+    const ok = await confirmDialog({
+      title: `Delete ${member.full_name}?`,
+      body: "Their account, plans, payments, visit history and photo are deleted. This can't be undone.",
+      confirm: "Delete member",
+      danger: true,
+    });
+    if (ok) start(async () => toastResult(await deleteMember(member.id))); // direct: the row is gone before an effect could run
+  };
+
+  return (
+    <>
+      <Pop id={`actions-${member.id}`} label={`Actions for ${member.full_name}`} disabled={pending}
+        icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>}>
+        {(close) => (
+          <>
+            <Link href={`/admin/members/${member.id}`} className={MENU_ITEM}>View profile</Link>
+            <button type="button" onClick={() => (close(), setSheet("edit"))} className={MENU_ITEM}>Edit details</button>
+            <button type="button" onClick={() => (close(), setSheet("renew"))} className={MENU_ITEM}>{passId ? "Renew plan" : "Sell a plan"}</button>
+            {passId && <Link href={`/pass/${passId}`} className={MENU_ITEM}>Show pass</Link>}
+            {waHref && <a href={waHref} target="_blank" rel="noreferrer" className={MENU_ITEM}>WhatsApp</a>}
+            {member.phone && <a href={`tel:${member.phone}`} className={MENU_ITEM}>Call</a>}
+            {cancelSubId && (
+              <button type="button" className={`${MENU_ITEM} text-red`}
+                onClick={async () => (close(), (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops now. Payment records stay.", confirm: "Cancel plan", danger: true })) && start(async () => toastResult(await cancelPlan(cancelSubId))))}>
+                Cancel plan
+              </button>
+            )}
+            {canDelete && member.role === "member" && (
+              <>
+                <hr className="my-1 border-line" />
+                <button type="button" onClick={() => (close(), remove())} className={`${MENU_ITEM} text-red`}>Delete member</button>
+              </>
+            )}
+          </>
+        )}
+      </Pop>
+      {sheet && (
+        <Sheet title={sheet === "edit" ? member.full_name || "Edit member" : `${passId ? "Renew" : "Sell a plan"} · ${member.full_name}`} open onClose={() => setSheet(null)}>
+          {sheet === "edit" ? (
+            <MemberEditForm member={member} branches={branches} />
+          ) : (
+            <RenewForm userId={member.id} branchId={member.home_branch_id} plans={plans} offers={offers} admissionPaise={admissionPaise} />
+          )}
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+/** Top of the admin (owner and both-branch staff): view one branch or both. */
+export function BranchSwitch({ branches, value }: { branches: [string, string][]; value: string }) {
+  const [pending, start] = useTransition();
+  return (
+    <label className="flex items-center gap-3 self-start text-sm text-ash">
+      Branch
+      <select aria-label="Branch" defaultValue={value} disabled={pending} className="field min-h-10 w-auto py-0 text-sm text-chalk"
+        onChange={(e) => start(() => switchBranch(e.target.value))}>
+        <option value="">Both branches</option>
+        {branches.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+      </select>
+    </label>
+  );
+}
+
+/** Members list: sort and filter icon buttons, each opening its own panel. Choices apply at once and reset the page. */
+export function MemberFilters({ query, sorts, branches, defaultSort }: { defaultSort: string; query: Record<string, string>; sorts: readonly (readonly [string, string])[]; branches: [string, string][] }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const go = (over: Record<string, string>) => {
+    const p = new URLSearchParams(Object.entries({ ...query, ...over, page: "" }).filter(([k, v]) => v && !(k === "sort" && v === defaultSort) && !(k === "show" && v === "all")));
+    start(() => router.push(`/admin/members${p.size ? `?${p}` : ""}`, { scroll: false }));
+  };
+  const sort = query.sort || defaultSort;
+  const narrowed = [query.gender, query.branch, query.photo].filter(Boolean).length;
+  // remember the list as it's set up (tab, search, sort, filters, page) so "← Members" on a profile comes back to it
+  useEffect(() => {
+    document.cookie = `members_view=${location.search}; path=/admin; max-age=43200; samesite=lax`; // query strings are already cookie-safe
+  });
+  const group = (label: string, k: string, options: [string, string][]) => (
+    <div role="group" aria-label={label} className="flex flex-col gap-1.5 px-3 py-2">
+      <span className="label">{label}</span>
+      <div className="grid gap-1 rounded-md border border-line bg-panel p-1" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+        {options.map(([v, l]) => {
+          const on = (query[k] || "") === v;
+          return (
+            <button key={v} type="button" aria-pressed={on} onClick={() => go({ [k]: v })}
+              className={`min-h-9 cursor-pointer truncate rounded px-2 text-sm font-semibold transition-colors ${on ? "bg-red text-white" : "text-ash hover:text-chalk"}`}>
+              {l}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`flex shrink-0 items-center gap-1.5 transition-opacity ${pending ? "opacity-50" : ""}`} aria-busy={pending}>
+      <Pop id="member-sort" label={`Sort: ${sorts.find(([v]) => v === sort)?.[1]}`} active={sort !== defaultSort}
+        icon={<Icon d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3" />}>
+        {(close) => (
+          <>
+            <p className="px-3 pt-2 pb-1 font-display text-xl uppercase">Sort by</p>
+            {sorts.map(([v, l]) => (
+              <button key={v} type="button" aria-pressed={sort === v} onClick={() => (close(), go({ sort: v }))} className={`${MENU_ITEM} ${sort === v ? "text-chalk" : "text-ash"}`}>
+                {l}
+                {sort === v && <span className="text-red"><Icon d="m5 12 5 5 9-10" size={16} /></span>}
+              </button>
+            ))}
+          </>
+        )}
+      </Pop>
+      <Pop id="member-filter" label={narrowed ? `Filters (${narrowed} on)` : "Filter"} active={narrowed > 0} badge={narrowed} width="w-80"
+        icon={<Icon d="M3 5h18l-7 8.5V19l-4 2v-7.5z" />}>
+        {() => (
+          <>
+            <p className="px-3 pt-2 pb-1 font-display text-xl uppercase">Filter members</p>
+            {group("Gender", "gender", [["", "All"], ["male", "Men"], ["female", "Women"]])}
+            {branches.length > 1 && group("Home branch", "branch", [["", "All"], ...branches])}
+            {group("Photo", "photo", [["", "Any"], ["none", "Missing"]])}
+            {narrowed > 0 && (
+              <button type="button" onClick={() => go({ gender: "", branch: "", photo: "" })} className={`${MENU_ITEM} mt-1 justify-center border-t border-line text-red`}>
+                Clear filters
+              </button>
+            )}
+          </>
+        )}
+      </Pop>
+    </div>
   );
 }
 
@@ -359,8 +581,7 @@ export function BranchAccessForm({ mode }: { mode: "any" | "home" }) {
       </div>
       <div className="flex items-center gap-4">
         <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Save"}</button>
-        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
-        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+        <ResultToast state={state} />
       </div>
     </form>
   );
@@ -371,11 +592,10 @@ export function ReplaceDoorKey({ branchId }: { branchId: string }) {
   const [state, setState] = useState<Result>();
   return (
     <div className="flex flex-col gap-1">
-      <button disabled={pending} onClick={() => confirm("Replace this code? The printed QR at the entrance stops working until you put up the new one.") && start(async () => setState(await replaceDoorKey(branchId)))} className="btn-ghost min-h-11 w-full px-3 text-xs whitespace-nowrap">
+      <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Replace the entrance code?", body: "The printed QR at the entrance stops working until you put up the new one.", confirm: "Replace code", danger: true })) && start(async () => setState(await replaceDoorKey(branchId)))} className="btn-ghost min-h-11 w-full px-3 text-xs whitespace-nowrap">
         {pending ? "…" : "Replace code"}
       </button>
-      {state?.error && <p role="alert" className="text-xs text-red">{state.error}</p>}
-      {state?.ok && <p role="status" className="text-xs text-ash">{state.ok}</p>}
+      <ResultToast state={state} />
     </div>
   );
 }
@@ -424,7 +644,7 @@ export function OfferRow({ offer }: { offer: Offer }) {
       <span className="flex items-center gap-3">
         <span className={`font-label text-sm font-bold uppercase tracking-widest ${status === "Live" ? "text-red" : "text-ash"}`}>{status}</span>
         {status !== "Ended" && (
-          <button disabled={pending} onClick={() => start(async () => void (await setOfferActive(offer.id, !offer.active)))} className="btn-ghost">
+          <button disabled={pending} onClick={() => start(async () => toastResult(await setOfferActive(offer.id, !offer.active)))} className="btn-ghost">
             {offer.active ? "Pause" : "Resume"}
           </button>
         )}
@@ -541,9 +761,8 @@ export function PriceForm({ plans }: { plans: Plan[] }) {
 
       {/* sits above the phone tab bar */}
       <div className={`sticky bottom-20 z-10 flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 transition-colors lg:bottom-4 ${dirty ? "border-red bg-redwash" : "border-line bg-carbon"}`}>
-        <span className="text-sm" role="status">
-          {state?.error ? <span className="text-red">{state.error}</span> : dirty ? "You have unsaved price changes." : state?.ok ?? "All prices saved."}
-        </span>
+        <span className="text-sm">{dirty ? "You have unsaved price changes." : "All prices saved."}</span>
+        <Status state={state} />
         <div className="flex gap-2">
           {dirty && <button type="button" onClick={() => setValues(initial)} className="btn-ghost min-h-10">Reset</button>}
           <button disabled={pending || !dirty} className="btn-red min-h-10">{pending ? "Saving…" : "Save prices"}</button>
@@ -606,3 +825,4 @@ function Select({ label, name, options }: { label: string; name: string; options
     </label>
   );
 }
+

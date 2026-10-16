@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { Field } from "@/components/client";
+import { ResultToast } from "@/components/feedback";
 import type { Branch } from "@/lib/gym";
 import { sendEnquiry } from "./actions";
 
@@ -50,7 +51,7 @@ export function EnquiryForm({ branches, topic }: { branches: Branch[]; topic: st
       </label>
       {/* honeypot, hidden from people */}
       <input type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
-      {state?.error && <p role="alert" className="text-red">{state.error}</p>}
+      <ResultToast state={state} />
       <button disabled={pending} className="btn-red min-h-14 text-base">{pending ? "Sending…" : "Send"}</button>
     </form>
   );

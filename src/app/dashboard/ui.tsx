@@ -5,6 +5,7 @@ import { Check, Field, MemberDetailsFields, OpenStatus, WeekHolidays } from "@/c
 import type { Profile } from "@/lib/supabase";
 import { ladiesLabel, weekHolidays, type Branch, type Holiday, type Session } from "@/lib/gym";
 import { PhotoCapture } from "@/components/photo";
+import { ResultToast, toast } from "@/components/feedback";
 import { changePhoto, checkIn, postShowcase, saveProfile } from "./actions";
 
 const MILESTONES = [7, 30, 60, 100, 200, 365];
@@ -27,7 +28,6 @@ export function CheckInPanel(props: {
   const [branchId, setBranchId] = useState(props.homeBranch ?? branches[0]?.id ?? "");
   const branch = branches.find((b) => b.id === branchId);
   const [useLocation, setUseLocation] = useState(true);
-  const [error, setError] = useState("");
   const [pending, start] = useTransition();
   const [streak, setStreak] = useState(props.streak);
   const [visits, setVisits] = useState(props.todaySessions);
@@ -38,21 +38,20 @@ export function CheckInPanel(props: {
   const mustLocate = !!branch?.require_location;
 
   function submit() {
-    setError("");
     const send = (lat?: number, lng?: number) =>
       start(async () => {
         const res = await checkIn(branchId, lat, lng);
-        if (res.error) return setError(res.error);
+        if (res.error) return toast(res.error, "error");
         setStreak(res.streak ?? streak + 1);
         if (sess && sess !== "ladies_only") setVisits((v) => [...v, sess]);
         navigator.vibrate?.(60);
       });
 
     if (!(useLocation || mustLocate)) return send();
-    if (!navigator.geolocation) return mustLocate ? setError("Your browser can't share location.") : send();
+    if (!navigator.geolocation) return mustLocate ? toast("Your browser can't share location.", "error") : send();
     navigator.geolocation.getCurrentPosition(
       (pos) => send(pos.coords.latitude, pos.coords.longitude),
-      () => (mustLocate ? setError("Allow location access to check in at this branch.") : send()),
+      () => (mustLocate ? toast("Allow location access to check in at this branch.", "error") : send()),
       { enableHighAccuracy: true, timeout: 10_000 },
     );
   }
@@ -145,7 +144,6 @@ export function CheckInPanel(props: {
           {pending ? "Checking in…" : props.hasPlan ? "Check in now" : "Buy a plan to check in"}
         </button>
       )}
-      {error && <p role="alert" className="text-center text-red">{error}</p>}
     </section>
   );
 }
@@ -166,8 +164,7 @@ export function ShowcaseForm({ defaultLink }: { defaultLink: string }) {
           onChange={(e) => { const f = e.target.files?.[0]; setPreview(f ? URL.createObjectURL(f) : undefined); }} />
       </label>
       <input name="link_url" type="url" placeholder="https://instagram.com/you" defaultValue={defaultLink} className="field" aria-label="Social link" />
-      {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
-      {state?.ok && <p role="status" className="text-sm">{state.ok}</p>}
+      <ResultToast state={state} />
       <button disabled={pending} className="btn-red">{pending ? "Uploading…" : "Post to the wall"}</button>
     </form>
   );
@@ -189,8 +186,7 @@ export function PhotoForm({ url, changesLeft }: { url: string | null; changesLef
       <PhotoCapture current={url} label={`Your photo · ${changesLeft} change${changesLeft === 1 ? "" : "s"} left`} />
       <div className="flex items-center gap-4">
         <button disabled={pending} className="btn-ghost">{pending ? "Saving…" : "Save new photo"}</button>
-        {state?.error && <p role="alert" className="text-sm text-red">{state.error}</p>}
-        {state?.ok && <p role="status" className="text-sm text-ash">{state.ok}</p>}
+        <ResultToast state={state} />
       </div>
     </form>
   );
@@ -212,8 +208,7 @@ export function ProfileForm({ profile, branches }: { profile: Profile; branches:
       </label>
       <div className="flex items-center gap-4 md:col-span-2">
         <button disabled={pending} className="btn-ghost">{pending ? "Saving…" : "Save profile"}</button>
-        {state?.error && <p role="alert" className="text-red">{state.error}</p>}
-        {state?.ok && <p role="status" className="text-ash">{state.ok}</p>}
+        <ResultToast state={state} />
       </div>
     </form>
   );

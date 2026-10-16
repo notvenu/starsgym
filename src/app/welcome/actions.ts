@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { db } from "@/lib/supabase";
-import { readMemberDetails } from "@/lib/gym";
+import { readMemberDetails, safeNext } from "@/lib/gym";
 import { formPhoto, setMyPhoto } from "@/lib/photo";
 
 export type WelcomeState = { error?: string } | undefined;
@@ -26,7 +26,6 @@ export async function saveDetails(_: WelcomeState, form: FormData): Promise<Welc
     const res = await setMyPhoto(supabase, data.user.id, file);
     if (res.error) return { error: res.error };
   }
-  const next = String(form.get("next") ?? "");
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
+  redirect(safeNext(form.get("next")));
 }
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/supabase";
+import { safeNext } from "@/lib/gym";
 import { Logo } from "@/components/site";
 import { AuthForm } from "./form";
 import { signInWithGoogle } from "./actions";
@@ -10,7 +11,7 @@ export const metadata = { title: "Sign in — Stars Gym" };
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const mode = sp.mode === "signup" ? "signup" : sp.mode === "link" ? "link" : "signin";
-  const next = typeof sp.next === "string" && sp.next.startsWith("/") && !sp.next.startsWith("//") ? sp.next : "";
+  const next = safeNext(sp.next, "");
   // already signed in: don't ask again
   const { data } = await (await db()).auth.getUser();
   if (data.user) redirect(next || "/dashboard");

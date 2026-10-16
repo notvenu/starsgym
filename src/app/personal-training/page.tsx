@@ -2,8 +2,8 @@ import Link from "next/link";
 import { PageHero, Shell } from "@/components/site";
 import { Price } from "@/components/client";
 import { Arrow, FinalCta, Results, STOCK, TrainerCard } from "@/components/sections";
-import { getItems, getNotices, getPlans } from "@/lib/data";
-import { bestOffer, DURATIONS } from "@/lib/gym";
+import { getBranches, getItems, getNotices, getPlans } from "@/lib/data";
+import { bestOffer, DURATIONS, coachesAt } from "@/lib/gym";
 
 export const revalidate = 300;
 export const metadata = { title: "Personal training & client results — Stars Gym", description: "1:1 coaching with a plan built around you — and the transformations to prove it." };
@@ -22,7 +22,7 @@ const FAQ = [
 ];
 
 export default async function PersonalTrainingPage() {
-  const [plans, { offers }, { trainer, client }] = await Promise.all([getPlans(), getNotices(), getItems(["trainer", "client"])]);
+  const [plans, { offers }, { trainer, client }, branches] = await Promise.all([getPlans(), getNotices(), getItems(["trainer", "client"]), getBranches()]);
   const pt = plans.filter((p) => p.track === "personal_training").sort((a, b) => a.duration_days - b.duration_days);
   const offer = bestOffer(offers, "personal_training");
 
@@ -64,7 +64,7 @@ export default async function PersonalTrainingPage() {
             <Link href="/trainers" className="btn-ghost">All trainers <Arrow /></Link>
           </div>
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {trainer.slice(0, 3).map((t, i) => <TrainerCard key={t.id} t={t} i={i} />)}
+            {trainer.slice(0, 3).map((t, i) => <TrainerCard key={t.id} t={t} i={i} where={coachesAt(branches, t.branch_id)} />)}
           </div>
         </section>
       )}

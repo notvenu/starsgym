@@ -1,40 +1,46 @@
 import Link from "next/link";
 import { Logo } from "@/components/site";
-import { requireAdmin } from "@/lib/supabase";
+import { requireStaff } from "@/lib/supabase";
+import { BranchSwitch } from "./ui";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
 
 export const metadata = { title: "Admin — Stars Gym" };
 
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
-  const { supabase, profile } = await requireAdmin();
-  const [pending, enquiries] = await Promise.all([
-    supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending"),
+  const { supabase, profile, isOwner, view, canSwitch } = await requireStaff();
+  const pendingCount = supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending");
+  const [pending, enquiries, branch, branchList] = await Promise.all([
+    view ? pendingCount.eq("branch_id", view) : pendingCount, // staff: their branch (RLS)
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
+    view ? supabase.from("branches").select("name").eq("id", view).maybeSingle() : null,
+    canSwitch ? supabase.from("branches").select("id,name").eq("active", true).order("created_at") : null,
   ]);
 
-  const groups: NavGroup[] = [
-    {
-      label: "Front desk",
-      items: [
-        { href: "/admin", label: "Overview", icon: "overview" },
-        { href: "/admin/members", label: "Members", icon: "members" },
-        { href: "/admin/payments", label: "Payments", icon: "payments", badge: pending.count ?? 0 },
-      ],
-    },
+  const desk: NavGroup = {
+    label: "Front desk",
+    items: [
+      { href: "/admin", label: "Overview", icon: "overview" },
+      { href: "/admin/members", label: "Members", icon: "members" },
+      { href: "/admin/payments", label: "Payments", icon: "payments", badge: pending.count ?? 0 },
+    ],
+  };
+  // staff get the front desk for their branch; everything else is the owner's
+  const groups: NavGroup[] = !isOwner ? [desk] : [
+    desk,
     {
       label: "Business",
       items: [
         { href: "/admin/pricing", label: "Pricing", icon: "pricing" },
         { href: "/admin/offers", label: "Offers", icon: "plans" },
         { href: "/admin/branches", label: "Branches & holidays", icon: "branches" },
+        { href: "/admin/team", label: "Team", icon: "staff" },
       ],
     },
     { label: "Insights", items: [{ href: "/admin/analytics", label: "Analytics", icon: "analytics" }] },
     {
       label: "Website",
       items: [
-        { href: "/admin/content/trainer", label: "Trainers", icon: "trainers" },
         { href: "/admin/content/client", label: "Transformations", icon: "results" },
         { href: "/admin/content/gallery", label: "Gallery", icon: "gallery" },
         { href: "/admin/content/reel", label: "Reels", icon: "reels" },
@@ -63,7 +69,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
             <div className="flex items-center gap-3">
               <Logo size={52} />
               <div className="leading-tight">
-                <p className="font-display text-xl uppercase">Admin</p>
+                <p className="font-display text-xl uppercase">{isOwner ? "Admin" : `Staff · ${branch?.data?.name ?? "Both branches"}`}</p>
                 <p className="max-w-[140px] truncate text-xs text-ash">{profile.full_name || profile.email}</p>
               </div>
             </div>
@@ -73,7 +79,10 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
         </div>
       </aside>
       {/* bottom padding on phones keeps content clear of the tab bar */}
-      <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 max-lg:pb-28 sm:gap-8 sm:px-8 lg:py-10">{children}</main>
+      <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 max-lg:pb-28 sm:gap-8 sm:px-8 lg:py-10">
+        {branchList?.data && branchList.data.length > 1 && <BranchSwitch branches={branchList.data.map((x) => [x.id, x.name])} value={view ?? ""} />}
+        {children}
+      </main>
     </div>
   );
 }
