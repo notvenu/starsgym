@@ -9,7 +9,7 @@ import { Ticket } from "../pass/[subId]/ticket";
 import { PassDialog } from "../pass/[subId]/ui";
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
-import { CheckInPanel, PhotoForm, ProfileForm, ShowcaseForm } from "./ui";
+import { CheckInPanel, ProfileEditor, ShowcaseForm, type ChangeRequest } from "./ui";
 
 export const metadata = { title: "Dashboard — Stars Gym" };
 
@@ -22,7 +22,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const dates = month.slice(-7);
   const today = dates[6];
 
-  const [branches, subs, streak, week, post, feed, notices] = await Promise.all([
+  const [branches, subs, streak, week, post, feed, notices, photo, settings, lastRequest] = await Promise.all([
     supabase.from("branches").select("*").eq("active", true).order("created_at"),
     supabase.from("subscriptions").select("id,status,method,starts_on,ends_on,amount_paise,plans(*)").eq("user_id", user.id).neq("status", "cancelled").order("created_at", { ascending: false }),
     supabase.rpc("current_streak", { uid: user.id }),
@@ -30,9 +30,13 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
     supabase.from("showcase_posts").select("image_path,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("showcase_feed").select("user_id").order("streak", { ascending: false }),
     getNotices(),
+    photoUrl(profile.photo_path),
+    getSettings(),
+    supabase.from("profile_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
-  const photo = await photoUrl(profile.photo_path);
-  const homeOnly = (await getSettings()).branch_access === "home" && !!profile.home_branch_id;
+  // their latest name / gender / branch / photo change request (missing table before 0015 → simply none)
+  const request = lastRequest.data ? ({ ...lastRequest.data, photoUrl: await photoUrl(lastRequest.data.photo_path), recent: (lastRequest.data.decided_at ?? "").slice(0, 10) >= month.at(-8)! } as ChangeRequest) : null;
+  const homeOnly = settings.branch_access === "home" && !!profile.home_branch_id;
   const checkInBranches = ((branches.data ?? []) as Branch[]).filter((b) => !homeOnly || b.id === profile.home_branch_id);
 
   const allSubs = (subs.data ?? []) as unknown as Sub[];
@@ -68,7 +72,10 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
       <div className="wrap flex flex-col gap-10 pt-6">
         <div>
           <p className="text-ash">Hey,</p>
-          <h1 className="font-display text-[clamp(44px,6vw,72px)] leading-none uppercase">{profile.full_name || "Athlete"}</h1>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <h1 className="min-w-0 font-display text-[clamp(44px,6vw,72px)] leading-none break-words uppercase">{profile.full_name || "Athlete"}</h1>
+            <ProfileEditor profile={profile} photo={photo} branches={(branches.data ?? []) as Branch[]} request={request} />
+          </div>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
@@ -147,13 +154,6 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
           <Attendance days={month} visits={(week.data ?? []) as { day: string; session: string }[]} streak={(streak.data as number) ?? 0} />
         </section>
 
-        <section className="card p-6">
-          <p className="label mb-4">Profile</p>
-          <div className="mb-6 border-b border-line pb-6">
-            <PhotoForm url={photo} changesLeft={profile.photo_path ? 2 - profile.photo_changes : 2} />
-          </div>
-          <ProfileForm profile={profile} branches={(branches.data ?? []) as Branch[]} />
-        </section>
       </div>
     </main>
   );

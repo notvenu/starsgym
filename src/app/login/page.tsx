@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/supabase";
+import { currentUserId } from "@/lib/supabase";
 import { safeNext } from "@/lib/gym";
 import { Logo } from "@/components/site";
 import { AuthForm } from "./form";
@@ -13,8 +13,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const mode = sp.mode === "signup" ? "signup" : sp.mode === "link" ? "link" : "signin";
   const next = safeNext(sp.next, "");
   // already signed in: don't ask again
-  const { data } = await (await db()).auth.getUser();
-  if (data.user) redirect(next || "/dashboard");
+  if (await currentUserId()) redirect(next || "/dashboard");
 
   return (
     <main className="grid min-h-dvh lg:grid-cols-2">

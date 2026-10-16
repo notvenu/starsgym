@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/site";
 import { OpenStatus } from "@/components/client";
 import { getNotices } from "@/lib/data";
-import { adminDb, db } from "@/lib/supabase";
+import { adminDb, currentUserId, db } from "@/lib/supabase";
 import { photoUrl } from "@/lib/photo";
 import { hoursLabel, ladiesLabel, weekHolidays, type Branch } from "@/lib/gym";
 import { DoorCheckIn } from "./ui";
@@ -13,19 +13,21 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 /** Opened by scanning the QR at a branch entrance. Scanning proves you're there, so no location permission. */
 export default async function CheckInPage({ searchParams }: PageProps<"/checkin">) {
-  const k = (await searchParams).k;
+  const sp = await searchParams;
+  const k = sp.k;
+  const scanned = sp.go === "1"; // from the in-app scanner
   // some scanner apps add spaces or junk around the value, so pull the key out rather than demand an exact match
   const key = (Array.isArray(k) ? k[0] : k)?.match(UUID)?.[0].toLowerCase() ?? null;
   const supabase = await db();
-  const [{ data: door }, { data: auth }, notices] = await Promise.all([
+  const [{ data: door }, uid, notices] = await Promise.all([
     // the key itself is the secret, so look it up server-side: door keys are admin-only under RLS,
     // which made a correct code read as "not recognised" for members and signed-out visitors
     key ? adminDb().from("branch_door_keys").select("branch_id").eq("key", key).maybeSingle() : Promise.resolve({ data: null }),
-    supabase.auth.getUser(),
+    currentUserId(),
     getNotices(),
   ]);
   const { data: branch } = door ? await adminDb().from("branches").select("*").eq("id", door.branch_id).eq("active", true).maybeSingle<Branch>() : { data: null };
-  const { data: profile } = auth.user ? await supabase.from("profiles").select("full_name,photo_path").eq("id", auth.user.id).maybeSingle() : { data: null };
+  const { data: profile } = uid ? await supabase.from("profiles").select("full_name,photo_path").eq("id", uid).maybeSingle() : { data: null };
 
   return (
     <main className="dark-zone relative isolate flex min-h-dvh flex-col overflow-hidden bg-ink text-chalk">
@@ -55,7 +57,7 @@ export default async function CheckInPage({ searchParams }: PageProps<"/checkin"
                 {ladiesLabel(branch) && <> · Ladies {ladiesLabel(branch)}</>}
               </p>
             </div>
-            <DoorCheckIn doorKey={key!} member={auth.user ? profile?.full_name || "Member" : null} memberPhoto={await photoUrl(profile?.photo_path)} holidays={weekHolidays(notices.holidays, branch.id)} next={`/checkin?k=${key}`} />
+            <DoorCheckIn autoGo={scanned} doorKey={key!} member={uid ? profile?.full_name || "Member" : null} memberPhoto={await photoUrl(profile?.photo_path)} holidays={weekHolidays(notices.holidays, branch.id)} next={`/checkin?k=${key}`} />
           </>
         ) : (
           <div className="flex max-w-sm flex-col items-center gap-4 text-center">

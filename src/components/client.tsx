@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Lenis from "lenis";
 import { bestOffer, discounted, savings, DURATIONS, GENDERS, gymDate, inr, itemImage, openState, prettyDay, TRACKS, videoEmbed, type Branch, type Holiday, type MemberDetails, type Offer, type Plan, type SiteItem, type Track } from "@/lib/gym";
+import { siteImg } from "@/lib/img";
 
 /** Inertia scrolling + fade-up reveal for [data-reveal]. Both off when the visitor prefers reduced motion. */
 export function SmoothScroll() {
@@ -271,7 +272,7 @@ export function Gallery({ items }: { items: SiteItem[] }) {
               ) : img ? (
                 <button type="button" onClick={() => setOpen(item)} className="block w-full cursor-zoom-in" aria-label={`Open ${item.title || "photo"}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={img} alt={item.title} loading="lazy" className="w-full transition-transform duration-700 ease-lift group-hover:scale-105" />
+                  <img {...siteImg(img, "(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw")} alt={item.title} loading="lazy" decoding="async" className="w-full transition-transform duration-700 ease-lift group-hover:scale-105" />
                 </button>
               ) : null}
               {item.title && <figcaption className="dark-zone pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-ink/90 to-transparent p-4 pt-10 font-label text-sm font-bold tracking-[0.14em] uppercase can-hover:opacity-0 transition-opacity group-hover:opacity-100">{item.title}</figcaption>}
@@ -288,7 +289,7 @@ export function Gallery({ items }: { items: SiteItem[] }) {
         {open && (
           <figure className="flex flex-col items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={itemImage(open.image_path)!} alt={open.title} className="max-h-[84dvh] w-auto rounded-md" />
+            <img {...siteImg(itemImage(open.image_path)!, "94vw")} alt={open.title} className="max-h-[84dvh] w-auto rounded-md" />
             <figcaption className="flex items-center gap-4 text-chalk">
               {open.title}
               <button type="button" onClick={() => dialog.current?.close()} className="btn-ghost">Close</button>
@@ -300,20 +301,22 @@ export function Gallery({ items }: { items: SiteItem[] }) {
   );
 }
 
+const SLIDER = "(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw";
+
 /** Drag (or arrow-key) slider revealing the "before" photo over the "after" one. */
 export function BeforeAfter({ before, after, name }: { before: string | null; after: string | null; name: string }) {
   const [pos, setPos] = useState(50);
   const single = after ?? before;
   if (!before || !after)
     // eslint-disable-next-line @next/next/no-img-element
-    return single ? <img src={single} alt={name} loading="lazy" className="aspect-[4/5] w-full object-cover" /> : <div className="stripes aspect-[4/5] w-full" />;
+    return single ? <img {...siteImg(single, SLIDER)} alt={name} loading="lazy" decoding="async" className="aspect-[4/5] w-full object-cover" /> : <div className="stripes aspect-[4/5] w-full" />;
 
   return (
     <div className="relative aspect-[4/5] w-full overflow-hidden select-none">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={after} alt={`${name} after`} loading="lazy" className="absolute inset-0 size-full object-cover" />
+      <img {...siteImg(after, SLIDER)} alt={`${name} after`} loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover" />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={before} alt={`${name} before`} loading="lazy" className="absolute inset-0 size-full object-cover grayscale" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }} />
+      <img {...siteImg(before, SLIDER)} alt={`${name} before`} loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover grayscale" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }} />
       <span className="absolute top-3 left-3 rounded-xs bg-ink/80 px-2 py-1 font-label text-xs font-bold tracking-[0.18em] text-chalk">BEFORE</span>
       <span className="absolute top-3 right-3 rounded-xs bg-red px-2 py-1 font-label text-xs font-bold tracking-[0.18em] text-white">AFTER</span>
       <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-chalk shadow-[0_0_12px_rgba(0,0,0,.6)]" style={{ left: `${pos}%` }}>

@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-// Refreshes the Supabase session cookie on each navigation. Auth checks happen in pages (requireUser).
+// Refreshes the Supabase session cookie on each navigation (getClaims refreshes an expiring token and verifies it
+// locally — no auth-server round trip). Auth checks happen in pages (requireUser).
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
   const supabase = createServerClient(
@@ -18,7 +19,7 @@ export async function proxy(request: NextRequest) {
       },
     },
   );
-  await supabase.auth.getUser();
+  await supabase.auth.getClaims();
   return response;
 }
 

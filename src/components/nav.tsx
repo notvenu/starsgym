@@ -22,7 +22,7 @@ function Logo({ small }: { small: boolean }) {
   const cls = `w-auto transition-[height] duration-300 ${small ? "h-10" : "h-12"}`;
   return (
     <Link href="/" aria-label="Stars Gym home" className="block shrink-0">
-      <Image src="/logo-mark.png" alt="Stars Gym — The Fitness Arena" width={542} height={369} priority className={cls} />
+      <Image src="/logo-mark.png" alt="Stars Gym — The Fitness Arena" width={71} height={48} priority className={cls} />
     </Link>
   );
 }

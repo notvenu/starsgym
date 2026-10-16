@@ -6,6 +6,7 @@ import { BranchTicker, PlanPicker, Price } from "@/components/client";
 import { BranchExplorer } from "@/components/branches";
 import { Arrow, Reels, ReviewsSection, STOCK, StreakWall } from "@/components/sections";
 import { getLanding, getSettings } from "@/lib/data";
+import { siteImg } from "@/lib/img";
 import { bestOffer, inr, itemImage, sessions, type SiteItem } from "@/lib/gym";
 
 export const revalidate = 300;
@@ -170,7 +171,7 @@ export default async function Home() {
               <figure key={g.id} data-reveal style={{ transitionDelay: `${i * 70}ms` }}
                 className={`group relative overflow-hidden rounded-lg border border-line ${i === 0 ? "col-span-2 max-md:aspect-[16/10] md:row-span-2" : "max-md:aspect-square"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={itemImage(g.image_path) ?? ""} alt={g.title} loading="lazy" className="size-full object-cover transition-transform duration-700 ease-lift group-hover:scale-105" />
+                <img {...siteImg(itemImage(g.image_path) ?? "", i === 0 ? "(min-width: 768px) 50vw, 100vw" : "(min-width: 768px) 25vw, 50vw")} alt={g.title} loading="lazy" decoding="async" className="size-full object-cover transition-transform duration-700 ease-lift group-hover:scale-105" />
                 {g.title && <figcaption className="absolute bottom-3 left-3 rounded-full bg-ink/70 px-3 py-1 text-xs font-bold tracking-wider uppercase can-hover:opacity-0 backdrop-blur transition-opacity group-hover:opacity-100">{g.title}</figcaption>}
               </figure>
             ))}
@@ -237,7 +238,7 @@ function Coach({ t, i }: { t: SiteItem; i: number }) {
     <Link href="/trainers" data-reveal style={{ transitionDelay: `${i * 90}ms` }} className="dark-zone group relative aspect-[3/4] overflow-hidden rounded-lg border border-line bg-carbon">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={t.title} loading="lazy" className="size-full object-cover object-top can-hover:grayscale transition-[transform,filter] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
+        <img {...siteImg(src, "(min-width: 1024px) 25vw, 50vw")} alt={t.title} loading="lazy" decoding="async" className="size-full object-cover object-top can-hover:grayscale transition-[transform,filter] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
       ) : (
         <div className="stripes size-full" />
       )}

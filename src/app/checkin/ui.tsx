@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, WeekHolidays } from "@/components/client";
 import { toast } from "@/components/feedback";
 import { prettyDay, type Holiday, type Session } from "@/lib/gym";
@@ -10,7 +10,7 @@ import { doorCheckIn, type DoorResult } from "./actions";
 type By = "phone" | "ref";
 const SESSION: Record<Session, string> = { morning: "Morning", evening: "Evening", ladies: "Ladies' hours" };
 
-export function DoorCheckIn({ doorKey, member, memberPhoto, holidays, next }: { doorKey: string; member: string | null; memberPhoto: string | null; holidays: Holiday[]; next: string }) {
+export function DoorCheckIn({ autoGo, doorKey, member, memberPhoto, holidays, next }: { autoGo?: boolean; doorKey: string; member: string | null; memberPhoto: string | null; holidays: Holiday[]; next: string }) {
   const [asGuest, setAsGuest] = useState(!member); // signed-in members can still switch to phone / bill
   const [by, setBy] = useState<By>("phone");
   const [value, setValue] = useState("");
@@ -25,6 +25,17 @@ export function DoorCheckIn({ doorKey, member, memberPhoto, holidays, next }: { 
       else navigator.vibrate?.(r.already ? 30 : [60, 40, 60]);
     });
 
+  // scanned in the app: they meant to check in, so do it once, and drop the flag so a refresh doesn't repeat it
+  const fired = useRef(false);
+  useEffect(() => {
+    if (!autoGo || !member || fired.current) return;
+    fired.current = true;
+    const url = new URL(location.href);
+    url.searchParams.delete("go");
+    history.replaceState(history.state, "", url);
+    go("me");
+  }, [autoGo, member]); // eslint-disable-line react-hooks/exhaustive-deps -- fire once on arrival
+
   if (res && !res.error) return <Welcome r={res} holidays={holidays} signedIn={!!member && !asGuest} onAgain={() => { setRes(undefined); setValue(""); }} />;
 
   return (
@@ -34,7 +45,7 @@ export function DoorCheckIn({ doorKey, member, memberPhoto, holidays, next }: { 
           <div className="flex flex-col items-center gap-3">
             {memberPhoto ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={memberPhoto} alt="" className="size-28 rounded-full border-4 border-red object-cover" />
+              <img src={memberPhoto} alt="" className={`size-28 rounded-full border-4 border-red object-cover ${pending ? "animate-pulse-red" : ""}`} />
             ) : (
               <span className="flex size-28 items-center justify-center rounded-full border-4 border-strong bg-panel font-display text-5xl uppercase">{member?.[0]}</span>
             )}
@@ -88,13 +99,14 @@ function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: 
   const time = r.at ? new Date(r.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" }) : "";
   const daysLeft = r.endsOn ? Math.round((Date.parse(r.endsOn) - Date.parse(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }))) / 864e5) + 1 : null;
   return (
-    <div className="flex w-full max-w-md animate-rise flex-col items-center gap-6 text-center">
-      <div className="relative">
+    <div className="stagger flex w-full max-w-md flex-col items-center gap-6 text-center">
+      <div className="pop-in relative">
+        <span className="ring-burst" /><span className="ring-burst" />
         {r.photo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={r.photo} alt="" className="size-44 rounded-full border-[6px] border-red object-cover shadow-[0_0_60px_rgba(227,20,28,.45)]" />
+          <img src={r.photo} alt="" className="relative size-44 rounded-full border-[6px] border-red object-cover shadow-[0_0_60px_rgba(227,20,28,.45)]" />
         ) : (
-          <div className="flex size-36 items-center justify-center rounded-full bg-red shadow-[0_0_60px_rgba(227,20,28,.45)]">
+          <div className="relative flex size-36 items-center justify-center rounded-full bg-red shadow-[0_0_60px_rgba(227,20,28,.45)]">
             <Check className="size-16 text-white" />
           </div>
         )}
@@ -116,7 +128,7 @@ function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: 
       </div>
 
       <dl className="grid w-full grid-cols-2 gap-3 text-left">
-        <Stat label="Streak" value={<span className="flex items-center gap-2"><Flame size={22} /> {r.streak} day{r.streak === 1 ? "" : "s"}</span>} />
+        <Stat label="Streak" value={<span className="flex items-center gap-2"><Flame size={22} /> <CountUp to={r.streak ?? 0} /> day{r.streak === 1 ? "" : "s"}</span>} />
         <Stat label="This month" value={`${r.monthVisits ?? 0} visit${r.monthVisits === 1 ? "" : "s"}`} />
         <Stat
           wide
@@ -148,6 +160,22 @@ function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: 
       </div>
     </div>
   );
+}
+
+/** A number that counts up from 0, so the streak lands with a little drama. */
+function CountUp({ to }: { to: number }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return setN(to);
+    const start = performance.now();
+    let id = requestAnimationFrame(function tick(t) {
+      const p = Math.min(1, (t - start) / 900);
+      setN(Math.round(to * (1 - (1 - p) ** 3)));
+      if (p < 1) id = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [to]);
+  return <span className="tabular-nums">{n}</span>;
 }
 
 function Stat({ label, value, wide }: { label: string; value: React.ReactNode; wide?: boolean }) {

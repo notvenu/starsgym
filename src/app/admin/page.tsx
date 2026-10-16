@@ -3,7 +3,7 @@ import { requireStaff, type Profile } from "@/lib/supabase";
 import { ageOf, GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, waLink, type Branch, type Holiday, type Offer, type Plan } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
-import { MemberActions } from "./ui";
+import { MemberActions, RequestRow } from "./ui";
 import { ScanButton } from "@/components/scanner";
 
 type Visit = { created_at: string; session: string; branch_id: string; user_id: string; profiles: { full_name: string; photo_path: string | null } | null };
@@ -18,7 +18,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const monthStart = `${today.slice(0, 7)}-01`;
   const weekOut = gymDateIn(7);
 
-  const [branches, checkins, active, paid, holidays, offers, enquiries, expiring, plans] = await Promise.all([
+  const [branches, checkins, active, paid, holidays, offers, enquiries, expiring, plans, requests] = await Promise.all([
     supabase.from("branches").select("*").eq("active", true).order("created_at"),
     only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
     // ponytail: counts distinct members client-side; switch to an SQL count past ~10k active plans
@@ -36,13 +36,18 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .order("ends_on")
       .limit(50),
     supabase.from("plans").select("*").eq("active", true).order("track").order("duration_days"),
+    // members' name / gender / branch / photo change requests this desk can see (RLS); none before 0015
+    supabase.from("profile_requests").select("*,profiles!profile_requests_user_id_fkey(full_name,photo_path,gender,home_branch_id)").eq("status", "pending").order("created_at"),
   ]);
   const b = (branches.data ?? []) as Branch[];
   const members = new Set(((active.data ?? []) as { user_id: string }[]).map((r) => r.user_id)).size;
   const collected = ((paid.data ?? []) as { amount_paise: number }[]).reduce((sum, r) => sum + r.amount_paise, 0);
   const visits = (checkins.data ?? []) as unknown as Visit[];
   const ending = (expiring.data ?? []) as unknown as Ending[];
-  const photos = await photoUrls([...visits.map((v) => v.profiles?.photo_path), ...ending.map((e) => e.profiles?.photo_path)]);
+  type Req = { id: string; user_id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null; note: string | null;
+    profiles: { full_name: string; photo_path: string | null; gender: string | null; home_branch_id: string | null } | null };
+  const queue = (requests.data ?? []) as unknown as Req[];
+  const photos = await photoUrls([...visits.map((v) => v.profiles?.photo_path), ...ending.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path])]);
   const pic = (p?: string | null) => (p ? photos.get(p) : null);
   const branchName = (id: string) => b.find((x) => x.id === id)?.name ?? "";
   const where = (h: Holiday) => (h.branch_id ? b.find((x) => x.id === h.branch_id)?.name ?? "One branch" : "All branches");
@@ -63,6 +68,25 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         <Stat label="Collected this month" value={inr(collected)} href="/admin/payments" />
         <Stat label="New enquiries" value={enquiries.count ?? 0} href={isOwner ? "/admin/enquiries" : undefined} tone={enquiries.count ? "red" : undefined} />
       </div>
+
+      {queue.length > 0 && (
+        <Panel title={`Change requests · ${queue.length}`} intro="Members asking to fix their name, gender, branch or photo." flush>
+          <ul className="divide-y divide-line">
+            {queue.map((r) => {
+              const g = (x: string | null) => GENDERS.find(([k]) => k === x)?.[1] ?? "—";
+              const changes: [string, string, string][] = [
+                ...(r.full_name ? [["Name", r.profiles?.full_name || "—", r.full_name] as [string, string, string]] : []),
+                ...(r.gender ? [["Gender", g(r.profiles?.gender ?? null), g(r.gender)] as [string, string, string]] : []),
+                ...(r.home_branch_id ? [["Branch", branchName(r.profiles?.home_branch_id ?? "") || "—", branchName(r.home_branch_id) || "—"] as [string, string, string]] : []),
+              ];
+              return (
+                <RequestRow key={r.id} id={r.id} name={r.profiles?.full_name || "Member"} href={`/admin/members/${r.user_id}`}
+                  photo={pic(r.profiles?.photo_path) ?? null} newPhoto={pic(r.photo_path) ?? null} changes={changes} note={r.note} />
+              );
+            })}
+          </ul>
+        </Panel>
+      )}
 
       {/* who walked in today, with their photo — staff can match faces at a glance */}
       <Panel id="today" title="Checked in today" intro={b.length > 1 ? b.map((x) => `${x.name} ${visits.filter((v) => v.branch_id === x.id).length}`).join(" · ") : undefined} flush>

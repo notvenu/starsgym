@@ -161,7 +161,7 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
 }
 
 /** Saves every plan's price and on/off switch from the pricing grid. */
-/** Staff retake a member's photo (doesn't use up the member's own two changes). */
+/** Staff retake a member's photo any time (members themselves set it once, then request a change). */
 export async function adminChangePhoto(_: Result, form: FormData): Promise<Result> {
   const { supabase } = await requireStaff();
   const userId = s(form, "id");
@@ -317,6 +317,40 @@ export async function setOfferActive(id: string, active: boolean): Promise<Resul
   const { supabase } = await requireAdmin();
   const { error } = await supabase.from("offers").update({ active }).eq("id", id);
   return error ? { error: error.message } : done(active ? "Offer resumed" : "Offer paused");
+}
+
+/**
+ * Approve or reject a member's change request (name, gender, home branch, photo). Approving applies it through the
+ * desk's own session, so branch rules hold: single-branch staff can't move someone to the other branch.
+ */
+export async function decideRequest(id: string, approve: boolean): Promise<Result> {
+  const { supabase, profile: me } = await requireStaff();
+  if (!UUID.test(id)) return { error: "Reload and try again." };
+  const { data: r } = await supabase.from("profile_requests").select("*").eq("id", id).eq("status", "pending").maybeSingle();
+  if (!r) return { error: "That request was already handled." };
+
+  if (approve) {
+    const change = {
+      ...(r.full_name && { full_name: r.full_name }),
+      ...(r.gender && { gender: r.gender }),
+      ...(r.home_branch_id && { home_branch_id: r.home_branch_id }),
+    };
+    if (Object.keys(change).length) {
+      const { data: done, error } = await supabase.from("profiles").update(change).eq("id", r.user_id).select("id");
+      if (error || !done?.length) return { error: r.home_branch_id ? "Only the owner can move a member to another branch." : error?.message ?? "Couldn't update that member." };
+    }
+    if (r.photo_path) {
+      const { data: old, error } = await supabase.rpc("admin_set_photo", { p_user: r.user_id, p_path: r.photo_path });
+      if (error) return { error: error.message };
+      await removePhoto(old as string | null);
+    }
+  } else {
+    await removePhoto(r.photo_path);
+  }
+  const { error } = await supabase.from("profile_requests").update({ status: approve ? "approved" : "rejected", decided_at: new Date().toISOString(), decided_by: me.id }).eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/admin/members/${r.user_id}`);
+  return done(approve ? "Change approved" : "Request declined");
 }
 
 /** Sidebar branch switch: one branch or (empty) both. Owner and both-branch staff only. */

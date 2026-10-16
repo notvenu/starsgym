@@ -13,7 +13,7 @@ export function scanTarget(kind: "door" | "pass", text: string): { href: string 
   }
   if (kind === "door") {
     const key = url.pathname === "/checkin" ? url.searchParams.get("k")?.match(UUID)?.[0] : null;
-    return key ? { href: `/checkin?k=${key.toLowerCase()}` } : { error: url.pathname === "/verify" ? "That's a member pass — scan the code at the entrance." : "That's not a Stars Gym entrance code." };
+    return key ? { href: `/checkin?k=${key.toLowerCase()}&go=1` } : { error: url.pathname === "/verify" ? "That's a member pass — scan the code at the entrance." : "That's not a Stars Gym entrance code." };
   }
   const code = url.pathname === "/verify" ? url.searchParams.get("c") : null;
   return code ? { href: `/verify?c=${encodeURIComponent(code)}&from=desk` } : { error: url.pathname === "/checkin" ? "That's the entrance code — scan the member's pass." : "That's not a Stars Gym pass." };

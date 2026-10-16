@@ -77,7 +77,6 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
               <Info label="Home branch" value={home} />
               <Info label="Member since" value={new Date(member.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" })} />
               <Info label="Emergency contact" value={member.emergency_contact} wide />
-              <Info label="Photo changes used" value={`${member.photo_changes} of 2`} />
               <Info label="Role" value={ROLE_LABEL[member.role]} />
             </dl>
             <div className="border-t border-line pt-4">

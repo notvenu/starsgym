@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Logo } from "@/components/site";
-import { db, type Profile } from "@/lib/supabase";
+import { currentUserId, db, type Profile } from "@/lib/supabase";
 import { photoUrl } from "@/lib/photo";
 import { safeNext } from "@/lib/gym";
 import { WelcomeForm } from "./ui";
@@ -12,9 +12,9 @@ export default async function WelcomePage({ searchParams }: PageProps<"/welcome"
   const n = (await searchParams).next;
   const next = safeNext(n);
   const supabase = await db();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) redirect(`/login?next=${encodeURIComponent(next)}`);
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single<Profile>();
+  const uid = await currentUserId();
+  if (!uid) redirect(`/login?next=${encodeURIComponent(next)}`);
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", uid).single<Profile>();
   if (profile?.gender && profile.photo_path) redirect(next);
 
   return (

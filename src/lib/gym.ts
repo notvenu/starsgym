@@ -203,17 +203,23 @@ export const ageOf = (m: { date_of_birth: string | null; age: number | null }) =
 
 export type MemberDetails = { gender: Gender; phone: string; date_of_birth: string | null; emergency_contact: string | null };
 
-/** Validates the member-details fields (sign-up, profile, desk entry). Gender decides ladies'-hours access. */
-export function readMemberDetails(form: FormData): { error: string } | { details: MemberDetails } {
+/** Phone, date of birth and emergency contact — the details members can change any time. */
+export function readContactDetails(form: FormData): { error: string } | { details: Omit<MemberDetails, "gender"> } {
   const get = (k: string) => String(form.get(k) ?? "").trim();
-  const gender = get("gender") as Gender;
-  if (!GENDERS.some(([g]) => g === gender)) return { error: "Please choose a gender — it decides access to ladies' hours." };
   const phone = get("phone");
   if (phone.replace(/\D/g, "").length < 10) return { error: "Enter a 10-digit phone number." };
   const dob = get("date_of_birth");
   if (dob && (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob < "1900-01-01" || dob > gymDate())) return { error: "Check the date of birth." };
   const emergency = get("emergency_contact").slice(0, 120);
-  return { details: { gender, phone, date_of_birth: dob || null, emergency_contact: emergency || null } };
+  return { details: { phone, date_of_birth: dob || null, emergency_contact: emergency || null } };
+}
+
+/** Validates the member-details fields (sign-up, setup, desk entry). Gender decides ladies'-hours access. */
+export function readMemberDetails(form: FormData): { error: string } | { details: MemberDetails } {
+  const gender = String(form.get("gender") ?? "").trim() as Gender;
+  if (!GENDERS.some(([g]) => g === gender)) return { error: "Please choose a gender — it decides access to ladies' hours." };
+  const contact = readContactDetails(form);
+  return "error" in contact ? contact : { details: { gender, ...contact.details } };
 }
 
 /** UPI deep link; the QR at the desk encodes this. */

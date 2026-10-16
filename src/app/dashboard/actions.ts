@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/supabase";
-import { readMemberDetails } from "@/lib/gym";
-import { formPhoto, setMyPhoto } from "@/lib/photo";
+import { adminDb, requireUser, UUID } from "@/lib/supabase";
+import { GENDERS, readContactDetails } from "@/lib/gym";
+import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
 
 export type Result = { error?: string; ok?: string } | undefined;
 
@@ -15,35 +15,70 @@ export async function checkIn(branchId: string, lat?: number, lng?: number): Pro
   return { ok: "Checked in", streak: data as number };
 }
 
-export async function changePhoto(_: Result, form: FormData): Promise<Result> {
-  const { supabase, user } = await requireUser();
-  const { file, error } = formPhoto(form);
-  if (error) return { error };
-  if (!file) return { error: "Take or upload a new photo first." };
-  const res = await setMyPhoto(supabase, user.id, file);
-  if (res.error) return { error: res.error };
-  revalidatePath("/dashboard");
-  return { ok: res.left ? `Photo updated — ${res.left} change${res.left === 1 ? "" : "s"} left.` : "Photo updated — that was your last change." };
-}
-
+/** Phone, date of birth, emergency contact and socials: members change these any time. */
 export async function saveProfile(_: Result, form: FormData): Promise<Result> {
   const { supabase, user } = await requireUser();
   const instagram = String(form.get("instagram_url") ?? "").trim();
   if (instagram && !instagram.startsWith("https://")) return { error: "Social link must start with https://" };
-  const read = readMemberDetails(form);
+  const read = readContactDetails(form);
   if ("error" in read) return read;
-  const { error } = await supabase
-    .from("profiles")
-    .update({
-      full_name: String(form.get("full_name") ?? "").trim(),
-      ...read.details,
-      instagram_url: instagram || null,
-      home_branch_id: String(form.get("home_branch_id") ?? "") || null,
-    })
-    .eq("id", user.id);
+  const { error } = await supabase.from("profiles").update({ ...read.details, instagram_url: instagram || null }).eq("id", user.id);
   if (error) return { error: error.message };
   revalidatePath("/dashboard");
   return { ok: "Saved" };
+}
+
+/**
+ * Name, gender, home branch and photo are set once; after that the desk approves a change. Only what differs is sent.
+ * Written with the service key after checking who's asking, so the photo path is always under their own folder.
+ */
+export async function requestChange(_: Result, form: FormData): Promise<Result> {
+  const { user, profile } = await requireUser();
+  const s = (k: string) => String(form.get(k) ?? "").trim();
+  const name = s("full_name");
+  const gender = s("gender");
+  const branch = s("home_branch_id");
+  const change = {
+    full_name: name && name !== profile.full_name ? name.slice(0, 80) : null,
+    gender: gender && gender !== profile.gender ? gender : null,
+    home_branch_id: branch && branch !== profile.home_branch_id ? branch : null,
+  };
+  if (change.gender && !GENDERS.some(([g]) => g === change.gender)) return { error: "Pick a gender." };
+  if (change.home_branch_id && !UUID.test(change.home_branch_id)) return { error: "Pick a branch." };
+  const photo = formPhoto(form);
+  if (photo.error) return { error: photo.error };
+  if (!photo.file && !change.full_name && !change.gender && !change.home_branch_id) return { error: "Change something first." };
+
+  const admin = adminDb();
+  await dropOpenRequest(user.id); // one open request: a new one replaces it
+  let photo_path: string | null = null;
+  try {
+    if (photo.file) photo_path = await uploadPhoto(user.id, photo.file);
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  const { error } = await admin.from("profile_requests").insert({ user_id: user.id, ...change, photo_path, note: s("note").slice(0, 300) || null });
+  if (error) {
+    await removePhoto(photo_path);
+    return { error: /profile_requests/.test(error.message) ? "Requests aren't set up yet — ask the desk." : error.message };
+  }
+  revalidatePath("/dashboard");
+  revalidatePath("/admin", "layout");
+  return { ok: "Sent to the desk — you'll see it here once it's approved." };
+}
+
+export async function cancelRequest(): Promise<Result> {
+  const { user } = await requireUser();
+  await dropOpenRequest(user.id);
+  revalidatePath("/dashboard");
+  revalidatePath("/admin", "layout");
+  return { ok: "Request withdrawn" };
+}
+
+async function dropOpenRequest(userId: string) {
+  const admin = adminDb();
+  const { data } = await admin.from("profile_requests").delete().eq("user_id", userId).eq("status", "pending").select("photo_path");
+  await Promise.all((data ?? []).map((r) => removePhoto(r.photo_path as string | null)));
 }
 
 const MAX_BYTES = 5 * 1024 * 1024;

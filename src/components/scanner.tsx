@@ -27,6 +27,7 @@ function Scanner({ kind, onClose }: { kind: "door" | "pass"; onClose: () => void
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [found, setFound] = useState(false);
   const close = useRef(onClose);
   useEffect(() => { close.current = onClose; }, [onClose]);
 
@@ -70,10 +71,13 @@ function Scanner({ kind, onClose }: { kind: "door" | "pass"; onClose: () => void
         if (text) {
           const target = scanTarget(kind, text);
           if ("href" in target) {
-            navigator.vibrate?.(40);
+            navigator.vibrate?.([30, 40, 60]);
             stopped = true;
-            router.push(target.href);
-            return close.current();
+            v.pause(); // freeze on the code that was read
+            setFound(true);
+            router.push(target.href); // the next screen replaces this one (a different layout unmounts it)
+            timer = window.setTimeout(() => close.current(), 12_000); // never stuck if navigation stalls
+            return;
           }
           setHint(target.error); // wrong code: say so and keep scanning
         }
@@ -96,14 +100,22 @@ function Scanner({ kind, onClose }: { kind: "door" | "pass"; onClose: () => void
         <video ref={video} playsInline muted className="absolute inset-0 size-full object-cover" />
         {/* dimmed surround with a clear square in the middle to aim with */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="relative size-[min(72vw,320px)] rounded-3xl shadow-[0_0_0_100vmax_rgb(0_0_0/0.6)]">
+          <div className={`relative size-[min(72vw,320px)] rounded-3xl shadow-[0_0_0_100vmax_rgb(0_0_0/0.6)] ${found ? "scan-lock" : ""}`}>
             {["top-0 left-0 border-t-4 border-l-4 rounded-tl-3xl", "top-0 right-0 border-t-4 border-r-4 rounded-tr-3xl", "bottom-0 left-0 border-b-4 border-l-4 rounded-bl-3xl", "right-0 bottom-0 border-r-4 border-b-4 rounded-br-3xl"].map((c) => (
               <span key={c} className={`absolute size-12 border-red ${c}`} />
             ))}
-            {!error && <span className="scan-line absolute inset-x-4 h-0.5 rounded bg-red/80 shadow-[0_0_12px_2px_rgb(227_20_28/0.6)]" />}
+            {found && (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="pop-in flex size-20 items-center justify-center rounded-full bg-red shadow-[0_0_50px_rgb(227_20_28/0.7)]">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 7" /></svg>
+                </span>
+              </span>
+            )}
+            {!error && !found && <span className="scan-line absolute inset-x-4 h-0.5 rounded bg-red/80 shadow-[0_0_12px_2px_rgb(227_20_28/0.6)]" />}
           </div>
         </div>
 
+        {found && <div aria-hidden="true" className="scan-flash pointer-events-none absolute inset-0 bg-white" />}
         <div className="relative flex items-center justify-between px-5 pt-[calc(1rem+env(safe-area-inset-top))]">
           <p className="font-display text-2xl uppercase">{kind === "door" ? "Scan to check in" : "Scan a pass"}</p>
           <button type="button" onClick={() => dialog.current?.close()} aria-label="Close scanner" className="flex size-11 cursor-pointer items-center justify-center rounded-full border border-white/30 bg-black/40 backdrop-blur">
@@ -112,8 +124,8 @@ function Scanner({ kind, onClose }: { kind: "door" | "pass"; onClose: () => void
         </div>
 
         <div className="relative mt-auto px-6 pb-[calc(2rem+env(safe-area-inset-bottom))] text-center">
-          <p role="status" className={`mx-auto max-w-xs rounded-xl px-4 py-3 text-sm backdrop-blur ${error || hint ? "bg-red/90 text-white" : "bg-black/50 text-white/80"}`}>
-            {error ?? hint ?? (kind === "door" ? "Point at the QR code on the entrance poster." : "Point at the QR code on the member's pass.")}
+          <p role="status" className={`mx-auto max-w-xs rounded-xl px-4 py-3 text-sm backdrop-blur ${found ? "bg-red font-bold text-white" : error || hint ? "bg-red/90 text-white" : "bg-black/50 text-white/80"}`}>
+            {found ? (kind === "door" ? "Got it — checking you in…" : "Pass found — opening…") : error ?? hint ?? (kind === "door" ? "Point at the QR code on the entrance poster." : "Point at the QR code on the member's pass.")}
           </p>
         </div>
       </div>

@@ -134,7 +134,7 @@ export function TeamRow({ person, branches }: { person: Person; branches: Branch
       <button type="button" onClick={() => setOpen(true)} className="flex w-full cursor-pointer items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-steel/60 sm:px-5">
         {p.photo ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.photo} alt="" className="size-12 shrink-0 rounded-full border border-line object-cover" />
+          <img src={p.photo} alt="" loading="lazy" decoding="async" className="size-12 shrink-0 rounded-full border border-line object-cover" />
         ) : (
           <span className="flex size-12 shrink-0 items-center justify-center rounded-full border border-line bg-steel font-display text-lg text-ash uppercase">{p.name.trim()[0] ?? "?"}</span>
         )}

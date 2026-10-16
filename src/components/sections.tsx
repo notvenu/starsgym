@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { siteImg } from "@/lib/img";
 import Link from "next/link";
 import type React from "react";
 import type { ReactNode } from "react";
@@ -32,7 +33,7 @@ function ItemPhoto({ item, className = "" }: { item: SiteItem; className?: strin
   const src = itemImage(item.image_path);
   if (!src) return <div className={`stripes ${className}`} />;
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={item.title} loading="lazy" className={`object-cover object-top ${className}`} />;
+  return <img {...siteImg(src, "(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw")} alt={item.title} loading="lazy" decoding="async" className={`object-cover object-top ${className}`} />;
 }
 
 export function Arrow() {
@@ -182,7 +183,7 @@ function ShowcaseCard({ m, rank, hidden }: { m: ShowcaseItem; rank: number; hidd
     <div aria-hidden={hidden || undefined} className="group lift w-[260px] shrink-0 overflow-hidden rounded-md border border-line bg-carbon">
       <div className="relative h-80 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={showcaseUrl(m.image_path)} alt={hidden ? "" : `${m.full_name} at Stars Gym`} loading="lazy" className="size-full object-cover transition-transform duration-600 ease-lift group-hover:scale-105" />
+        <img {...siteImg(showcaseUrl(m.image_path), "260px")} alt={hidden ? "" : `${m.full_name} at Stars Gym`} loading="lazy" decoding="async" className="size-full object-cover transition-transform duration-600 ease-lift group-hover:scale-105" />
         <span className="absolute top-3 left-3 rounded-xs bg-red px-2.5 py-1 font-display text-xl text-white">#{rank}</span>
       </div>
       <div className="flex items-center justify-between p-4">

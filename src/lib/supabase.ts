@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
@@ -55,17 +56,34 @@ export type Profile = {
 export type Role = "member" | "staff" | "admin";
 export const ROLE_LABEL: Record<Role, string> = { member: "Member", staff: "Staff", admin: "Admin" };
 
-export async function requireUser(next?: string) {
+/**
+ * Who's signed in. The session token is verified locally against the project's public signing key (ES256), so there's
+ * no round trip to the auth server on every page — that was ~180 ms, twice, per navigation. Cached per request, so a
+ * layout and its page share one lookup. The profile is still read fresh each time, so role changes apply at once.
+ */
+export const currentUserId = cache(async () => {
+  const { data } = await (await db()).auth.getClaims();
+  return data?.claims?.sub ?? null;
+});
+
+const session = cache(async () => {
   const supabase = await db();
-  const { data } = await supabase.auth.getUser();
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims?.sub) return null;
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", claims.sub).single<Profile>();
+  return profile ? { supabase, user: { id: claims.sub, email: (claims.email as string | undefined) ?? null }, profile } : null;
+});
+
+export async function requireUser(next?: string) {
   const login = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
-  if (!data.user) redirect(login);
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single<Profile>();
-  if (!profile) redirect(login);
+  const ctx = await session();
+  if (!ctx) redirect(login);
+  const { supabase, user, profile } = ctx;
   // collect gender / phone (Google sign-ups don't give them) and a photo before anything else:
   // gender gates ladies' hours, the photo is what staff check when they scan a pass
   if ((!profile.gender || !profile.photo_path) && profile.role === "member") redirect(next ? `/welcome?next=${encodeURIComponent(next)}` : "/welcome");
-  return { supabase, user: data.user, profile };
+  return { supabase, user, profile };
 }
 
 /** The front desk: staff or admin.

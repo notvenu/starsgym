@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import QRCode from "qrcode";
-import { db } from "@/lib/supabase";
+import { currentUserId, db } from "@/lib/supabase";
 import { gymDate, planName, prettyDay } from "@/lib/gym";
 import { passCode, verifyUrl } from "@/lib/pass";
 import { getPass } from "../data";
@@ -14,7 +14,7 @@ const logo = readFile(join(process.cwd(), "public/logo.png")).then((b) => `data:
 export async function GET(_: Request, { params }: RouteContext<"/pass/[subId]/download">) {
   const { subId } = await params;
   const supabase = await db();
-  if (!(await supabase.auth.getUser()).data.user) return new Response("Sign in first", { status: 401 });
+  if (!(await currentUserId())) return new Response("Sign in first", { status: 401 });
   const pass = await getPass(supabase, subId);
   if (!pass || pass.status !== "active") return new Response("Pass not found", { status: 404 });
 

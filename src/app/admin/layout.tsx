@@ -11,17 +11,18 @@ export const metadata = { title: "Admin — Stars Gym" };
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const { supabase, profile, isOwner, view, canSwitch } = await requireStaff();
   const pendingCount = supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending");
-  const [pending, enquiries, branch, branchList] = await Promise.all([
+  const [pending, enquiries, branch, branchList, requests] = await Promise.all([
     view ? pendingCount.eq("branch_id", view) : pendingCount, // staff: their branch (RLS)
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
     view ? supabase.from("branches").select("name").eq("id", view).maybeSingle() : null,
     canSwitch ? supabase.from("branches").select("id,name").eq("active", true).order("created_at") : null,
+    supabase.from("profile_requests").select("id", { count: "exact", head: true }).eq("status", "pending"), // RLS: what this desk can see
   ]);
 
   const desk: NavGroup = {
     label: "Front desk",
     items: [
-      { href: "/admin", label: "Overview", icon: "overview" },
+      { href: "/admin", label: "Overview", icon: "overview", badge: requests.count ?? 0 },
       { href: "/admin/members", label: "Members", icon: "members" },
       { href: "/admin/payments", label: "Payments", icon: "payments", badge: pending.count ?? 0 },
     ],

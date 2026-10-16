@@ -89,6 +89,51 @@ a, button, select, label, summary { touch-action: manipulation; }
 .hero-line { animation: hero-line 1.1s var(--ease-lift) both; animation-delay: var(--d, 0ms); }
 @keyframes hero-line { from { transform: translateY(105%); opacity: 0; } to { transform: none; opacity: 1; } }
 .scroll-cue { animation: scroll-cue 1.8s cubic-bezier(0.6, 0, 0.2, 1) infinite; }
+/* ── Scan → result: the photo pops in, red rings burst out, details rise one after another ── */
+@keyframes pop-in { 0% { transform: scale(0.55); opacity: 0; } 60% { transform: scale(1.06); opacity: 1; } 100% { transform: none; } }
+.pop-in { animation: pop-in 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+@keyframes ring-burst { from { transform: scale(1); opacity: 0.7; } to { transform: scale(2.1); opacity: 0; } }
+.ring-burst { position: absolute; inset: 0; pointer-events: none; border-radius: 9999px; border: 3px solid var(--burst, var(--color-red)); animation: ring-burst 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) 0.15s both; }
+.ring-burst + .ring-burst { animation-delay: 0.4s; }
+@keyframes stagger-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.stagger > * { animation: stagger-in 0.55s var(--ease-lift) both; }
+.stagger > :nth-child(1) { animation-delay: 0.18s; } .stagger > :nth-child(2) { animation-delay: 0.26s; }
+.stagger > :nth-child(3) { animation-delay: 0.34s; } .stagger > :nth-child(4) { animation-delay: 0.42s; }
+.stagger > :nth-child(5) { animation-delay: 0.5s; }  .stagger > :nth-child(n + 6) { animation-delay: 0.58s; }
+.stagger > .pop-in { animation: pop-in 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; } /* the photo keeps its pop */
+@keyframes scan-flash { from { opacity: 0.85; } to { opacity: 0; } }
+.scan-flash { animation: scan-flash 0.4s ease-out both; }
+@keyframes scan-lock { from { transform: scale(1); } to { transform: scale(0.88); } }
+.scan-lock { animation: scan-lock 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@media (prefers-reduced-motion: reduce) {
+  .pop-in, .stagger > *, .scan-flash, .scan-lock { animation: none; }
+  .ring-burst { display: none; }
+}
+
+/* ── Gym loader: plates slide on, the bar presses, lines rotate. Fades in late so quick loads never flash it. ── */
+@keyframes loader-fade { from { opacity: 0; } to { opacity: 1; } }
+.loader-fade { animation: loader-fade 0.3s ease-out 0.15s both; }
+@keyframes plate-l { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes plate-r { from { transform: translateX(60px); opacity: 0; } to { transform: none; opacity: 1; } }
+.loader-plate-l { animation: plate-l 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.2s both; }
+.loader-plate-r { animation: plate-r 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.35s both; }
+@keyframes loader-press { 0%, 100% { transform: translateY(0); } 45%, 55% { transform: translateY(-22px); } }
+.loader-press { animation: loader-press 1.3s cubic-bezier(0.45, 0, 0.25, 1) 0.85s infinite; }
+@keyframes loader-shadow { 0%, 100% { transform: scaleX(1); opacity: 1; } 45%, 55% { transform: scaleX(0.7); opacity: 0.5; } }
+.loader-shadow { transform-box: fill-box; transform-origin: center; animation: loader-shadow 1.3s cubic-bezier(0.45, 0, 0.25, 1) 0.85s infinite; }
+/* six lines (the last repeats the first) step up one 1.5rem line at a time, then jump back unseen */
+@keyframes loader-quips { 0%, 16% { transform: translateY(0); } 20%, 36% { transform: translateY(-1.5rem); } 40%, 56% { transform: translateY(-3rem); }
+  60%, 76% { transform: translateY(-4.5rem); } 80%, 96% { transform: translateY(-6rem); } 100% { transform: translateY(-7.5rem); } }
+.loader-quips { animation: loader-quips 8s cubic-bezier(0.6, 0, 0.2, 1) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .loader-plate-l, .loader-plate-r, .loader-press, .loader-shadow, .loader-quips { animation: none; }
+}
+
+/* training log: days fade up one after another */
+@keyframes log-cell { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: none; } }
+.log-cell { animation: log-cell 0.35s var(--ease-lift) both; }
+@media (prefers-reduced-motion: reduce) { .log-cell { animation: none; } }
+
 /* QR scanner: a red line sweeping the aiming square */
 .scan-line { animation: scan-line 2s ease-in-out infinite alternate; }
 @keyframes scan-line { from { top: 12%; } to { top: 88%; } }

@@ -54,7 +54,7 @@ export function Empty({ children }: { children: ReactNode }) {
 export function Avatar({ src, name, size = "size-11" }: { src?: string | null; name: string; size?: string }) {
   return src ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt="" className={`${size} shrink-0 rounded-full border border-line object-cover`} />
+    <img src={src} alt="" loading="lazy" decoding="async" className={`${size} shrink-0 rounded-full border border-line object-cover`} />
   ) : (
     <span className={`${size} flex shrink-0 items-center justify-center rounded-full border border-line bg-steel font-display text-lg uppercase text-ash`}>{name.trim()[0] ?? "?"}</span>
   );

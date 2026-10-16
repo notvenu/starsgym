@@ -6,7 +6,13 @@ const nextConfig: NextConfig = {
   // lets a phone on the same Wi-Fi open the dev server (scanning pass / entrance QR codes while testing)
   allowedDevOrigins: ["192.168.*.*", "10.*.*.*"],
   images: {
-    remotePatterns: [{ protocol: "https", hostname: "images.unsplash.com", pathname: "/photo-*" }], // trainer photos (Unsplash licence)
+    remotePatterns: [
+      { protocol: "https", hostname: "images.unsplash.com", pathname: "/photo-*" }, // stock photos (Unsplash licence)
+      // public site photos (trainers, gallery, streak wall) — resized per device instead of sending 5 MB originals
+      ...(process.env.NEXT_PUBLIC_SUPABASE_URL
+        ? [{ protocol: "https" as const, hostname: new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname, pathname: "/storage/v1/object/public/**" }]
+        : []),
+    ],
     qualities: [75, 85],
   },
   // baseline hardening: no framing (clickjacking on the desk), no MIME sniffing, no full URLs leaked to other sites.

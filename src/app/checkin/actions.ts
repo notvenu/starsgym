@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/supabase";
+import { currentUserId, db } from "@/lib/supabase";
 import { photoUrl } from "@/lib/photo";
 import { planName, type Session, type Track } from "@/lib/gym";
 
@@ -32,8 +32,8 @@ export async function doorCheckIn(key: string, by: "me" | "phone" | "ref", value
   // to the member signed in on this phone, or to desk staff.
   let showPhoto = by === "me";
   if (!showPhoto) {
-    const { data: auth } = await supabase.auth.getUser();
-    if (auth.user) showPhoto = (await supabase.from("profiles").select("role").eq("id", auth.user.id).maybeSingle()).data?.role !== "member";
+    const uid = await currentUserId();
+    if (uid) showPhoto = (await supabase.from("profiles").select("role").eq("id", uid).maybeSingle()).data?.role !== "member";
   }
   const r = (data as {
     first_name: string; branch: string; streak: number; already: boolean; session: Session; sessions_today: Session[] | null;

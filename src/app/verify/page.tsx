@@ -35,10 +35,11 @@ export default async function VerifyPage({ searchParams }: PageProps<"/verify">)
               : "Live code from the member's phone.";
 
   return (
-    <main className={`dark-zone flex min-h-dvh flex-col items-center justify-center gap-6 px-4 py-10 text-center ${ok ? "bg-[#0b2414]" : "bg-redwash"}`}>
+    <main className={`dark-zone stagger flex min-h-dvh flex-col items-center justify-center gap-6 px-4 py-10 text-center ${ok ? "bg-[#0b2414]" : "bg-redwash"}`}>
       <Logo size={80} />
       {/* the member's photo is the point of the scan: does the face match the person at the desk? */}
-      <div className="relative animate-rise">
+      <div className="pop-in relative" style={{ "--burst": "#16a34a" } as React.CSSProperties}>
+        {ok && <><span className="ring-burst" /><span className="ring-burst" /></>}
         {photo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={photo} alt={`${pass?.first_name ?? "Member"}'s photo`} className={`size-52 rounded-full border-[6px] object-cover ${ok ? "border-[#16a34a]" : "border-red"}`} />

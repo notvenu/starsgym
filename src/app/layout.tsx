@@ -12,7 +12,7 @@ const barlowCondensed = Barlow_Condensed({ variable: "--font-barlow-condensed", 
 export const metadata: Metadata = {
   title: "Stars Gym — The Fitness Arena",
   description: "Strength, cardio and personal training. Buy your plan online, check in at the door, climb the streak wall.",
-  icons: { icon: "/logo-mark.png", apple: "/apple-icon.png" },
+  icons: { apple: "/apple-icon.png" }, // favicon: app/favicon.ico (the 161 KB logo was being fetched as one)
   appleWebApp: { capable: true, title: "Stars Gym", statusBarStyle: "black" },
 };
 

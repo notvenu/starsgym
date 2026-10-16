@@ -8,7 +8,7 @@ export function Logo({ size = 72 }: { size?: number }) {
   // transparent mark, ~1.47:1 — `size` is its height
   return (
     <Link href="/" aria-label="Stars Gym home" className="block shrink-0">
-      <Image src="/logo-mark.png" alt="Stars Gym — The Fitness Arena" width={542} height={369} priority style={{ height: size * 0.72, width: "auto" }} />
+      <Image src="/logo-mark.png" alt="Stars Gym — The Fitness Arena" width={Math.round(size * 0.72 * 542 / 369)} height={Math.round(size * 0.72)} priority style={{ height: size * 0.72, width: "auto" }} />
     </Link>
   );
 }

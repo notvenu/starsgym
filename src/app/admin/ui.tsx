@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { Sheet } from "@/components/sheet";
+export { Sheet };
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Field, MemberDetailsFields } from "@/components/client";
 import { confirmDialog, ResultToast, toastResult } from "@/components/feedback";
 import { PhotoCapture } from "@/components/photo";
 import type { Profile } from "@/lib/supabase";
 import { bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
-import { addHoliday, addMember, adminChangePhoto, adminSaveMember, cancelPlan, cancelSub, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
+import { addHoliday, addMember, adminChangePhoto, adminSaveMember, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
 
@@ -19,36 +21,6 @@ export function AdminModal({ label, title, className = "btn-red", startOpen, chi
     <>
       <button type="button" onClick={() => setOpen(true)} className={className}>{label}</button>
       <Sheet title={title} open={open} onClose={() => setOpen(false)}>{children}</Sheet>
-    </>
-  );
-}
-
-/** The pop-up itself, opened by `open`. Escape, ✕ and tapping outside all call onClose. */
-export function Sheet({ title, open, onClose, children }: { title: string; open: boolean; onClose: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (open && !ref.current?.open) ref.current?.showModal();
-    if (!open) ref.current?.close();
-  }, [open]);
-  return (
-    <>
-      <dialog
-        ref={ref}
-        aria-label={title}
-        onClose={onClose}
-        onClick={(e) => e.target === e.currentTarget && ref.current?.close()} // tap outside to close
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-carbon p-0 text-chalk backdrop:bg-black/75 backdrop:backdrop-blur-sm max-sm:mt-auto max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none sm:m-auto"
-      >
-        <div className="flex max-h-[90dvh] flex-col">
-          <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
-            <h2 className="font-display text-2xl uppercase">{title}</h2>
-            <button type="button" onClick={() => ref.current?.close()} aria-label="Close" className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-line hover:border-red">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
-          </div>
-          <div className="overflow-y-auto overscroll-contain p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">{children}</div>
-        </div>
-      </dialog>
     </>
   );
 }
@@ -380,26 +352,32 @@ function Pop({ id, label, icon, active, badge, disabled, width = "w-52", childre
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const below = useRef(true); // decided on open, so the panel doesn't flip sides mid-scroll
-  const place = () => {
-    const r = button.current!.getBoundingClientRect();
-    const s = panel.current!.style;
+  // one stable function: a fresh one each render never matched removeEventListener, so every menu ever opened kept
+  // a scroll listener that crashed once its row was gone
+  const place = useCallback(() => {
+    if (!button.current || !panel.current) return;
+    const r = button.current.getBoundingClientRect();
+    const s = panel.current.style;
     s.right = `${Math.max(8, innerWidth - r.right)}px`;
     s.top = below.current ? `${r.bottom + 6}px` : "auto";
     s.bottom = below.current ? "auto" : `${innerHeight - r.top + 6}px`;
-  };
+  }, []);
+  const unfollow = useCallback(() => {
+    removeEventListener("scroll", place, { capture: true });
+    removeEventListener("resize", place);
+  }, [place]);
+  useEffect(() => unfollow, [unfollow]); // unmounted while open
   // fixed-position panel: follow the button while the page scrolls or resizes
   const onToggle = (e: React.ToggleEvent<HTMLDivElement>) => {
     if (e.newState === "open") {
-      fit(panel.current!.offsetHeight); // now it's visible, with its real height
+      fit(panel.current?.offsetHeight ?? 340); // now it's visible, with its real height
       addEventListener("scroll", place, { capture: true, passive: true });
       addEventListener("resize", place);
-    } else {
-      removeEventListener("scroll", place, { capture: true });
-      removeEventListener("resize", place);
-    }
+    } else unfollow();
   };
   const fit = (height: number) => {
-    below.current = innerHeight - button.current!.getBoundingClientRect().bottom > height + 16;
+    if (!button.current) return;
+    below.current = innerHeight - button.current.getBoundingClientRect().bottom > height + 16;
     place();
   };
   const open = () => fit(340); // a first guess before it opens (hidden panels measure 0)
@@ -493,6 +471,48 @@ export function BranchSwitch({ branches, value }: { branches: [string, string][]
       </select>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="pointer-events-none absolute right-3 text-ash"><path d="M6 9l6 6 6-6" /></svg>
     </label>
+  );
+}
+
+/** A member's change request: what they have now beside what they asked for. */
+export function RequestRow({ id, name, href, photo, newPhoto, changes, note }: {
+  id: string; name: string; href: string; photo: string | null; newPhoto: string | null; changes: [string, string, string][]; note: string | null;
+}) {
+  const [pending, start] = useTransition();
+  const decide = (approve: boolean) => start(async () => toastResult(await decideRequest(id, approve)));
+  const face = (src: string | null, label: string, red?: boolean) =>
+    src ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={src} alt={label} loading="lazy" className={`size-14 shrink-0 rounded-full border-2 object-cover ${red ? "border-red" : "border-line"}`} />
+    ) : (
+      <span className={`flex size-14 shrink-0 items-center justify-center rounded-full border-2 bg-steel font-display text-xl text-ash uppercase ${red ? "border-red" : "border-line"}`}>{name[0]}</span>
+    );
+  return (
+    <li className={`flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5 ${pending ? "opacity-50" : ""}`}>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1.5">
+          {face(photo, `${name} now`)}
+          {newPhoto && (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="text-red"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+              {face(newPhoto, `${name}'s new photo`, true)}
+            </>
+          )}
+        </div>
+        <div className="min-w-0">
+          <Link href={href} className="block truncate font-bold hover:text-red">{name}</Link>
+          <ul className="text-sm text-ash">
+            {changes.map(([field, from, to]) => <li key={field} className="truncate">{field}: <s className="text-faint">{from}</s> → <b className="text-chalk">{to}</b></li>)}
+            {newPhoto && <li>New photo</li>}
+            {note && <li className="truncate italic">“{note}”</li>}
+          </ul>
+        </div>
+      </div>
+      <div className="flex gap-2 max-sm:[&>*]:flex-1">
+        <button type="button" disabled={pending} onClick={() => decide(true)} className="btn-red min-h-11 px-5">Approve</button>
+        <button type="button" disabled={pending} onClick={() => decide(false)} className="btn-ghost min-h-11 px-4">Decline</button>
+      </div>
+    </li>
   );
 }
 

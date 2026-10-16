@@ -1,13 +1,14 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Check, Field, MemberDetailsFields, OpenStatus, WeekHolidays } from "@/components/client";
+import { Check, Field, OpenStatus, WeekHolidays } from "@/components/client";
 import type { Profile } from "@/lib/supabase";
-import { ladiesLabel, weekHolidays, type Branch, type Holiday, type Session } from "@/lib/gym";
+import { GENDERS, ladiesLabel, weekHolidays, type Branch, type Holiday, type Session } from "@/lib/gym";
 import { PhotoCapture } from "@/components/photo";
+import { Sheet } from "@/components/sheet";
 import { ScanButton } from "@/components/scanner";
-import { ResultToast, toast } from "@/components/feedback";
-import { changePhoto, checkIn, postShowcase, saveProfile } from "./actions";
+import { ResultToast, toast, toastResult } from "@/components/feedback";
+import { cancelRequest, checkIn, postShowcase, requestChange, saveProfile, type Result } from "./actions";
 
 const MILESTONES = [7, 30, 60, 100, 200, 365];
 const R = 88;
@@ -186,44 +187,139 @@ export function ShowcaseForm({ defaultLink }: { defaultLink: string }) {
   );
 }
 
-/** Members can replace their photo twice; after that the desk does it. */
-export function PhotoForm({ url, changesLeft }: { url: string | null; changesLeft: number }) {
-  const [state, action, pending] = useActionState(changePhoto, undefined);
-  if (changesLeft <= 0)
-    return (
-      <div className="flex items-center gap-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {url && <img src={url} alt="Your photo" className="size-24 rounded-full border-2 border-strong object-cover" />}
-        <p className="text-sm text-ash">You&apos;ve used both photo changes. Ask the desk if it needs updating.</p>
-      </div>
-    );
+export type ChangeRequest = {
+  id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null;
+  status: "pending" | "approved" | "rejected"; created_at: string; decided_at: string | null; photoUrl: string | null;
+  recent: boolean; // decided in the last week
+};
+
+/**
+ * "Edit" next to their name opens the profile in a sheet. Name, gender, branch and photo were set once — changing them
+ * is a request the desk approves. Phone, date of birth, emergency contact and socials are theirs to edit any time.
+ */
+export function ProfileEditor({ profile, photo, branches, request }: { profile: Profile; photo: string | null; branches: Branch[]; request: ChangeRequest | null }) {
+  const [open, setOpen] = useState(false);
+  const waiting = request?.status === "pending";
   return (
-    <form action={action} className="flex flex-col gap-3">
-      <PhotoCapture current={url} label={`Your photo · ${changesLeft} change${changesLeft === 1 ? "" : "s"} left`} />
-      <div className="flex items-center gap-4">
-        <button disabled={pending} className="btn-ghost">{pending ? "Saving…" : "Save new photo"}</button>
+    <>
+      <button type="button" onClick={() => setOpen(true)} aria-label="Edit profile"
+        className="relative flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-strong px-4 text-sm font-bold tracking-wider uppercase transition-colors hover:border-red hover:text-red">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+        Edit
+        {waiting && <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full border-2 border-ink bg-red" title="Change pending" />}
+      </button>
+      {open && (
+        <Sheet title="Your profile" open onClose={() => setOpen(false)}>
+          <ProfileBody profile={profile} photo={photo} branches={branches} request={request} />
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+function ProfileBody({ profile, photo, branches, request }: { profile: Profile; photo: string | null; branches: Branch[]; request: ChangeRequest | null }) {
+  const [asking, setAsking] = useState(false);
+  const [pending, start] = useTransition();
+  const branchName = (id: string | null) => branches.find((b) => b.id === id)?.name ?? "—";
+  const genderName = (g: string | null) => GENDERS.find(([k]) => k === g)?.[1] ?? "—";
+  const open = request?.status === "pending" ? request : null;
+  const recent = request && request.status !== "pending" && request.recent ? request : null;
+  const asked = open ? [open.full_name && `name → ${open.full_name}`, open.gender && `gender → ${genderName(open.gender)}`, open.home_branch_id && `branch → ${branchName(open.home_branch_id)}`, open.photo_path && "new photo"].filter(Boolean).join(" · ") : "";
+
+  return (
+    <div className="flex flex-col gap-6">
+        {/* set once — the desk changes these */}
+        <section className="flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            {photo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={photo} alt="Your photo" className="size-20 rounded-2xl border border-line object-cover" />
+            ) : (
+              <span className="stripes size-20 rounded-2xl" />
+            )}
+            <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <div className="col-span-2"><dt className="label text-xs">Name</dt><dd className="truncate font-bold">{profile.full_name || "—"}</dd></div>
+              <div><dt className="label text-xs">Gender</dt><dd className="font-bold">{genderName(profile.gender)}</dd></div>
+              <div><dt className="label text-xs">Home branch</dt><dd className="font-bold">{branchName(profile.home_branch_id)}</dd></div>
+            </dl>
+          </div>
+
+          {open ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-redline bg-redwash px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {open.photoUrl && <img src={open.photoUrl} alt="Requested photo" className="size-11 rounded-full border-2 border-red object-cover" />}
+                <p className="min-w-0 text-sm"><b className="block text-chalk">Waiting for the desk</b><span className="text-ash">{asked}</span></p>
+              </div>
+              <button type="button" disabled={pending} onClick={() => start(async () => toastResult(await cancelRequest()))} className="cursor-pointer text-sm font-bold text-ash hover:text-red">Cancel</button>
+            </div>
+          ) : asking ? (
+            <RequestForm profile={profile} branches={branches} onDone={() => setAsking(false)} />
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-ash">
+                {recent ? (recent.status === "approved" ? "Your last change was approved." : "Your last change request was declined — ask at the desk.") : "Need to fix your name, gender, branch or photo?"}
+              </p>
+              <button type="button" onClick={() => setAsking(true)} className="btn-ghost min-h-11">Request a change</button>
+            </div>
+          )}
+        </section>
+
+        {/* theirs to edit any time */}
+        <ContactForm profile={profile} />
+    </div>
+  );
+}
+
+function RequestForm({ profile, branches, onDone }: { profile: Profile; branches: Branch[]; onDone: () => void }) {
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const r = await requestChange(prev, form);
+    if (r?.ok) onDone();
+    return r;
+  }, undefined);
+  return (
+    <form action={action} className="flex flex-col gap-4 rounded-xl border border-line p-4">
+      <p className="text-sm text-ash">Change only what&apos;s wrong — the desk checks and approves it.</p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Name" name="full_name" defaultValue={profile.full_name} autoComplete="name" />
+        <label className="flex flex-col gap-1.5">
+          <span className="label">Gender</span>
+          <select name="gender" defaultValue={profile.gender ?? ""} className="field">
+            {GENDERS.map(([g, l]) => <option key={g} value={g}>{l}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5 sm:col-span-2">
+          <span className="label">Home branch</span>
+          <select name="home_branch_id" defaultValue={profile.home_branch_id ?? ""} className="field">
+            {!profile.home_branch_id && <option value="">—</option>}
+            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <PhotoCapture label="New photo (optional)" />
+      <Field label="Note for the desk (optional)" name="note" maxLength={300} placeholder="e.g. spelling of my surname" />
+      <div className="flex flex-wrap items-center gap-3">
+        <button disabled={pending} className="btn-red min-h-12 max-sm:flex-1">{pending ? "Sending…" : "Send request"}</button>
+        <button type="button" onClick={onDone} className="btn-ghost min-h-12 max-sm:flex-1">Cancel</button>
         <ResultToast state={state} />
       </div>
     </form>
   );
 }
 
-export function ProfileForm({ profile, branches }: { profile: Profile; branches: Branch[] }) {
+function ContactForm({ profile }: { profile: Profile }) {
   const [state, action, pending] = useActionState(saveProfile, undefined);
   return (
-    <form action={action} className="grid gap-4 md:grid-cols-2">
-      <Field label="Full name" name="full_name" defaultValue={profile.full_name} required />
-      <MemberDetailsFields d={profile} />
-      <Field label="Instagram / social link" name="instagram_url" type="url" placeholder="https://instagram.com/you" defaultValue={profile.instagram_url ?? ""} />
-      <label className="flex flex-col gap-1.5">
-        <span className="label">Home branch</span>
-        <select name="home_branch_id" defaultValue={profile.home_branch_id ?? ""} className="field">
-          <option value="">—</option>
-          {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-      </label>
-      <div className="flex items-center gap-4 md:col-span-2">
-        <button disabled={pending} className="btn-ghost">{pending ? "Saving…" : "Save profile"}</button>
+    <form action={action} className="flex flex-col gap-4 border-t border-line pt-6">
+      <p className="label">Contact &amp; socials · edit any time</p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={profile.phone ?? ""} required />
+        <Field label="Date of birth" name="date_of_birth" type="date" min="1900-01-01" max={new Date().toISOString().slice(0, 10)} defaultValue={profile.date_of_birth ?? ""} />
+        <Field label="Emergency contact" name="emergency_contact" placeholder="Name & phone" maxLength={120} defaultValue={profile.emergency_contact ?? ""} />
+        <Field label="Instagram / social link" name="instagram_url" type="url" placeholder="https://instagram.com/you" defaultValue={profile.instagram_url ?? ""} />
+      </div>
+      <div className="flex items-center gap-4">
+        <button disabled={pending} className="btn-red min-h-12 max-sm:w-full">{pending ? "Saving…" : "Save"}</button>
         <ResultToast state={state} />
       </div>
     </form>
