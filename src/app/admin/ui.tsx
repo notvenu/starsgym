@@ -6,11 +6,12 @@ export { Sheet };
 import { useRouter } from "next/navigation";
 import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { Field, MemberDetailsFields } from "@/components/client";
-import { confirmDialog, ResultToast, toastResult } from "@/components/feedback";
+import { confirmDialog, ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
+import QRCode from "qrcode";
 import { PhotoCapture } from "@/components/photo";
 import type { Profile } from "@/lib/supabase";
-import { bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
-import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveBranchAccess, saveLadiesHours, saveOffer, savePrices, setOfferActive, type Result } from "./actions";
+import { offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
+import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
 
@@ -25,16 +26,19 @@ export function AdminModal({ label, title, className = "btn-red", startOpen, chi
   );
 }
 
-export function PendingRow({ id, title, meta }: { id: string; title: string; meta: string }) {
+/** An unpaid order. Staff take the money; the owner can also reprice, cancel, and settle staff discount requests. */
+export function PendingRow({ id, title, meta, approval, ask, owner }: { id: string; title: string; meta: string; approval: string | null; ask: string | null; owner: boolean }) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<Result>();
   const [editing, setEditing] = useState(false);
+  const waiting = approval === "pending";
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center">
       <div className="min-w-0 flex-1">
         <p className="font-bold">{title}</p>
         <p className="text-sm text-ash">{meta}</p>
-        {editing ? (
+        {ask && <p className="mt-1 text-sm font-semibold text-red">Discount request · {ask}</p>}
+        {owner && (editing ? (
           // agreed a different price at the desk (admission, if any, stays on top)
           <form
             className="mt-2 flex flex-wrap items-center gap-2"
@@ -57,13 +61,24 @@ export function PendingRow({ id, title, meta }: { id: string; title: string; met
           </form>
         ) : (
           <button type="button" onClick={() => setEditing(true)} className="mt-1 cursor-pointer text-sm font-bold text-red hover:text-chalk">Change price</button>
-        )}
+        ))}
         <Status state={state} />
       </div>
-      <div className="flex shrink-0 gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
-        <a href={`/pay/${id}`} className="btn-ghost min-h-10 px-3.5 text-xs">QR</a>
-        <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Cancel this order?", body: meta, confirm: "Cancel order", danger: true })) && start(async () => toastResult(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>
-        <button disabled={pending} onClick={() => start(async () => toastResult(await markPaid(id)))} className="btn-red min-h-10 px-4 text-xs">Mark paid</button>
+      <div className="flex shrink-0 flex-wrap gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
+        {owner && waiting ? (
+          <>
+            <button disabled={pending} onClick={() => start(async () => toastResult(await decideDiscount(id, false)))} className="btn-ghost min-h-10 px-3.5 text-xs">Turn down</button>
+            <button disabled={pending} onClick={() => start(async () => toastResult(await decideDiscount(id, true)))} className="btn-red min-h-10 px-4 text-xs">Approve</button>
+          </>
+        ) : waiting ? (
+          <span className="flex min-h-10 items-center text-sm text-ash">Waiting for the owner</span>
+        ) : (
+          <>
+            <a href={`/pay/${id}`} className="btn-ghost min-h-10 px-3.5 text-xs">QR</a>
+            {owner && <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Cancel this order?", body: meta, confirm: "Cancel order", danger: true })) && start(async () => toastResult(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>}
+            <button disabled={pending} onClick={() => start(async () => toastResult(await markPaid(id)))} className="btn-red min-h-10 px-4 text-xs">Mark paid</button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -79,10 +94,19 @@ const KINDS: [Kind, string, string][] = [
 const MEMBERSHIPS: Track[] = ["strength", "strength_cardio", "couples", "personal_training"];
 
 /** Desk onboarding: details → pass → payment, then straight to the member's ticket. */
-export function AddMemberForm({ branches, plans, offers, trainers, admissionPaise = 0 }: { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise?: number }) {
+type NewMemberProps = { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise?: number };
+
+/** "+ New member": the form, then the account-created screen. "Add another" starts a fresh, empty form. */
+export function AddMemberForm(props: NewMemberProps) {
+  const [round, setRound] = useState(0);
+  return <NewMemberForm key={round} {...props} onAnother={() => setRound((n) => n + 1)} />;
+}
+
+function NewMemberForm({ branches, plans, offers, trainers, owner, admissionPaise = 0, onAnother }: NewMemberProps & { onAnother: () => void }) {
   const [state, action, pending] = useActionState(addMember, undefined);
+  if (state?.created) return <AccountCreated c={state.created} onAnother={onAnother} />;
   return (
-    <form action={action} className="flex flex-col gap-8">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
       <Step n="01" title="Member details">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Full name" name="full_name" required />
@@ -90,30 +114,108 @@ export function AddMemberForm({ branches, plans, offers, trainers, admissionPais
           <Select label="Branch" name="branch_id" options={branches.map((b) => [b.id, b.name])} />
           <MemberDetailsFields />
           <div className="sm:col-span-2">
-            <PhotoCapture label="Member photo · take it now, or they'll be asked at first sign-in" />
+            <PhotoCapture label="Member photo · staff check it when they scan the pass" required />
           </div>
         </div>
       </Step>
-      <PlanSteps plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
     </form>
   );
 }
 
+/** After "+ New member": who was created, the temporary password (shown once), a QR that signs the member in on their
+ *  own phone so they can set their own password, and where the plan stands. */
+function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void }) {
+  const [qr, setQr] = useState<string>();
+  useEffect(() => {
+    if (c.loginUrl) void QRCode.toDataURL(c.loginUrl, { margin: 1, width: 440, color: { dark: "#0a0a0a", light: "#ffffff" } }).then(setQr);
+  }, [c.loginUrl]);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(c.password ?? "");
+      toast("Password copied");
+    } catch {
+      toast("Couldn't copy — read it out instead", "error");
+    }
+  };
+  const plan = c.plan;
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-3">
+        <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-full bg-red text-xl font-bold text-white">✓</span>
+        <div className="min-w-0">
+          <p className="font-display text-3xl leading-none uppercase">{c.password ? "Account created" : "Member updated"}</p>
+          <p className="truncate text-ash">{c.name}</p>
+        </div>
+      </div>
+
+      <dl className="grid grid-cols-1 gap-3 rounded-lg border border-line bg-panel p-4 text-sm sm:grid-cols-2">
+        <div className="min-w-0"><dt className="label">Email</dt><dd className="mt-0.5 truncate font-semibold">{c.email}</dd></div>
+        <div><dt className="label">Phone</dt><dd className="mt-0.5 font-semibold">{c.phone}</dd></div>
+        <p className="text-xs text-ash sm:col-span-2">They can sign in with either, plus the password below.</p>
+      </dl>
+
+      {c.password ? (
+        <div className="flex flex-col items-center gap-5 rounded-lg border border-redline bg-redwash p-5 text-center sm:flex-row sm:text-left">
+          {c.loginUrl && (qr ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={qr} alt="Sign-in QR for the member" width={176} height={176} className="size-44 shrink-0 rounded-lg bg-white p-2" />
+          ) : (
+            <div className="size-44 shrink-0 animate-pulse rounded-lg bg-steel" />
+          ))}
+          <div className="flex min-w-0 flex-col gap-3">
+            <p className="label text-chalk">Temporary password</p>
+            <div className="flex items-center justify-center gap-2 sm:justify-start">
+              <span className="font-mono text-3xl font-bold tracking-wider select-all">{c.password}</span>
+              <button type="button" onClick={copy} className="btn-ghost min-h-9 px-3 text-xs">Copy</button>
+            </div>
+            <p className="text-sm text-body">
+              {c.loginUrl ? "Have them scan the QR with their phone camera: it signs them in straight away and asks them to set their own password — no typing this one." : "Give them this password. They'll be asked to set their own when they sign in."}
+            </p>
+            <p className="text-xs text-ash">Shown only now. {c.loginUrl && "The QR works once and expires after a while."}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="rounded-lg border border-line px-4 py-3 text-sm text-ash">They already had an account, so their password hasn&apos;t changed.</p>
+      )}
+
+      {c.planError && (
+        <p role="alert" className="rounded-lg border border-redline bg-redwash px-4 py-3 text-sm font-semibold">
+          The plan wasn&apos;t sold: {c.planError} Sell it from the member&apos;s ⋯ menu → Renew.
+        </p>
+      )}
+      {plan && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line p-4">
+          <div>
+            <p className="font-bold">{plan.label} · {inr(plan.amount)}</p>
+            <p className="text-sm text-ash">
+              {plan.state === "paid" ? `Paid · active${plan.endsOn ? ` till ${prettyDay(plan.endsOn)}` : ""}` : plan.state === "pay" ? "Waiting for payment" : "Waiting for the owner to approve the price"}
+            </p>
+          </div>
+          {plan.state === "pay" && <Link href={`/pay/${plan.subId}`} className="btn-red min-h-11 px-4 text-xs">Show UPI QR</Link>}
+        </div>
+      )}
+
+      <button type="button" onClick={onAnother} className="btn-ghost min-h-12">Add another member</button>
+    </div>
+  );
+}
+
 /** Members list → Renew: sell an existing member their next plan. Starts the day after their current one ends. */
-export function RenewForm({ userId, branchId, plans, offers, trainers, admissionPaise }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise: number | null }) {
+export function RenewForm({ userId, branchId, plans, offers, trainers, owner, admissionPaise }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise: number | null }) {
   const [state, action, pending] = useActionState(renewMember, undefined);
   return (
-    <form action={action} className="flex flex-col gap-8">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
       <input type="hidden" name="user_id" value={userId} />
       <input type="hidden" name="branch_id" value={branchId ?? ""} />
-      <PlanSteps plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} kinds={KINDS.filter(([k]) => k === "membership" || k === "day_pass")} first={1} verb="Renew" pending={pending} state={state} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} kinds={KINDS.filter(([k]) => k === "membership" || k === "day_pass")} first={1} verb="Renew" pending={pending} state={state} />
     </form>
   );
 }
 
 /** Pass → payment → submit. admissionPaise null = they've had a membership, so no admission field. */
-function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb, pending, state }: {
-  plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result;
+function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, first, verb, pending, state }: {
+  plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result;
 }) {
   const [kind, setKind] = useState<Kind>("membership");
   const [track, setTrack] = useState<Track>("strength");
@@ -140,9 +242,10 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
         {plan && (
           <NegotiatedPrice
             key={plan.id}
-            standard={discounted(plan.price_paise, bestOffer(offers, plan.track))}
+            standard={discounted(plan.price_paise, bestOffer(offers, plan.track, plan.duration_days), plan.duration_days)}
             list={plan.price_paise}
             admission={MEMBERSHIPS.includes(plan.track) ? admissionPaise : null}
+            owner={owner}
           />
         )}
         {plan?.track === "personal_training" && trainers.length > 0 && <Select label="Trainer" name="trainer_id" options={[["", "Not assigned yet"], ...trainers]} />}
@@ -186,7 +289,7 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
 }
 
 /** Desk pricing: starts at the standard price (offer applied) and admission; staff can change either after negotiating. */
-function NegotiatedPrice({ standard, list, admission }: { standard: number; list: number; admission: number | null }) {
+function NegotiatedPrice({ standard, list, admission, owner }: { standard: number; list: number; admission: number | null; owner: boolean }) {
   const [price, setPrice] = useState(String(standard / 100));
   const [fee, setFee] = useState(admission !== null ? String(admission / 100) : "0");
   const changed = Math.round(Number(price) * 100) !== standard;
@@ -212,6 +315,7 @@ function NegotiatedPrice({ standard, list, admission }: { standard: number; list
         <span className="font-display text-3xl">{inr(Math.round(total * 100))}</span>
       </p>
       {admission !== null && <p className="-mt-2 text-xs text-ash">If they&apos;ve had a membership before, admission is skipped automatically.</p>}
+      {!owner && <p className="-mt-1 text-sm font-semibold text-red">Any price below the standard goes to the owner to approve before you take the money.</p>}
     </div>
   );
 }
@@ -257,28 +361,48 @@ export function Segmented({ label, options, value, onChange }: { label: string; 
   );
 }
 
-export function HolidayForm({ branches, emailEnabled }: { branches: Branch[]; emailEnabled: boolean }) {
-  const [state, action, pending] = useActionState(addHoliday, undefined);
+/** Upcoming holidays → "+ Add holiday": the form in a pop-up. Opens straight away from /admin/branches?holiday=1. */
+export function HolidayModal({ branches, emailEnabled, canEmail, startOpen }: { branches: Branch[]; emailEnabled: boolean; canEmail: boolean; startOpen?: boolean }) {
+  const [open, setOpen] = useState(!!startOpen);
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="btn-red min-h-10 px-4 text-xs">+ Add holiday</button>
+      <Sheet title="Add a holiday" open={open} onClose={() => setOpen(false)}>
+        {open && <HolidayForm branches={branches} emailEnabled={emailEnabled} canEmail={canEmail} onDone={() => setOpen(false)} />}
+      </Sheet>
+    </>
+  );
+}
+
+function HolidayForm({ branches, emailEnabled, canEmail, onDone }: { branches: Branch[]; emailEnabled: boolean; canEmail: boolean; onDone: () => void }) {
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const res = await addHoliday(prev, form);
+    if (res?.ok) onDone();
+    return res;
+  }, undefined);
+  return (
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4">
+      <p className="-mt-1 text-sm text-ash">Members see it on the site and dashboard. Check-in is blocked that day; streaks are safe.</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Date" name="day" type="date" min={gymDate()} required />
-        <Select label="Branch" name="branch_id" options={[["", "All branches"], ...branches.map((b) => [b.id, b.name] as [string, string])]} />
+        <Select label="Branch" name="branch_id" options={[...(branches.length > 1 ? [["", "All branches"] as [string, string]] : []), ...branches.map((b) => [b.id, b.name] as [string, string])]} />
       </div>
       <Field label="Reason (shown to members)" name="note" placeholder="Diwali" />
-      <label className={`flex min-h-11 items-center gap-2 ${emailEnabled ? "" : "text-ash"}`}>
-        <input type="checkbox" name="email" defaultChecked={emailEnabled} disabled={!emailEnabled} className="size-5 accent-red" />
-        Also email all members {!emailEnabled && "(set RESEND_API_KEY + EMAIL_FROM to enable)"}
-      </label>
+      {canEmail && (
+        <label className={`flex min-h-11 items-center gap-2 ${emailEnabled ? "" : "text-ash"}`}>
+          <input type="checkbox" name="email" defaultChecked={emailEnabled} disabled={!emailEnabled} className="size-5 accent-red" />
+          Also email all members {!emailEnabled && "(set RESEND_API_KEY + EMAIL_FROM to enable)"}
+        </label>
+      )}
       <div className="flex items-center gap-4">
-        <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Declare holiday"}</button>
+        <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Add holiday"}</button>
         <Status state={state} />
       </div>
     </form>
   );
 }
 
-export function HolidayRow({ holiday, where }: { holiday: Holiday; where: string }) {
+export function HolidayRow({ holiday, where, canRemove }: { holiday: Holiday; where: string; canRemove: boolean }) {
   const [pending, start] = useTransition();
   const title = `${prettyDay(holiday.day)}${holiday.note ? ` — ${holiday.note}` : ""}`;
   return (
@@ -287,40 +411,19 @@ export function HolidayRow({ holiday, where }: { holiday: Holiday; where: string
         <span className="block font-bold">{title}</span>
         <span className="text-sm text-ash">{where}</span>
       </span>
-      <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Remove this holiday?", body: `${title} · ${where}. The gym counts as open that day again.`, confirm: "Remove", danger: true })) && start(async () => toastResult((await deleteHoliday(holiday.id)) ?? { ok: "Holiday removed" }))} className="btn-ghost">
+      {canRemove && <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Remove this holiday?", body: `${title} · ${where}. The gym counts as open that day again.`, confirm: "Remove", danger: true })) && start(async () => toastResult((await deleteHoliday(holiday.id)) ?? { ok: "Holiday removed" }))} className="btn-ghost">
         Remove
-      </button>
+      </button>}
     </li>
   );
 }
 
 /** Women-only windows for one branch. Blank pair = no window. */
-export function LadiesHoursForm({ branch: b }: { branch: Branch }) {
-  const [state, action, pending] = useActionState(saveLadiesHours, undefined);
-  const t = (v: string | null) => (v ? hhmm(v) : "");
-  return (
-    <form action={action} className="flex flex-col gap-4 rounded-md border border-line bg-panel p-5">
-      <input type="hidden" name="id" value={b.id} />
-      <p className="font-display text-2xl uppercase">{b.name}</p>
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Morning from" name="ladies_morning_open" type="time" defaultValue={t(b.ladies_morning_open)} />
-        <Field label="Morning till" name="ladies_morning_close" type="time" defaultValue={t(b.ladies_morning_close)} />
-        <Field label="Evening from" name="ladies_evening_open" type="time" defaultValue={t(b.ladies_evening_open)} />
-        <Field label="Evening till" name="ladies_evening_close" type="time" defaultValue={t(b.ladies_evening_close)} />
-      </div>
-      <div className="flex items-center gap-4">
-        <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Save ladies' timings"}</button>
-        <ResultToast state={state} />
-      </div>
-    </form>
-  );
-}
-
 /** Member page: staff retake the photo with the camera (or upload). */
 export function MemberPhotoForm({ id, url }: { id: string; url: string | null }) {
   const [state, action, pending] = useActionState(adminChangePhoto, undefined);
   return (
-    <form action={action} className="flex flex-col gap-3">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-3">
       <input type="hidden" name="id" value={id} />
       <PhotoCapture current={url} label="Retake photo" />
       <div className="flex items-center gap-3">
@@ -335,7 +438,7 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
 export function MemberEditForm({ member, branches }: { member: Profile; branches: Branch[] }) {
   const [state, action, pending] = useActionState(adminSaveMember, undefined);
   return (
-    <form action={action} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <form noValidate onSubmit={keepFields(action)} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <input type="hidden" name="id" value={member.id} />
       <Field label="Full name" name="full_name" defaultValue={member.full_name} required />
       <label className="flex flex-col gap-1.5">
@@ -413,8 +516,8 @@ const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
 );
 
 /** Members list: the ⋯ menu on each row. Edit and renew open in a pop-up without leaving the list. */
-export function MemberActions({ member, passId, cancelSubId, waHref, branches, plans, offers, trainers, admissionPaise, canDelete }: {
-  canDelete: boolean; member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise: number | null;
+export function MemberActions({ member, passId, cancelSubId, waHref, branches, plans, offers, trainers, admissionPaise, owner }: {
+  owner: boolean; member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise: number | null;
 }) {
   const [sheet, setSheet] = useState<"edit" | "renew" | null>(null);
   const [pending, start] = useTransition();
@@ -440,19 +543,19 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
             {passId && <Link href={`/pass/${passId}`} className={MENU_ITEM}>Show pass</Link>}
             {waHref && <a href={waHref} target="_blank" rel="noreferrer" className={MENU_ITEM}>WhatsApp</a>}
             {member.phone && <a href={`tel:${member.phone}`} className={MENU_ITEM}>Call</a>}
-            {member.role === "member" && (
+            {owner && member.role === "member" && (
               <button type="button" className={MENU_ITEM}
                 onClick={async () => (close(), (await confirmDialog({ title: `Reset ${member.full_name}'s password?`, body: "It goes back to the starting password (first 4 letters of their name, without initials, + last 4 phone digits). You'll see it next. They'll be asked to change it.", confirm: "Reset password" })) && start(async () => toastResult(await resetPassword(member.id))))}>
                 Reset password
               </button>
             )}
-            {cancelSubId && (
+            {owner && cancelSubId && (
               <button type="button" className={`${MENU_ITEM} text-red`}
                 onClick={async () => (close(), (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops now. Payment records stay.", confirm: "Cancel plan", danger: true })) && start(async () => toastResult(await cancelPlan(cancelSubId))))}>
                 Cancel plan
               </button>
             )}
-            {canDelete && member.role === "member" && (
+            {owner && member.role === "member" && (
               <>
                 <hr className="my-1 border-line" />
                 <button type="button" onClick={() => (close(), remove())} className={`${MENU_ITEM} text-red`}>Delete member</button>
@@ -466,7 +569,7 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
           {sheet === "edit" ? (
             <MemberEditForm member={member} branches={branches} />
           ) : (
-            <RenewForm userId={member.id} branchId={member.home_branch_id} plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} />
+            <RenewForm userId={member.id} branchId={member.home_branch_id} plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} />
           )}
         </Sheet>
       )}
@@ -531,6 +634,43 @@ export function RequestRow({ id, name, href, photo, newPhoto, changes, note }: {
         <button type="button" disabled={pending} onClick={() => decide(false)} className="btn-ghost min-h-11 px-4">Decline</button>
       </div>
     </li>
+  );
+}
+
+/** Members list search: results update as you type (a short pause, then the list reloads), and the server matches
+ *  fuzzily — typos, initials, part of a phone number. Keeps the current tab, sort and filters; back to page 1. */
+export function MemberSearch({ initial }: { initial: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [value, setValue] = useState(initial);
+  const timer = useRef(0);
+  const go = (q: string) => {
+    const p = new URLSearchParams(location.search);
+    if (q.trim()) p.set("q", q.trim());
+    else p.delete("q");
+    p.delete("page");
+    start(() => router.replace(`/admin/members${p.size ? `?${p}` : ""}`, { scroll: false }));
+  };
+  return (
+    <form role="search" className="relative flex w-full sm:w-72" onSubmit={(e) => { e.preventDefault(); clearTimeout(timer.current); go(value); }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ash">
+        <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+      </svg>
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => {
+          const q = e.target.value;
+          setValue(q);
+          clearTimeout(timer.current);
+          timer.current = window.setTimeout(() => go(q), 250);
+        }}
+        placeholder="Search name, email or phone"
+        aria-label="Search members"
+        className="field min-h-10 w-full pr-9 pl-9"
+      />
+      {pending && <span aria-hidden="true" className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin rounded-full border-2 border-ash border-t-transparent" />}
+    </form>
   );
 }
 
@@ -601,33 +741,6 @@ export function MemberFilters({ query, sorts, branches, defaultSort }: { default
   );
 }
 
-export function BranchAccessForm({ mode }: { mode: "any" | "home" }) {
-  const [state, action, pending] = useActionState(saveBranchAccess, undefined);
-  const options: ["any" | "home", string, string][] = [
-    ["any", "Any branch", "Members can check in at every branch with one membership."],
-    ["home", "Home branch only", "Each member checks in only at their home branch. If none is set, their first check-in sets it. Only the desk can move them."],
-  ];
-  return (
-    <form action={action} className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {options.map(([v, title, desc]) => (
-          <label key={v} className="flex cursor-pointer flex-col gap-1 rounded-md border border-strong p-4 has-checked:border-red has-checked:bg-redwash">
-            <span className="flex items-center gap-2 font-bold">
-              <input type="radio" name="branch_access" value={v} defaultChecked={mode === v} className="size-4 accent-red" />
-              {title}
-            </span>
-            <span className="text-sm text-ash">{desc}</span>
-          </label>
-        ))}
-      </div>
-      <div className="flex items-center gap-4">
-        <button disabled={pending} className="btn-red">{pending ? "Saving…" : "Save"}</button>
-        <ResultToast state={state} />
-      </div>
-    </form>
-  );
-}
-
 export function ReplaceDoorKey({ branchId }: { branchId: string }) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<Result>();
@@ -641,15 +754,39 @@ export function ReplaceDoorKey({ branchId }: { branchId: string }) {
   );
 }
 
+const SHORT_LENGTH: Record<number, string> = { 30: "Monthly", 90: "Quarterly", 180: "6 months", 365: "Yearly", 1: "Day pass" };
+
 export function OfferForm() {
   const [state, action, pending] = useActionState(saveOffer, undefined);
+  const [mode, setMode] = useState<"same" | "length">("same");
   return (
-    <form action={action} className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_8rem]">
-        <Field label="Title" name="title" placeholder="Diwali offer" required />
-        <Field label="% off" name="percent_off" type="number" min="1" max="100" required />
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4">
+      <input type="hidden" name="mode" value={mode} />
+      <Field label="Reason — shown big on the site" name="title" placeholder="Dussehra offer" required maxLength={60} />
+      <Field label="Details (optional)" name="description" placeholder="On new memberships and renewals" maxLength={140} />
+      <div className="flex flex-col gap-3">
+        <span className="label">Discount</span>
+        <Segmented label="Discount" options={[["same", "Same for every plan"], ["length", "Different per length"]]} value={mode} onChange={(v) => setMode(v as "same" | "length")} />
+        {mode === "same" ? (
+          <div className="sm:w-40"><Field label="% off" name="percent_off" type="number" inputMode="numeric" min="1" max="100" required /></div>
+        ) : (
+          <>
+            {/* one line per label, the % inside the box: the five boxes line up at any width */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {OFFER_LENGTHS.map(([d]) => (
+                <label key={d} className="flex min-w-0 flex-col gap-1.5">
+                  <span className="label truncate">{SHORT_LENGTH[d] ?? `${d} days`}</span>
+                  <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
+                    <input name={`pct_${d}`} type="number" inputMode="numeric" min="0" max="100" placeholder="0" className="min-h-11 w-full min-w-0 bg-transparent pl-3 font-bold text-chalk outline-none" />
+                    <span className="pr-3 text-ash">%</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="-mt-1 text-xs text-ash">e.g. 10 · 15 · 20 · 25 for monthly to yearly. Leave a length blank for no discount on it.</p>
+          </>
+        )}
       </div>
-      <Field label="Details (optional)" name="description" placeholder="Valid on new memberships" />
       <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
         <legend className="label mb-2">Applies to (none ticked = every plan)</legend>
         {(Object.keys(TRACKS) as Track[]).map((t) => (
@@ -670,21 +807,22 @@ export function OfferForm() {
   );
 }
 
-export function OfferRow({ offer }: { offer: Offer }) {
+export function OfferRow({ offer, canEdit }: { offer: Offer; canEdit: boolean }) {
   const [pending, start] = useTransition();
   const today = gymDate();
   const status = !offer.active ? "Paused" : offer.ends_on < today ? "Ended" : offer.starts_on > today ? "Scheduled" : "Live";
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-3">
       <span>
-        <span className="block font-bold">{offer.title} · {offer.percent_off}% off</span>
+        <span className="block font-bold">{offer.title}</span>
+        <span className="block text-sm font-semibold text-red">{offerLabel(offer)}</span>
         <span className="text-sm text-ash">
           {offer.tracks ? offer.tracks.map((t) => TRACKS[t]).join(", ") : "All plans"} · {prettyDay(offer.starts_on)} → {prettyDay(offer.ends_on)}
         </span>
       </span>
       <span className="flex items-center gap-3">
         <span className={`font-label text-sm font-bold uppercase tracking-widest ${status === "Live" ? "text-red" : "text-ash"}`}>{status}</span>
-        {status !== "Ended" && (
+        {canEdit && status !== "Ended" && (
           <button disabled={pending} onClick={() => start(async () => toastResult(await setOfferActive(offer.id, !offer.active)))} className="btn-ghost">
             {offer.active ? "Pause" : "Resume"}
           </button>
@@ -701,7 +839,7 @@ const GRID_TRACKS: Track[] = ["strength", "strength_cardio", "couples", "persona
 export function AdmissionForm({ paise }: { paise: number }) {
   const [state, action, pending] = useActionState(saveAdmission, undefined);
   return (
-    <form action={action} className="flex flex-wrap items-end gap-3">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-wrap items-end gap-3">
       <label className="flex flex-col gap-1.5">
         <span className="label">Admission fee (₹)</span>
         <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
@@ -763,7 +901,7 @@ export function PriceForm({ plans }: { plans: Plan[] }) {
   };
 
   return (
-    <form action={action} className="flex flex-col gap-6">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-6">
       {/* one set of inputs, laid out by CSS: a row per track on desktop, a 2×2 card per track on phones */}
       <div>
         <div className="hidden gap-3 pb-3 md:grid md:grid-cols-[11rem_repeat(4,minmax(0,1fr))]">
@@ -813,43 +951,83 @@ export function PriceForm({ plans }: { plans: Plan[] }) {
   );
 }
 
-export function BranchForm({ branch }: { branch?: Branch }) {
-  const [state, action, pending] = useActionState(saveBranch, undefined);
-  const b = branch;
+/** Branches → Edit / + New branch: every branch setting, ladies' timings included, in a pop-up. */
+export function BranchModal({ branch, label, className }: { branch?: Branch; label: string; className: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    // a new branch is added from a pop-up, which already has the title and frame
-    <form action={action} className={`flex flex-col gap-4 ${b ? "rounded-md border border-line bg-carbon p-4 sm:p-6" : ""}`}>
-      {b && <h3 className="font-display text-2xl uppercase">{b.name}</h3>}
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={className}>{label}</button>
+      <Sheet title={branch ? `Edit ${branch.name}` : "New branch"} open={open} onClose={() => setOpen(false)}>
+        {open && <BranchForm branch={branch} onDone={() => setOpen(false)} />}
+      </Sheet>
+    </>
+  );
+}
+
+function BranchForm({ branch: b, onDone }: { branch?: Branch; onDone: () => void }) {
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const res = await saveBranch(prev, form);
+    if (res?.ok) onDone();
+    return res;
+  }, undefined);
+  const t = (v: string | null | undefined) => (v ? hhmm(v) : "");
+  return (
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-6">
       {b && <input type="hidden" name="id" value={b.id} />}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Name" name="name" defaultValue={b?.name} required />
         <Field label="Address" name="address" defaultValue={b?.address} />
-        <Field label="Morning opens" name="morning_open" type="time" defaultValue={b ? hhmm(b.morning_open) : "05:00"} required />
-        <Field label="Morning closes" name="morning_close" type="time" defaultValue={b ? hhmm(b.morning_close) : "11:00"} required />
-        <Field label="Evening opens (blank = none)" name="evening_open" type="time" defaultValue={b ? (b.evening_open ? hhmm(b.evening_open) : "") : "16:00"} />
-        <Field label="Evening closes" name="evening_close" type="time" defaultValue={b ? (b.evening_close ? hhmm(b.evening_close) : "") : "22:00"} />
-        <Field label="Check-in grace after closing (min)" name="grace_minutes" type="number" min="0" max="120" defaultValue={b?.grace_minutes ?? 20} />
-        <Field label="Google Maps link" name="maps_url" type="url" defaultValue={b?.maps_url ?? ""} />
-        <Field label="Google place ID (reviews)" name="google_place_id" defaultValue={b?.google_place_id ?? ""} />
-        <Field label="Photo URL" name="image_url" type="url" defaultValue={b?.image_url ?? ""} />
-        <Field label="Check-in radius (m)" name="radius_m" type="number" min="20" defaultValue={b?.radius_m ?? 150} />
-        <Field label="Latitude" name="lat" type="number" step="any" defaultValue={b?.lat ?? ""} />
-        <Field label="Longitude" name="lng" type="number" step="any" defaultValue={b?.lng ?? ""} />
       </div>
-      <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
-        <legend className="label mb-2">Weekly off</legend>
-        {DAY_NAMES.map((d, i) => (
-          <label key={d} className="flex min-h-11 items-center gap-2">
-            <input type="checkbox" name="closed_days" value={i} defaultChecked={b ? b.closed_days.includes(i) : i === 0} className="size-5 accent-red" /> {d}
-          </label>
-        ))}
+
+      <fieldset className="flex flex-col gap-4">
+        <legend className="label mb-3 text-chalk">Opening hours</legend>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Morning opens" name="morning_open" type="time" defaultValue={b ? hhmm(b.morning_open) : "05:00"} required />
+          <Field label="Morning closes" name="morning_close" type="time" defaultValue={b ? hhmm(b.morning_close) : "11:00"} required />
+          <Field label="Evening opens" name="evening_open" type="time" defaultValue={b ? t(b.evening_open) : "16:00"} />
+          <Field label="Evening closes" name="evening_close" type="time" defaultValue={b ? t(b.evening_close) : "22:00"} />
+        </div>
+        <p className="-mt-2 text-xs text-ash">Leave both evening times blank for a branch with one session.</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <span className="label w-full">Weekly off</span>
+          {DAY_NAMES.map((d, i) => (
+            <label key={d} className="flex min-h-11 items-center gap-2">
+              <input type="checkbox" name="closed_days" value={i} defaultChecked={b ? b.closed_days.includes(i) : i === 0} className="size-5 accent-red" /> {d}
+            </label>
+          ))}
+        </div>
       </fieldset>
-      <div className="flex flex-wrap gap-6">
-        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="require_location" defaultChecked={b?.require_location} className="size-5 accent-red" /> Require location to check in</label>
-        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="active" defaultChecked={b?.active ?? true} className="size-5 accent-red" /> Active</label>
-      </div>
+
+      <fieldset className="flex flex-col gap-4">
+        <legend className="label mb-3 text-chalk">Ladies&apos; timings</legend>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Morning from" name="ladies_morning_open" type="time" defaultValue={t(b?.ladies_morning_open)} />
+          <Field label="Morning till" name="ladies_morning_close" type="time" defaultValue={t(b?.ladies_morning_close)} />
+          <Field label="Evening from" name="ladies_evening_open" type="time" defaultValue={t(b?.ladies_evening_open)} />
+          <Field label="Evening till" name="ladies_evening_close" type="time" defaultValue={t(b?.ladies_evening_close)} />
+        </div>
+        <p className="-mt-2 text-xs text-ash">Women-only windows. Women can also check in during general hours; men can&apos;t during these. Leave a window blank if there isn&apos;t one.</p>
+      </fieldset>
+
+      <details className="group rounded-lg border border-line">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 text-sm font-semibold text-ash">
+          Location, check-in and website <span className="transition-transform group-open:rotate-180" aria-hidden="true">▾</span>
+        </summary>
+        <div className="grid grid-cols-1 gap-4 border-t border-line p-4 sm:grid-cols-2">
+          <Field label="Google Maps link" name="maps_url" type="url" defaultValue={b?.maps_url ?? ""} />
+          <Field label="Photo URL" name="image_url" type="url" defaultValue={b?.image_url ?? ""} />
+          <Field label="Google place ID (reviews)" name="google_place_id" defaultValue={b?.google_place_id ?? ""} />
+          <Field label="Check-in grace after closing (min)" name="grace_minutes" type="number" min="0" max="120" defaultValue={b?.grace_minutes ?? 20} />
+          <Field label="Latitude" name="lat" type="number" step="any" defaultValue={b?.lat ?? ""} />
+          <Field label="Longitude" name="lng" type="number" step="any" defaultValue={b?.lng ?? ""} />
+          <Field label="Check-in radius (m)" name="radius_m" type="number" min="20" defaultValue={b?.radius_m ?? 150} />
+          <label className="flex min-h-11 items-center gap-2 self-end"><input type="checkbox" name="require_location" defaultChecked={b?.require_location} className="size-5 accent-red" /> Require location to check in</label>
+        </div>
+      </details>
+
+      <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="active" defaultChecked={b?.active ?? true} className="size-5 accent-red" /> Active (shown on the site, members can check in)</label>
       <div className="flex items-center gap-4">
-        <button disabled={pending} className={b ? "btn-ghost" : "btn-red"}>{pending ? "Saving…" : b ? "Save branch" : "Add branch"}</button>
+        <button disabled={pending} className="btn-red">{pending ? "Saving…" : b ? "Save branch" : "Add branch"}</button>
         <Status state={state} />
       </div>
     </form>

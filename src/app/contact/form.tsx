@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { Field } from "@/components/client";
-import { ResultToast } from "@/components/feedback";
+import { ResultToast, keepFields } from "@/components/feedback";
 import type { Branch } from "@/lib/gym";
 import { sendEnquiry } from "./actions";
 
@@ -24,7 +24,7 @@ export function EnquiryForm({ branches, topic }: { branches: Branch[]; topic: st
     );
 
   return (
-    <form action={action} className="flex flex-col gap-4 rounded-md border border-line bg-carbon p-6 sm:p-8">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4 rounded-md border border-line bg-carbon p-6 sm:p-8">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Name" name="name" autoComplete="name" required maxLength={100} />
         <Field label="Phone / WhatsApp" name="phone" type="tel" autoComplete="tel" required />

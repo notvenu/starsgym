@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
         ? [{ protocol: "https" as const, hostname: new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname, pathname: "/storage/v1/object/public/**" }]
         : []),
     ],
-    qualities: [75, 85],
+    qualities: [75, 80, 85],
   },
   // baseline hardening: no framing (clickjacking on the desk), no MIME sniffing, no full URLs leaked to other sites.
   // Camera (member photos) and location (check-in) stay allowed for this site only.

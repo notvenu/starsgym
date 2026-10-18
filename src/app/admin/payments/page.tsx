@@ -10,7 +10,7 @@ export const metadata = { title: "Payments — Stars Gym admin" };
 type Paid = { id: string; amount_paise: number; cash_paise: number | null; method: string; paid_at: string; plans: Plan; profiles: { full_name: string; email: string | null } };
 
 export default async function PaymentsPage() {
-  const { supabase, view } = await requireStaff();
+  const { supabase, view, isOwner } = await requireStaff();
   const recent = supabase
     .from("subscriptions")
     .select("id,amount_paise,cash_paise,method,paid_at,plans(*),profiles!subscriptions_user_id_fkey(full_name,email)")
@@ -18,8 +18,9 @@ export default async function PaymentsPage() {
     .not("paid_at", "is", null)
     .order("paid_at", { ascending: false })
     .limit(30);
-  const [pending, paid] = await Promise.all([
+  const [pending, asks, paid] = await Promise.all([
     getPending(supabase, 100, view),
+    isOwner ? getPending(supabase, 100, view, true) : null,
     view ? recent.eq("branch_id", view) : recent,
   ]);
 
@@ -27,8 +28,14 @@ export default async function PaymentsPage() {
     <>
       <PageHeader title="Payments" intro="Confirm desk payments, and see what came in recently." />
 
+      {asks && asks.count > 0 && (
+        <Panel title={`Discount requests · ${asks.count}`} intro="Staff asked to sell below the standard price. Approve it, or turn it down to put the order back at the standard price." flush>
+          <div className="divide-y divide-line">{asks.rows.map((r) => <PendingRow key={r.id} {...r} owner />)}</div>
+        </Panel>
+      )}
+
       <Panel title={`Awaiting payment · ${pending.count}`} intro="Check the REF on the member's screen, take the money, then mark it paid." flush>
-        {pending.rows.length ? <div className="divide-y divide-line">{pending.rows.map((r) => <PendingRow key={r.id} {...r} />)}</div> : <Empty>Nothing to confirm right now.</Empty>}
+        {pending.rows.length ? <div className="divide-y divide-line">{pending.rows.map((r) => <PendingRow key={r.id} {...r} owner={isOwner} />)}</div> : <Empty>Nothing to confirm right now.</Empty>}
       </Panel>
 
       <Panel title="Recently paid" flush>

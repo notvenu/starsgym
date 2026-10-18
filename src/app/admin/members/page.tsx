@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
-import { ageOf, GENDERS, gymDate, gymDateIn, waLink, type Branch, type Offer, type Plan } from "@/lib/gym";
+import { fuzzyScore, ageOf, GENDERS, gymDate, gymDateIn, waLink, type Branch, type Offer, type Plan } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, waNumber } from "../kit";
-import { AddMemberForm, AdminModal, MemberActions, MemberFilters } from "../ui";
+import { AddMemberForm, AdminModal, MemberActions, MemberFilters, MemberSearch } from "../ui";
 import { getTrainers } from "../data";
 
 export const metadata = { title: "Members — Stars Gym admin" };
@@ -80,9 +80,11 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
 
   const matches = (m: (typeof everyone)[number], s: Show) =>
     s === "all" || (s === "expiring" ? m.state === "active" && m.endsOn! <= weekOut : m.state === s);
+  // fuzzy search: typos, initials and partial phone numbers still find them; best matches first
+  const score = new Map(q ? everyone.map((m) => [m.id, fuzzyScore(q, m.full_name, m.email, m.phone)]) : []);
   const base = everyone.filter(
     (m) =>
-      (!q || [m.full_name, m.email, m.phone].some((v) => v?.toLowerCase().includes(q))) &&
+      (!q || score.get(m.id) != null) &&
       (!gender || m.gender === gender) &&
       (!branch || m.home_branch_id === branch) &&
       (!view || m.home_branch_id === view || (!m.home_branch_id && m.role === "member")) &&
@@ -93,7 +95,8 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
   const filtered = base
     .filter((m) => matches(m, show))
     .sort((a, b) =>
-      sort === "name" ? (a.full_name || "").localeCompare(b.full_name || "")
+      q && score.get(a.id) !== score.get(b.id) ? score.get(a.id)! - score.get(b.id)!
+      : sort === "name" ? (a.full_name || "").localeCompare(b.full_name || "")
       // members with no plan sink to the bottom either way
       : sort === "ending" ? (byEnd(a) || "9999").localeCompare(byEnd(b) || "9999")
       : sort === "ending_late" ? byEnd(b).localeCompare(byEnd(a))
@@ -123,8 +126,8 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
       <PageHeader title="Members" intro="Look anyone up, see who's in today, sign up walk-ins.">
         {isOwner && <a href="/admin/members/export" download className="btn-ghost">Download CSV</a>}
         <AdminModal label="+ New member" title="New member" startOpen={sp.new === "1"}>
-          <p className="-mt-1 mb-5 text-sm text-ash">Details → photo → pass → payment. Ends on their ticket, ready to download or share.</p>
-          <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} admissionPaise={fee} />
+          <p className="-mt-1 mb-5 text-sm text-ash">Details → photo → plan → payment. Ends with their account details: a temporary password and a sign-in QR for their phone.</p>
+          <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} owner={isOwner} admissionPaise={fee} />
         </AdminModal>
       </PageHeader>
 
@@ -133,11 +136,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
         intro={`${filtered.length} of ${everyone.length} members`}
         flush
         action={
-          <form className="flex w-full gap-2 sm:w-auto" role="search">
-            {Object.entries({ ...params, q: "" }).map(([k, v]) => v && v !== defaults[k] && <input key={k} type="hidden" name={k} value={v} />)}
-            <input name="q" defaultValue={params.q} placeholder="Name, email or phone" className="field min-h-10 min-w-0 flex-1 sm:w-56" aria-label="Search members" />
-            <button className="btn-ghost min-h-10 px-4">Search</button>
-          </form>
+          <MemberSearch initial={params.q} />
         }
       >
         {/* one row: plan-state tabs (scroll sideways on phones), then the sort and filter icons */}
@@ -184,7 +183,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
                     )}
                   </Link>
                   <MemberActions
-                    canDelete={isOwner}
+                    owner={isOwner}
                     member={m}
                     passId={m.passId}
                     cancelSubId={m.state === "active" ? m.passId : null}

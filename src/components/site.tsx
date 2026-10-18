@@ -1,8 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { getSettings } from "@/lib/data";
-import { prettyDay, TRACKS, waLink, type Branch, type Holiday, type Offer, type Settings } from "@/lib/gym";
+import { getNotices, getSettings } from "@/lib/data";
+import { gymDate, OFFER_LENGTHS, prettyDay, TRACKS, waLink, type Branch, type Holiday, type Offer, type Settings } from "@/lib/gym";
 
 export function Logo({ size = 72 }: { size?: number }) {
   // transparent mark, ~1.47:1 — `size` is its height
@@ -43,6 +43,7 @@ export function PageHero({ eyebrow, title, accent, intro, image }: { eyebrow: st
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <main>
+      <OfferBar />
       <Nav />
       {children}
       <Footer />
@@ -90,7 +91,7 @@ export async function Footer() {
       <div className="wrap flex flex-wrap items-start justify-between gap-10 py-14">
         <div className="flex flex-col gap-5">
           <Logo size={150} />
-          <Socials settings={settings} />
+          <Socials settings={settings} label="Follow us" />
         </div>
         <div className="flex flex-wrap gap-14 text-[15px]">
           {[
@@ -117,7 +118,7 @@ export async function Footer() {
 }
 
 /** Social + contact icons; each shows only when it's set in Admin → Site content. */
-export function Socials({ settings, size = 44 }: { settings: Settings; size?: number }) {
+export function Socials({ settings, size = 44, label }: { settings: Settings; size?: number; label?: string }) {
   const links: [string, string | null, ReactNode][] = [
     ["Instagram", settings.instagram_url, <g key="ig"><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><path d="M17.5 6.5h.01" /></g>],
     ["Facebook", settings.facebook_url, <path key="fb" d="M15 3h-2.5A3.5 3.5 0 0 0 9 6.5V9H7v3.5h2V21h3.5v-8.5H15l.5-3.5h-3V7a1 1 0 0 1 1-1H15z" />],
@@ -129,6 +130,8 @@ export function Socials({ settings, size = 44 }: { settings: Settings; size?: nu
   const shown = links.filter(([, href]) => href);
   if (!shown.length) return null;
   return (
+    <div className="flex flex-col gap-2.5">
+    {label && <p className="label">{label}</p>}
     <ul className="flex flex-wrap gap-2">
       {shown.map(([label, href, icon]) => (
         <li key={label}>
@@ -146,6 +149,7 @@ export function Socials({ settings, size = 44 }: { settings: Settings; size?: nu
         </li>
       ))}
     </ul>
+    </div>
   );
 }
 
@@ -172,5 +176,74 @@ export function Notices({ holidays, offers, branches }: { holidays: Holiday[]; o
         ))}
       </div>
     </div>
+  );
+}
+
+const offerOn = (o: Offer) => (o.tracks ? o.tracks.map((t) => TRACKS[t]).join(", ") : "every plan");
+const daysLeft = (o: Offer) => Math.round((Date.parse(o.ends_on) - Date.parse(gymDate())) / 864e5);
+const ends = (o: Offer) => (daysLeft(o) <= 0 ? "Ends today" : daysLeft(o) === 1 ? "Ends tomorrow" : `Ends ${prettyDay(o.ends_on)}`);
+/** "25% off", or "Up to 25% off" when the discount differs by plan length. */
+export const offerHeadline = (o: Offer) => `${o.percent_by_days ? "Up to " : ""}${o.percent_off}% off`;
+
+/** Thin strip above the header on inner pages while an offer is running (the homepage has its own banner). */
+export async function OfferBar() {
+  const { offers } = await getNotices();
+  const o = offers[0]; // biggest discount first
+  if (!o) return null;
+  return (
+    <Link href="/#plans" className="block bg-red text-white transition-colors hover:bg-[#ff2a31]">
+      <span className="wrap flex items-center justify-center gap-x-3 py-2 text-center font-label text-xs font-bold tracking-[0.12em] uppercase sm:text-sm">
+        <span className="truncate">{o.title} · {offerHeadline(o)}</span>
+        <span className="shrink-0 opacity-80 max-sm:hidden">{ends(o)}</span>
+        <span aria-hidden="true" className="shrink-0">→</span>
+        {offers.length > 1 && <span className="shrink-0 opacity-80 max-sm:hidden">+{offers.length - 1} more</span>}
+      </span>
+    </Link>
+  );
+}
+
+/**
+ * Homepage banner for every running offer. The reason (Dussehra offer…) is the headline; then the discount — one
+ * number, or a tile per plan length (10% monthly … 25% yearly) — what it covers, the deadline, and the way to the plans.
+ */
+export function OfferBanner({ offers }: { offers: Offer[] }) {
+  if (!offers.length) return null;
+  return (
+    <section aria-label="Offers" className="wrap flex flex-col gap-4 pt-16 md:pt-24">
+      {offers.map((o) => {
+        const lengths = o.percent_by_days ? OFFER_LENGTHS.filter(([d]) => o.percent_by_days![String(d)]) : [];
+        return (
+          <Link key={o.id} href="/#plans" data-reveal
+            className="group relative isolate flex flex-col gap-6 overflow-hidden rounded-xl bg-red p-6 text-white sm:p-10 lg:flex-row lg:items-center lg:justify-between">
+            <span aria-hidden="true" className="absolute -right-6 -bottom-12 -z-10 font-display text-[180px] leading-none text-white/10 sm:text-[260px]">{o.percent_off}%</span>
+            <span className="flex min-w-0 flex-col gap-3">
+              <span className="flex flex-wrap items-center gap-2 font-label text-xs font-bold tracking-[0.2em] uppercase">
+                <span className="rounded-full bg-ink px-3 py-1 text-white">Limited offer</span>
+                <span className="rounded-full bg-white/15 px-3 py-1">{ends(o)}</span>
+              </span>
+              <span className="font-display text-[clamp(40px,7vw,84px)] leading-[0.92] uppercase [text-wrap:balance]">{o.title}</span>
+              <span className="text-base font-semibold text-white/90 sm:text-lg">
+                {offerHeadline(o)} {o.tracks ? `on ${offerOn(o)}` : "on every plan"}{o.description && ` · ${o.description}`}
+              </span>
+            </span>
+            <span className="flex shrink-0 flex-col gap-4 lg:items-end">
+              {lengths.length > 0 ? (
+                <span className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {lengths.map(([d, label]) => (
+                    <span key={d} className="flex flex-col items-center rounded-lg bg-ink/85 px-4 py-3 text-center">
+                      <span className="font-display text-4xl leading-none">{o.percent_by_days![String(d)]}%</span>
+                      <span className="mt-1 font-label text-[11px] font-bold tracking-[0.14em] text-white/70 uppercase">{label}</span>
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="font-display text-[clamp(56px,9vw,104px)] leading-none">{o.percent_off}% off</span>
+              )}
+              <span className="btn self-start bg-ink text-white group-hover:bg-black lg:self-end">See plans <span aria-hidden="true">→</span></span>
+            </span>
+          </Link>
+        );
+      })}
+    </section>
   );
 }

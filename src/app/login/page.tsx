@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { currentUserId } from "@/lib/supabase";
+import { signedIn } from "@/lib/supabase";
 import { safeNext } from "@/lib/gym";
 import { Logo } from "@/components/site";
 import { AuthForm } from "./form";
@@ -12,8 +12,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const mode = sp.mode === "signup" ? "signup" : "signin";
   const next = safeNext(sp.next, "");
-  // already signed in: don't ask again
-  if (await currentUserId()) redirect(next || "/dashboard");
+  // already signed in: don't ask again. Checks the profile too, like the pages it sends you to; a stale session
+  // (account deleted, profile unreadable) gets this form instead of an endless /login ⇄ /dashboard loop
+  if (await signedIn()) redirect(next || "/dashboard");
 
   return (
     <main className="grid min-h-dvh lg:grid-cols-2">
@@ -25,39 +26,44 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         </h1>
       </section>
 
-      <section className="flex flex-col justify-center gap-8 px-4 py-12 sm:px-14">
-        <div className="lg:hidden"><Logo /></div>
-        <div className="flex gap-1 self-start rounded-md border border-line bg-panel p-1" role="tablist">
-          {(
-            [
-              ["signin", "Sign in"],
-              ["signup", "Sign up"],
-            ] as const
-          ).map(([m, label]) => (
-            <Link
-              key={m}
-              role="tab"
-              aria-selected={m === mode}
-              href={`/login?mode=${m}${next ? `&next=${encodeURIComponent(next)}` : ""}`}
-              className={`flex min-h-11 items-center rounded px-5 font-label text-[15px] font-bold uppercase tracking-[0.12em] ${m === mode ? "bg-red text-white" : "text-ash hover:text-chalk"}`}
-            >
-              {label}
-            </Link>
-          ))}
-        </div>
-        <h2 className="font-display text-6xl uppercase">
-          {mode === "signup" ? "Join the arena." : "Welcome back."}
-        </h2>
-        {sp.error === "link" && <p className="text-red">That link expired or was already used. Sign in with your password instead.</p>}
+      {/* one centred column at every width; below lg a soft red glow fills the space the side panel takes on desktop */}
+      <section className="relative isolate flex items-center justify-center overflow-hidden px-4 py-12 sm:px-8">
+        <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_70%_45%_at_50%_0%,rgb(227_20_28/0.18),transparent_70%)] lg:hidden" />
+        <div className="flex w-full max-w-md min-w-0 flex-col gap-7">
+          <div className="flex justify-center lg:hidden"><Logo /></div>
+          <div className="grid grid-cols-2 gap-1 rounded-md border border-line bg-panel p-1" role="tablist">
+            {(
+              [
+                ["signin", "Sign in"],
+                ["signup", "Sign up"],
+              ] as const
+            ).map(([m, label]) => (
+              <Link
+                key={m}
+                role="tab"
+                aria-selected={m === mode}
+                href={`/login?mode=${m}${next ? `&next=${encodeURIComponent(next)}` : ""}`}
+                className={`flex min-h-11 min-w-0 items-center justify-center rounded px-2 font-label text-[15px] font-bold uppercase tracking-[0.12em] ${m === mode ? "bg-red text-white" : "text-ash hover:text-chalk"}`}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+          <h2 className="text-center font-display text-[clamp(44px,11vw,64px)] leading-[0.95] uppercase lg:text-left">
+            {mode === "signup" ? "Join the arena." : "Welcome back."}
+          </h2>
+          {sp.error === "link" && <p className="text-red">That link expired or was already used. Sign in with your password instead.</p>}
+          {sp.error === "qr" && <p className="text-red">That sign-in QR has expired or was already used. Sign in with the temporary password, or ask the desk for a new one.</p>}
         {sp.error === "google" && <p className="text-red">Google sign-in didn&apos;t go through. Try again, or use your email or phone.</p>}
-        <form action={signInWithGoogle} className="max-w-md">
-          <input type="hidden" name="next" value={next} />
-          <button className="btn min-h-14 w-full gap-3 border border-strong bg-chalk text-base text-ink normal-case tracking-normal hover:bg-white">
-            <GoogleIcon /> Continue with Google
-          </button>
-        </form>
-        <div className="flex max-w-md items-center gap-3 text-sm text-ash"><span className="h-px flex-1 bg-line" />or with email or phone<span className="h-px flex-1 bg-line" /></div>
-        <AuthForm key={mode} mode={mode} next={next} />
+          <form action={signInWithGoogle}>
+            <input type="hidden" name="next" value={next} />
+            <button className="btn min-h-14 w-full gap-3 border border-strong bg-chalk text-[15px] whitespace-nowrap text-ink normal-case tracking-normal hover:bg-white sm:text-base">
+              <GoogleIcon /> Continue with Google
+            </button>
+          </form>
+          <div className="flex items-center gap-3 text-sm text-ash"><span className="h-px flex-1 bg-line" />or with email or phone<span className="h-px flex-1 bg-line" /></div>
+          <AuthForm key={mode} mode={mode} next={next} />
+        </div>
       </section>
     </main>
   );

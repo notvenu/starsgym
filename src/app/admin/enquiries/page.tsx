@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/supabase";
+import { adminDb, requireStaff } from "@/lib/supabase";
 import { Empty, PageHeader, Panel } from "../kit";
 import { EnquiryRow } from "../content/ui";
 
@@ -8,11 +8,15 @@ type Enquiry = { id: string; name: string; phone: string; email: string | null; 
 const TOPIC: Record<string, string> = { general: "General", membership: "Membership", personal_training: "Personal training", corporate: "Corporate" };
 
 export default async function EnquiriesPage() {
-  const { supabase } = await requireAdmin();
+  // staff see their branch's enquiries (and "any branch" ones); service key after requireStaff (owner-only in the database)
+  const { branchId, view } = await requireStaff();
+  const scope = branchId ?? view;
   const cols = "id,name,phone,email,topic,message,created_at,handled,branches(name)";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the generic query-builder type recurses too deep
+  const mine = (q: any) => (scope ? q.or(`branch_id.is.null,branch_id.eq.${scope}`) : q);
   const [open, done] = await Promise.all([
-    supabase.from("enquiries").select(cols).eq("handled", false).order("created_at", { ascending: false }).limit(100),
-    supabase.from("enquiries").select(cols).eq("handled", true).order("created_at", { ascending: false }).limit(20),
+    mine(adminDb().from("enquiries").select(cols).eq("handled", false)).order("created_at", { ascending: false }).limit(100),
+    mine(adminDb().from("enquiries").select(cols).eq("handled", true)).order("created_at", { ascending: false }).limit(20),
   ]);
   const row = (e: Enquiry) => (
     <>

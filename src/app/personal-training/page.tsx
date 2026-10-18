@@ -24,7 +24,6 @@ const FAQ = [
 export default async function PersonalTrainingPage() {
   const [plans, { offers }, { trainer, client }, branches] = await Promise.all([getPlans(), getNotices(), getItems(["trainer", "client"]), getBranches()]);
   const pt = plans.filter((p) => p.track === "personal_training").sort((a, b) => a.duration_days - b.duration_days);
-  const offer = bestOffer(offers, "personal_training");
 
   return (
     <Shell>
@@ -49,7 +48,7 @@ export default async function PersonalTrainingPage() {
             {pt.map((p) => (
               <div key={p.id} className="lift flex flex-col gap-5 rounded-md border border-line bg-carbon p-7" data-reveal>
                 <p className="label">{DURATIONS.find((d) => d.days === p.duration_days)?.label}</p>
-                <Price paise={p.price_paise} offer={offer} size="text-5xl" />
+                <Price paise={p.price_paise} offer={bestOffer(offers, "personal_training", p.duration_days)} days={p.duration_days} size="text-5xl" />
                 <Link href={`/buy/${p.id}`} className="btn-red mt-auto">Start</Link>
               </div>
             ))}

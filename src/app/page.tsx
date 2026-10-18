@@ -1,13 +1,13 @@
 import type React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Footer, Nav } from "@/components/site";
+import { Footer, Nav, OfferBanner, offerHeadline } from "@/components/site";
 import { BranchTicker, PlanPicker, Price } from "@/components/client";
 import { BranchExplorer } from "@/components/branches";
 import { Arrow, Reels, ReviewsSection, STOCK, StreakWall } from "@/components/sections";
 import { getLanding, getSettings } from "@/lib/data";
 import { siteImg } from "@/lib/img";
-import { bestOffer, inr, itemImage, sessions, type SiteItem } from "@/lib/gym";
+import { bestOffer, gymHours, inr, itemImage, type SiteItem } from "@/lib/gym";
 
 export const revalidate = 300;
 
@@ -25,15 +25,12 @@ export default async function Home() {
   const trial = plans.find((p) => p.track === "trial");
   const dayPass = plans.find((p) => p.track === "day_pass");
 
-  // facts strip — all real data
-  const times = branches.flatMap((b) => sessions(b));
-  const opens = times.length ? times.map(([s]) => s).sort()[0] : null;
-  const closes = times.length ? times.map(([, e]) => e).sort().at(-1) : null;
+  // facts strip — all real data. Hours lead, as the actual sessions (the gym closes between morning and evening).
+  const hours = gymHours(branches);
   const facts = [
     { value: String(branches.length), label: branches.length === 1 ? "Branch" : "Branches" },
-    opens && closes ? { value: `${opens}–${closes}`, label: "Open daily" } : null,
-    showcase[0] ? { value: `${showcase[0].streak} days`, label: "Longest live streak" } : null,
     trial?.price_paise ? { value: inr(trial.price_paise), label: "Trial day" } : null,
+    showcase[0] ? { value: `${showcase[0].streak} days`, label: "Longest live streak" } : null,
   ].filter((f): f is { value: string; label: string } => !!f);
 
   return (
@@ -43,7 +40,7 @@ export default async function Home() {
 
       {/* hero — "arena doors": giant STARS GYM over a framed photo window; scrolling opens the window to full
           screen and lands on the headline. Without scroll-driven CSS (or with reduced motion) the landed state shows directly. */}
-      <section id="top" className="doors relative">
+      <section id="top" className="doors relative" data-offer={offers[0] ? "" : undefined}>
         <div className="sticky top-0 isolate flex h-svh flex-col overflow-hidden bg-ink">
           <div aria-hidden="true" className="door-window absolute inset-0 -z-10">
             <div className="door-zoom absolute inset-0">
@@ -61,7 +58,7 @@ export default async function Home() {
           <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center">
             <h1 className="door-title text-center font-display text-[19vw] leading-[0.85] whitespace-nowrap uppercase max-sm:text-left max-sm:text-[40vw] [filter:drop-shadow(0_12px_40px_rgba(0,0,0,.6))]">
               <span className="hero-line inline-block" style={{ "--d": "250ms" } as React.CSSProperties}>
-                Stars <br className="sm:hidden" /><span className="text-transparent [-webkit-text-stroke:0.012em_var(--color-chalk)]">gym</span>
+                Stars <br className="sm:hidden" /><span className="door-outline text-transparent [-webkit-text-stroke:0.012em_var(--color-chalk)]">gym</span>
               </span>
             </h1>
           </div>
@@ -69,6 +66,13 @@ export default async function Home() {
             <p className="hero-line font-label text-sm font-bold tracking-[0.3em] text-ash uppercase" style={{ "--d": "500ms" } as React.CSSProperties}>
               The Fitness Arena{branches.length > 0 && <span className="max-sm:hidden">{` · ${branches.map((b) => b.name).join(" · ")}`}</span>}
             </p>
+            {offers[0] && (
+              <Link href="#plans" className="hero-line pointer-events-auto inline-flex max-w-full items-center gap-2 rounded-full border border-red bg-ink/70 px-4 py-2 text-sm font-bold backdrop-blur-sm hover:bg-red" style={{ "--d": "600ms" } as React.CSSProperties}>
+                <span aria-hidden="true" className="size-2 shrink-0 animate-pulse rounded-full bg-red" />
+                <span className="truncate">{offers[0].title} · {offerHeadline(offers[0])}</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+            )}
             <div className="hero-line flex flex-wrap justify-center gap-3" style={{ "--d": "650ms" } as React.CSSProperties}>
               {trial && <Link href={`/buy/${trial.id}`} className="btn-red min-h-14 px-8 text-base">Book a trial day</Link>}
             </div>
@@ -81,36 +85,62 @@ export default async function Home() {
           {/* landed band, under the title once it has arrived */}
           <div className="wrap relative z-10 mt-auto flex flex-col gap-6 pb-10 sm:pb-12 lg:flex-row lg:items-end lg:justify-between">
             <div className="door-land-1 flex max-w-xl flex-col gap-3">
+              {offers[0] && (
+                <Link href="#plans" className="inline-flex max-w-full items-center gap-2 self-start rounded-full bg-red px-4 py-2 text-sm font-bold text-white hover:bg-[#ff2a31]">
+                  <span className="truncate">{offers[0].title} · {offerHeadline(offers[0])}</span>
+                  <span aria-hidden="true">→</span>
+                </Link>
+              )}
               <p className="font-display text-[clamp(30px,3.2vw,48px)] leading-none uppercase">Earn your <span className="text-red">star.</span></p>
               <p className="text-base leading-relaxed text-body sm:text-lg">
                 Strength, cardio and personal training{branches.length > 1 ? ` at ${branches.map((b) => b.name).join(" & ")}` : ""}. Buy online, check in at the door, climb the streak wall.
               </p>
             </div>
-            <div className="door-land-2 flex flex-wrap gap-3">
+            {/* one row on phones too, so the band stays short and never runs into the title above it */}
+            <div className="door-land-2 flex gap-3">
               {trial && (
-                <Link href={`/buy/${trial.id}`} className="btn-red min-h-14 px-8 text-base">
+                <Link href={`/buy/${trial.id}`} className="btn-red min-h-12 flex-1 px-4 text-sm whitespace-nowrap sm:min-h-14 sm:flex-none sm:px-8 sm:text-base">
                   Book a trial day <Arrow />
                 </Link>
               )}
-              <Link href="#plans" className="btn-ghost min-h-14 border-chalk/30 bg-ink/40 px-8 text-base backdrop-blur-sm">See plans</Link>
+              <Link href="#plans" className="btn-ghost min-h-12 shrink-0 border-chalk/30 bg-ink/40 px-4 text-sm whitespace-nowrap backdrop-blur-sm sm:min-h-14 sm:px-8 sm:text-base">See plans</Link>
             </div>
           </div>
         </div>
       </section>
 
       {/* facts */}
-      {facts.length > 0 && (
-        <section aria-label="At a glance" className="border-y border-line bg-panel">
-          <dl className="wrap grid grid-cols-2 lg:grid-cols-4">
-            {facts.map((f, i) => (
-              <div key={f.label} className={`flex flex-col gap-1 py-7 ${i % 2 ? "pl-6" : "pr-6"} ${i > 0 ? "lg:border-l lg:border-line lg:pl-8" : ""} ${i % 2 ? "border-l border-line" : ""} ${i > 1 ? "max-lg:border-t max-lg:border-line" : ""}`}>
-                <dt className="label order-2">{f.label}</dt>
-                <dd className="order-1 font-display text-[clamp(30px,3.6vw,48px)] leading-none">{f.value}</dd>
+      {/* facts strip: hours (morning / evening) then the other facts. Phones: hours across the top, the rest side by side.
+          Desktop: equal columns, each block centred in its column. */}
+      <section aria-label="At a glance" className="border-y border-line bg-panel">
+        <dl className={`wrap grid grid-cols-2 ${["lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4"][facts.length + (hours.windows.length ? 1 : 0) - 1] ?? "lg:grid-cols-4"}`}>
+          {hours.windows.length > 0 && (
+            <div className="col-span-2 flex justify-center border-b border-line py-7 lg:col-span-1 lg:border-b-0 lg:py-9">
+              <div className="flex flex-col gap-2">
+                <dt className="label flex items-center gap-2"><span className="size-1.5 rounded-full bg-red" />Open {hours.days}</dt>
+                {hours.windows.map((w, i) => (
+                  <dd key={w} className="flex items-center gap-4">
+                    <span className="w-16 font-label text-[11px] font-bold tracking-[0.18em] text-ash uppercase">{hours.windows.length > 1 ? (i ? "Evening" : "Morning") : "Daily"}</span>
+                    <span className="font-display text-[clamp(28px,3vw,40px)] leading-none tabular-nums">{w}</span>
+                  </dd>
+                ))}
               </div>
-            ))}
-          </dl>
-        </section>
-      )}
+            </div>
+          )}
+          {facts.map((f, i) => (
+            <div key={f.label}
+              className={`flex justify-center py-7 lg:border-l lg:border-line lg:py-9 ${i % 2 ? "border-l border-line" : ""} ${i > 1 ? "max-lg:border-t max-lg:border-line" : ""} ${i === facts.length - 1 && i % 2 === 0 ? "col-span-2 lg:col-span-1" : ""}`}>
+              <div className="flex flex-col justify-center gap-1.5">
+                <dt className="label order-2">{f.label}</dt>
+                <dd className="order-1 font-display text-[clamp(40px,4vw,56px)] leading-none">{f.value}</dd>
+              </div>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      {/* running offers, big — the top bar only rotates them */}
+      <OfferBanner offers={offers} />
 
       {/* 01 programs */}
       <section className="wrap flex flex-col gap-10 py-24 md:py-32">
@@ -140,8 +170,8 @@ export default async function Home() {
         <div className="wrap flex flex-col gap-12 py-24 md:py-32">
           <PlanPicker plans={plans} offers={offers} admissionPaise={settings.admission_fee_paise ?? 0} />
           <div className="grid gap-4 md:grid-cols-2">
-            {trial && <Pass href={`/buy/${trial.id}`} title="Trial day" sub="First visit · one per person" price={<Price paise={trial.price_paise} offer={bestOffer(offers, "trial")} />} cta="Book" red />}
-            {dayPass && <Pass href={`/buy/${dayPass.id}`} title="Day pass" sub="Single day · any branch" price={<Price paise={dayPass.price_paise} offer={bestOffer(offers, "day_pass")} />} cta="Buy" />}
+            {trial && <Pass href={`/buy/${trial.id}`} title="Trial day" sub="First visit · one per person" price={<Price paise={trial.price_paise} offer={bestOffer(offers, "trial", 1)} days={1} />} cta="Book" red />}
+            {dayPass && <Pass href={`/buy/${dayPass.id}`} title="Day pass" sub="Single day · any branch" price={<Price paise={dayPass.price_paise} offer={bestOffer(offers, "day_pass", 1)} days={1} />} cta="Buy" />}
           </div>
           <p className="text-[15px] text-ash">Prefer the desk? Choose “Pay at the desk” at checkout and scan the UPI QR at reception.</p>
         </div>

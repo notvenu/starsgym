@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin } from "@/lib/supabase";
+import { adminDb, requireAdmin, requireStaff } from "@/lib/supabase";
+import { logAction } from "@/lib/log";
 import { reelEmbed, videoEmbed, type ItemKind } from "@/lib/gym";
 import { sitePhoto } from "./upload";
 
@@ -80,10 +81,15 @@ export async function deleteItem(id: string): Promise<Result> {
   return refresh("Deleted");
 }
 
+/** Desk: an enquiry was called back. Staff only for their branch's (or "any branch") enquiries. */
 export async function markEnquiry(id: string): Promise<Result> {
-  const { supabase } = await requireAdmin();
-  const { error } = await supabase.from("enquiries").update({ handled: true }).eq("id", id);
+  const { profile: me, branchId } = await requireStaff();
+  const db = adminDb(); // enquiries are owner-only in the database; checked here instead
+  const { data: e } = await db.from("enquiries").select("name,branch_id").eq("id", id).maybeSingle();
+  if (!e || (branchId && e.branch_id && e.branch_id !== branchId)) return { error: "That enquiry isn't for your branch." };
+  const { error } = await db.from("enquiries").update({ handled: true }).eq("id", id);
   if (error) return { error: error.message };
+  await logAction(me, "Handled enquiry", { memberName: e.name as string, branchId: (e.branch_id as string | null) ?? null });
   revalidatePath("/admin", "layout"); // inbox badge
   return { ok: "Done" };
 }

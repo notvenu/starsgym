@@ -49,7 +49,7 @@ async function checkFace(canvas: HTMLCanvasElement): Promise<string | null> {
  * Take a selfie or upload a photo. Checks the face, crops a square, and puts the JPEG in a hidden
  * <input type="file" name="photo"> so the surrounding form submits it like any other field.
  */
-export function PhotoCapture({ current, label = "Photo" }: { current?: string | null; label?: string }) {
+export function PhotoCapture({ current, label = "Photo", required }: { current?: string | null; label?: string; required?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -98,6 +98,7 @@ export function PhotoCapture({ current, label = "Photo" }: { current?: string | 
         const dt = new DataTransfer();
         dt.items.add(new File([blob], "photo.jpg", { type: "image/jpeg" }));
         input.current.files = dt.files;
+        input.current.dispatchEvent(new Event("change", { bubbles: true })); // clears a "Add a photo" message
         setPreview((old) => (old && URL.revokeObjectURL(old), URL.createObjectURL(blob)));
         stop();
       },
@@ -124,9 +125,9 @@ export function PhotoCapture({ current, label = "Photo" }: { current?: string | 
 
   const shown = preview ?? current;
   return (
-    <div className="flex flex-col gap-3">
+    <div data-field className="flex flex-col gap-3">
       <span className="label">{label}</span>
-      <input ref={input} type="file" name="photo" accept="image/jpeg" className="hidden" tabIndex={-1} aria-hidden="true" />
+      <input ref={input} type="file" name="photo" accept="image/jpeg" className="hidden" tabIndex={-1} aria-hidden="true" required={required && !current} />
 
       {camera ? (
         <div className="flex flex-col items-center gap-3">

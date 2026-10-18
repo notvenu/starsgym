@@ -4,16 +4,30 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Lenis from "lenis";
-import { bestOffer, discounted, savings, DURATIONS, GENDERS, gymDate, inr, itemImage, openState, prettyDay, TRACKS, videoEmbed, type Branch, type Holiday, type MemberDetails, type Offer, type Plan, type SiteItem, type Track } from "@/lib/gym";
+import { bestOffer, discounted, savings, DURATIONS, GENDERS, gymDate, inr, itemImage, offerPercent, openState, prettyDay, TRACKS, videoEmbed, type Branch, type Holiday, type MemberDetails, type Offer, type Plan, type SiteItem, type Track } from "@/lib/gym";
 import { siteImg } from "@/lib/img";
 
 /** Inertia scrolling + fade-up reveal for [data-reveal]. Both off when the visitor prefers reduced motion. */
 export function SmoothScroll() {
   const pathname = usePathname();
 
+  const admin = pathname.startsWith("/admin"); // a work tool: plain native scrolling there
   useEffect(() => {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const lenis = new Lenis({ anchors: true, lerp: 0.1 });
+    if (admin || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const lenis = new Lenis({
+      anchors: true,
+      lerp: 0.1,
+      // Lenis takes every wheel event for the page; anything that scrolls on its own (pop-ups, side menus, tables)
+      // has to keep the mouse wheel, or it can only be scrolled by touch or keyboard
+      prevent: (node) => {
+        for (let el: HTMLElement | null = node; el && el !== document.body; el = el.parentElement) {
+          if (el.tagName === "DIALOG" || el.hasAttribute("popover")) return true;
+          const { overflowY } = getComputedStyle(el);
+          if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) return true;
+        }
+        return false;
+      },
+    });
     let id = requestAnimationFrame(function raf(t) {
       lenis.raf(t);
       id = requestAnimationFrame(raf);
@@ -22,15 +36,22 @@ export function SmoothScroll() {
       cancelAnimationFrame(id);
       lenis.destroy();
     };
-  }, []);
+  }, [admin]);
 
   useEffect(() => {
     const io = new IntersectionObserver(
-      (entries) => entries.forEach((e) => e.isIntersecting && (e.target.classList.add("is-in"), io.unobserve(e.target))),
+      (entries) => entries.forEach((e) => e.isIntersecting && (e.target.setAttribute("data-shown", ""), io.unobserve(e.target))),
       { rootMargin: "0px 0px -10% 0px" },
     );
-    document.querySelectorAll("[data-reveal]:not(.is-in)").forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    const watch = () => document.querySelectorAll("[data-reveal]:not([data-shown])").forEach((el) => io.observe(el));
+    watch();
+    // pages stream in after this runs (loading.tsx shows first), so also pick up [data-reveal] added later
+    const mo = new MutationObserver(watch);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
   }, [pathname]);
 
   return null;
@@ -108,17 +129,16 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      {/* a slow marquee of the plans that you can also swipe (touch) or drag (mouse) */}
+      <Marquee className="-mx-4 sm:-mx-8 md:mx-0" label="Membership plans">
         {MEMBERSHIP_TRACKS.map((track, i) => {
           const plan = plans.find((p) => p.track === track && p.duration_days === days);
-          const offer = bestOffer(offers, track);
+          const offer = bestOffer(offers, track, days);
           const featured = track === "strength_cardio";
           return (
             <div
               key={track}
-              data-reveal
-              style={{ transitionDelay: `${i * 80}ms` }}
-              className={`lift relative flex flex-col gap-6 rounded-md border p-7 ${featured ? "border-red bg-redwash" : "border-line bg-carbon"}`}
+              className={`lift relative flex w-[min(300px,80vw)] shrink-0 flex-col gap-6 rounded-md border p-7 sm:w-[320px] md:w-auto ${featured ? "border-red bg-redwash" : "border-line bg-carbon"}`}
             >
               {featured && (
                 <span className="absolute -top-px right-6 rounded-b bg-red px-3 py-1.5 font-label text-[13px] font-bold uppercase tracking-[0.18em] text-white">
@@ -126,10 +146,10 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
                 </span>
               )}
               <p className="label">Track 0{i + 1}</p>
-              <h3 className="font-display text-[36px] leading-none uppercase xl:min-h-[2em]">{TRACKS[track]}</h3>
+              <h3 className="min-h-[2em] font-display text-[36px] leading-none uppercase">{TRACKS[track]}</h3>
               <div>
                 <span key={days} className="inline-block animate-rise [animation-duration:.5s]">
-                  {plan ? <Price paise={plan.price_paise} offer={offer} size="text-[48px]" /> : <span className="font-display text-[48px]">—</span>}
+                  {plan ? <Price paise={plan.price_paise} offer={offer} days={days} size="text-[48px]" /> : <span className="font-display text-[48px]">—</span>}
                 </span>
                 <p className="mt-1.5 text-[15px] text-ash">per {per}</p>
                 {(() => {
@@ -165,7 +185,7 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
             </div>
           );
         })}
-      </div>
+      </Marquee>
       <p className="-mt-6 text-sm text-ash">
         {admissionPaise > 0 && <>+ {inr(admissionPaise)} one-time admission with your first membership. </>}
         Fees are non-refundable and non-transferable.
@@ -173,6 +193,100 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
     </div>
   );
 }
+
+/**
+ * A row that drifts slowly sideways and loops, and is still an ordinary scroller: swipe it on a phone, drag or
+ * shift-scroll it with a mouse. It pauses while you hover, touch, focus or drag it, and picks up again a moment after.
+ * The children render four times so it can loop at any screen width (the copies are hidden from screen readers and
+ * keyboards): it drifts through the second set and jumps back one set when it reaches the third, which looks identical.
+ * Phones only (below md): from tablet up it's a plain grid of the children, once — no copies, no drifting.
+ * Still with reduced motion.
+ */
+export function Marquee({ children, label, className = "", speed = 28 }: { children: React.ReactNode; label: string; className?: string; speed?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const phone = matchMedia("(max-width: 767px)"); // tablets and up show a grid instead
+    let held = 0; // hover / touch / focus / drag in progress
+    let restAt = 0; // after the visitor scrolled it themselves, wait before drifting again
+    const set = () => el.scrollWidth / COPIES; // the width of one set of children
+    let pos = set(); // start on the first copy, so it can loop backwards too
+    let last = performance.now();
+    let frame = 0;
+    if (phone.matches) el.scrollLeft = pos;
+    const tick = (t: number) => {
+      const dt = Math.min(64, t - last);
+      last = t;
+      if (!phone.matches) {
+        frame = requestAnimationFrame(tick); // a grid now (window widened): nothing to scroll
+        return;
+      }
+      const w = set();
+      if (!still && !held && t > restAt) pos += (speed * dt) / 1000;
+      else pos = el.scrollLeft; // follow their swipe
+      if (pos >= w * 2) pos -= w; // seamless: every set looks the same
+      if (pos < w) pos += w;
+      if (Math.abs(el.scrollLeft - pos) > 0.5 || (!held && t > restAt)) el.scrollLeft = pos;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    const hold = () => void held++;
+    const release = () => ((held = Math.max(0, held - 1)), (restAt = performance.now() + 2500));
+    const rest = () => (restAt = performance.now() + 2500);
+    // mouse: drag to scroll (touch scrolls natively)
+    let drag: { x: number; left: number; moved: boolean } | null = null;
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || e.button !== 0 || !phone.matches) return;
+      drag = { x: e.clientX, left: el.scrollLeft, moved: false };
+      hold();
+    };
+    const move = (e: PointerEvent) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x;
+      if (Math.abs(dx) > 4) drag.moved = true;
+      el.scrollLeft = drag.left - dx;
+    };
+    const up = () => {
+      if (!drag) return;
+      const moved = drag.moved;
+      drag = null;
+      release();
+      // a drag isn't a click on the card's button
+      if (moved) el.addEventListener("click", (e) => (e.preventDefault(), e.stopPropagation()), { capture: true, once: true });
+    };
+    const on: [keyof HTMLElementEventMap, EventListener][] = [
+      ["mouseenter", hold], ["mouseleave", release], ["touchstart", hold], ["touchend", release], ["touchcancel", release],
+      ["focusin", hold], ["focusout", release], ["wheel", rest], ["pointerdown", down as EventListener],
+    ];
+    on.forEach(([type, fn]) => el.addEventListener(type, fn, { passive: true }));
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+    return () => {
+      cancelAnimationFrame(frame);
+      on.forEach(([type, fn]) => el.removeEventListener(type, fn));
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", up);
+    };
+  }, [speed]);
+  return (
+    <div
+      ref={ref}
+      role="region"
+      aria-label={label}
+      className={`flex cursor-grab gap-5 overflow-x-auto px-4 pb-2 select-none [scrollbar-width:none] active:cursor-grabbing sm:px-8 [mask-image:linear-gradient(to_right,transparent,#000_3rem,#000_calc(100%-3rem),transparent)] md:grid md:cursor-auto md:grid-cols-2 md:overflow-visible md:px-0 md:pb-0 md:select-auto md:[mask-image:none] xl:grid-cols-4 ${className}`}
+    >
+      {children}
+      {Array.from({ length: COPIES - 1 }, (_, i) => (
+        <div key={i} className="contents md:hidden" aria-hidden="true" inert>
+          {children}
+        </div>
+      ))}
+    </div>
+  );
+}
+const COPIES = 4;
 
 export function Check({ className = "text-red" }: { className?: string }) {
   return (
@@ -228,7 +342,7 @@ export function MemberDetailsFields({ d }: { d?: { [K in keyof MemberDetails]?: 
   );
 }
 
-export function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+export function Field({ label, ...props }: { label: string; ref?: React.Ref<HTMLInputElement> } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="label">{label}</span>
@@ -238,13 +352,13 @@ export function Field({ label, ...props }: { label: string } & React.InputHTMLAt
 }
 
 /** Price with the running offer applied: struck-through list price + "−20%" tag. */
-export function Price({ paise, offer, size = "text-[32px]" }: { paise: number; offer?: Offer; size?: string }) {
-  if (!offer || !paise) return <span className={`font-display leading-none ${size}`}>{inr(paise)}</span>;
+export function Price({ paise, offer, days, size = "text-[32px]" }: { paise: number; offer?: Offer; days?: number; size?: string }) {
+  if (!offer || !paise || !offerPercent(offer, days)) return <span className={`font-display leading-none ${size}`}>{inr(paise)}</span>;
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <span className={`font-display leading-none ${size}`}>{inr(discounted(paise, offer))}</span>
+      <span className={`font-display leading-none ${size}`}>{inr(discounted(paise, offer, days))}</span>
       <s className="text-lg text-ash">{inr(paise)}</s>
-      <span title={offer.title} className="rounded-xs bg-red px-2 py-0.5 font-label text-sm font-bold tracking-wider text-white">−{offer.percent_off}%</span>
+      <span title={offer.title} className="rounded-xs bg-red px-2 py-0.5 font-label text-sm font-bold tracking-wider text-white">−{offerPercent(offer, days)}%</span>
     </span>
   );
 }

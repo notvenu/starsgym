@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 
 // Toasts and confirm pop-ups for the whole site. <Feedback /> (root layout) renders them;
 // any client component calls toast() / confirmDialog() / useResultToast().
@@ -31,10 +31,23 @@ export function useResultToast(state: ActionResult) {
   useEffect(() => toastResult(state), [state]);
 }
 
-/** Drop-in for an inline result message: renders nothing, toasts instead. */
+/**
+ * A form's result: success as a toast; an error stays on the page as a red box (its own full-width line, under the
+ * button) and the view scrolls to it, so it can't be missed.
+ */
 export function ResultToast({ state }: { state: ActionResult }) {
-  useResultToast(state);
-  return null;
+  const box = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (state?.error) box.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    else toastResult(state);
+  }, [state]);
+  if (!state?.error) return null;
+  return (
+    <p ref={box} role="alert" className="form-alert flex items-start gap-2 rounded-md border border-redline bg-redwash px-4 py-3 text-sm font-semibold text-chalk">
+      <span aria-hidden="true" className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-red text-[11px] font-bold text-white">!</span>
+      {state.error}
+    </p>
+  );
 }
 
 /** Toasts once when it mounts — for server-rendered moments like "pass issued". */
@@ -62,9 +75,18 @@ export function Feedback() {
       setTimeout(() => drop(id), tone === "error" || text.length > 60 ? 7000 : 4000); // errors and instructions stay longer
     };
     ask = setQ;
+    const fixed = (e: Event) => {
+      const el = e.target as HTMLInputElement;
+      const box = el.closest?.("[data-error]");
+      if (box && (!el.validity || el.validity.valid)) box.removeAttribute("data-error");
+    };
+    addEventListener("input", fixed, true);
+    addEventListener("change", fixed, true);
     return () => {
       push = null;
       ask = null;
+      removeEventListener("input", fixed, true);
+      removeEventListener("change", fixed, true);
     };
   }, []);
 
@@ -116,4 +138,49 @@ export function Feedback() {
       </dialog>
     </>
   );
+}
+
+/**
+ * Submit a form to a useActionState action without React's automatic reset. With <form action={…}> React clears every
+ * field once the action finishes — so a server error left the member pop-up blank and staff re-typing everything.
+ * Usage: <form noValidate onSubmit={keepFields(action)}>
+ */
+export const keepFields = (action: (data: FormData) => void) => (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  if (!checkFields(e.currentTarget)) return;
+  const data = new FormData(e.currentTarget);
+  startTransition(() => action(data));
+};
+
+/** The message under a field that isn't filled in right. */
+function problem(el: HTMLInputElement) {
+  const v = el.validity;
+  if (v.valueMissing) return el.type === "file" ? "Add a photo" : el.type === "radio" ? "Pick one" : el.tagName === "SELECT" ? "Choose one" : "Fill this in";
+  if (v.typeMismatch) return el.type === "email" ? "Enter a valid email" : el.type === "url" ? "Enter a full link, starting https://" : "Check this";
+  if (v.tooShort) return `At least ${el.minLength} characters`;
+  if (v.rangeUnderflow) return `${el.min} or more`;
+  if (v.rangeOverflow) return `${el.max} or less`;
+  if (v.badInput) return "Enter a number";
+  return el.validationMessage || "Check this";
+}
+
+/**
+ * Our own form validation, in place of the browser's bubbles (forms using it are noValidate): every field that isn't
+ * right gets a red message under it (data-error on its label, fieldset or [data-field] box, drawn in CSS), and the
+ * view scrolls to the first one. Each message clears as soon as that field is fixed (see Feedback). True when all good.
+ */
+export function checkFields(form: HTMLFormElement) {
+  let first: { box: HTMLElement; el: HTMLInputElement } | null = null;
+  for (const el of Array.from(form.elements) as HTMLInputElement[]) {
+    if (!el.willValidate || el.validity.valid) continue;
+    // a radio group reports once, on its fieldset — not on every option's label
+    const box = (el.type === "radio" ? el.closest<HTMLElement>("fieldset, [data-field]") : null) ?? el.closest<HTMLElement>("[data-field], fieldset, label") ?? el;
+    box.setAttribute("data-error", problem(el));
+    first ??= { box, el };
+  }
+  if (first) {
+    first.box.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (first.el.type !== "file" && first.el.type !== "hidden") first.el.focus({ preventScroll: true });
+  }
+  return !first;
 }

@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { adminDb, requireAdmin } from "@/lib/supabase";
 import { sitePhoto } from "../content/upload";
+import { logAction } from "@/lib/log";
 
 export type Result = { error?: string; ok?: string; password?: string } | undefined;
 /** A one-time password for a desk account, shown to the owner once; they're asked to change it at first sign-in. */
@@ -89,6 +90,7 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
   }
 
   revalidatePath("/", "layout"); // the website's trainer pages and the admin
+  await logAction(me, isNew ? "Added to team" : "Edited team member", { memberId: profileId, memberName: name, detail: access === "none" ? "trainer card" : access });
   return { ok: isNew ? "Added to the team" : "Saved", password };
 }
 
@@ -101,5 +103,7 @@ export async function resetStaffPassword(profileId: string): Promise<Result> {
   if (!p || p.role === "member") return { error: "Members reset from the Members list." };
   const password = tempPassword();
   const { error } = await admin.auth.admin.updateUserById(profileId, { password, app_metadata: { temp_password: true } });
-  return error ? { error: error.message } : { ok: "Password reset", password };
+  if (error) return { error: error.message };
+  await logAction(me, "Reset staff password", { memberId: profileId });
+  return { ok: "Password reset", password };
 }

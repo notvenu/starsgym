@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Field } from "@/components/client";
-import { confirmDialog, ResultToast, toastResult } from "@/components/feedback";
+import { confirmDialog, ResultToast, toastResult, keepFields } from "@/components/feedback";
 import type { Branch, SiteItem } from "@/lib/gym";
 import { deleteItem } from "../content/actions";
 import { PhotoInput } from "../content/ui";
@@ -55,7 +55,7 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
   const needsEmail = access !== "none" && !person?.profileId;
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-5">
       {person?.profileId && <input type="hidden" name="profile_id" value={person.profileId} />}
       {item && <input type="hidden" name="item_id" value={item.id} />}
       <input type="hidden" name="access" value={access} />

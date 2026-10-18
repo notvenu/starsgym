@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Field } from "@/components/client";
-import { confirmDialog, ResultToast, toastResult } from "@/components/feedback";
+import { confirmDialog, ResultToast, toastResult, keepFields } from "@/components/feedback";
 import { itemImage, type ItemKind, type Settings, type SiteItem } from "@/lib/gym";
 import { deleteItem, markEnquiry, saveItem, saveSettings, setItemActive, type Result } from "./actions";
 
@@ -11,7 +11,7 @@ const Status = ResultToast; // results show as toasts
 export function SettingsForm({ settings }: { settings: Settings }) {
   const [state, action, pending] = useActionState(saveSettings, undefined);
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Instagram" name="instagram_url" type="url" placeholder="https://instagram.com/starsgym" defaultValue={settings.instagram_url ?? ""} />
         <Field label="Facebook" name="facebook_url" type="url" placeholder="https://facebook.com/starsgym" defaultValue={settings.facebook_url ?? ""} />
@@ -55,7 +55,7 @@ export function ItemForm({ kind, item, trainers = [], onDone }: { kind: ItemKind
     return res;
   }, undefined);
   return (
-    <form action={action} className="flex flex-col gap-4" key={item?.id ?? "new"}>
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4" key={item?.id ?? "new"}>
       <input type="hidden" name="kind" value={kind} />
       {item && <input type="hidden" name="id" value={item.id} />}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

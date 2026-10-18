@@ -37,10 +37,10 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
           <p className="eyebrow">Checkout</p>
           <h1 className="font-display text-[clamp(52px,7vw,96px)] leading-[0.92] uppercase">{planName(plan)}</h1>
           <p className="flex flex-wrap items-baseline gap-3">
-            <Price paise={plan.price_paise} offer={bestOffer(offers, plan.track)} size="text-6xl" />
+            <Price paise={plan.price_paise} offer={bestOffer(offers, plan.track, plan.duration_days)} days={plan.duration_days} size="text-6xl" />
             <span className="text-2xl text-ash">/ {per}</span>
           </p>
-          {bestOffer(offers, plan.track) && <p className="text-red">{bestOffer(offers, plan.track)!.title} applied automatically.</p>}
+          {bestOffer(offers, plan.track, plan.duration_days) && <p className="text-red">{bestOffer(offers, plan.track, plan.duration_days)!.title} applied automatically.</p>}
           {admission > 0 && <p className="text-body">+ {inr(admission)} one-time admission fee (first membership only).</p>}
           <p className="max-w-md text-ash">
             {plan.duration_days === 1
@@ -54,8 +54,8 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
               {upsell.map(({ p, s }) => (
                 <Link key={p.id} href={`/buy/${p.id}`} className="group flex items-center justify-between gap-3 rounded-md border border-line bg-carbon px-4 py-3 transition-colors hover:border-red">
                   <span className="min-w-0">
-                    <span className="block font-bold">{DURATIONS.find((d) => d.days === p.duration_days)?.label} · {inr(discounted(p.price_paise, bestOffer(offers, p.track)))}</span>
-                    <span className="block text-sm text-ash">{inr(s!.perMonth)}/month instead of {inr(discounted(plan.price_paise, bestOffer(offers, plan.track)))}</span>
+                    <span className="block font-bold">{DURATIONS.find((d) => d.days === p.duration_days)?.label} · {inr(discounted(p.price_paise, bestOffer(offers, p.track, p.duration_days), p.duration_days))}</span>
+                    <span className="block text-sm text-ash">{inr(s!.perMonth)}/month instead of {inr(discounted(plan.price_paise, bestOffer(offers, plan.track, plan.duration_days), plan.duration_days))}</span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block font-display text-2xl leading-none text-red">−{s!.pct}%</span>

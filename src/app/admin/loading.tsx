@@ -1,6 +1,6 @@
-import { GymLoader } from "@/components/loader";
+import { PageSkeleton } from "@/components/loader";
 
-/** Shown the moment a desk tab is tapped, inside the admin shell, while the page loads. */
+/** Shown the moment a desk tab is tapped, inside the admin shell: placeholders shaped like the page while data loads. */
 export default function Loading() {
-  return <GymLoader compact />;
+  return <PageSkeleton />;
 }

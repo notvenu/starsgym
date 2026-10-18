@@ -40,7 +40,8 @@ export type Offer = {
   id: string;
   title: string;
   description: string;
-  percent_off: number;
+  percent_off: number; // the biggest discount it gives (what "up to" shows)
+  percent_by_days: Record<string, number> | null; // per plan length, e.g. {"30":10,"90":15,"180":20,"365":25}; null = percent_off on every plan (0019)
   tracks: Track[] | null;
   starts_on: string;
   ends_on: string;
@@ -48,14 +49,20 @@ export type Offer = {
 };
 
 /** Mirrors best_offer() in SQL — display only; the database prices the order. */
-export function bestOffer(offers: Offer[], track: Track, today = gymDate()) {
+/** The % an offer takes off a plan `days` long (10% monthly, 25% yearly…); 0 if it doesn't cover that length.
+ *  Without `days` it's the biggest it gives — for "up to 25% off". The database prices orders the same way (0019). */
+export const offerPercent = (o: Offer, days?: number) =>
+  o.percent_by_days && days !== undefined ? (o.percent_by_days[String(days)] ?? 0) : o.percent_off;
+
+/** The best running offer for a track (and plan length, when given). */
+export function bestOffer(offers: Offer[], track: Track, days?: number, today = gymDate()) {
   return offers
-    .filter((o) => o.active && o.starts_on <= today && o.ends_on >= today && (!o.tracks || o.tracks.includes(track)))
-    .sort((a, b) => b.percent_off - a.percent_off)[0];
+    .filter((o) => o.active && o.starts_on <= today && o.ends_on >= today && (!o.tracks || o.tracks.includes(track)) && offerPercent(o, days) > 0)
+    .sort((a, b) => offerPercent(b, days) - offerPercent(a, days))[0];
 }
 
-export const discounted = (paise: number, offer?: Offer) =>
-  offer ? Math.round((paise * (100 - offer.percent_off)) / 100) : paise;
+export const discounted = (paise: number, offer?: Offer, days?: number) =>
+  offer ? Math.round((paise * (100 - offerPercent(offer, days))) / 100) : paise;
 
 /**
  * How much a longer plan saves against paying monthly for the same stretch (offers applied to both).
@@ -65,9 +72,9 @@ export function savings(plans: Plan[], offers: Offer[], plan: Plan) {
   const months = Math.round(plan.duration_days / 30); // 365 days → 12
   const monthly = plans.find((p) => p.track === plan.track && p.duration_days === 30 && p.active);
   if (months <= 1 || !monthly) return null;
-  const offer = bestOffer(offers, plan.track);
-  const price = discounted(plan.price_paise, offer);
-  const payingMonthly = discounted(monthly.price_paise, offer) * months;
+  const offer = bestOffer(offers, plan.track, plan.duration_days);
+  const price = discounted(plan.price_paise, offer, plan.duration_days);
+  const payingMonthly = discounted(monthly.price_paise, bestOffer(offers, plan.track, 30), 30) * months;
   const save = payingMonthly - price;
   if (save <= 0) return null;
   return { perMonth: Math.round(price / months), payingMonthly, save, pct: Math.round((save / payingMonthly) * 100) };
@@ -142,6 +149,21 @@ export const sessions = (b: Hours) =>
   );
 
 export const hoursLabel = (b: Hours) => sessions(b).map(([a, c]) => `${a}–${c}`).join(" · ");
+
+/**
+ * The gym's hours across every branch, for the homepage: each session from its earliest opening to its latest closing
+ * (morning, then evening), and the days at least one branch is open ("Mon–Sat", "Every day", "Closed Sun, Wed").
+ */
+export function gymHours(branches: Hours[]) {
+  const span = (i: number) => {
+    const s = branches.map((b) => sessions(b)[i]).filter((x) => !!x);
+    return s.length ? `${s.map(([o]) => o).sort()[0]}–${s.map(([, c]) => c).sort().at(-1)}` : null;
+  };
+  const windows = [span(0), span(1)].filter((w): w is string => !!w);
+  const closed = [0, 1, 2, 3, 4, 5, 6].filter((d) => branches.length > 0 && branches.every((b) => b.closed_days.includes(d)));
+  const days = !closed.length ? "Every day" : closed.length === 1 && closed[0] === 0 ? "Mon–Sat" : `Closed ${closed.map((d) => DAY_NAMES[d]).join(", ")}`;
+  return { windows, days };
+}
 
 /** Women-only windows as ["HH:MM", "HH:MM"] pairs. */
 export const ladiesSessions = (b: Hours) =>
@@ -328,4 +350,60 @@ export function starterPassword(name: string | null | undefined, phone: string |
   const word = noInitials.length >= 2 ? noInitials : letters(name ?? ""); // a name that's only initials keeps them
   const digits = (phone ?? "").replace(/\D/g, "");
   return word.length >= 2 && digits.length >= 10 ? word + digits.slice(-4) : null;
+}
+
+const words = (s: string | null | undefined) =>
+  (s ?? "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** Edit distance, giving up past `cap` (all we need is "one or two typos"). */
+function typos(a: string, b: string, cap: number) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    if (Math.min(...row) > cap) return cap + 1;
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Fuzzy people search: how well a query fits someone (lower = better), or null for no match. Every word of the query
+ * must fit some word of their name or email: start of a word (0), inside one (1), a typo or two (2–3), or its letters in
+ * order within one word (4) — so "rahul kmr", "rahl" and "kumar r" all find Rahul Kumar. 3+ digits match phone numbers.
+ */
+export function fuzzyScore(query: string, name: string | null, email?: string | null, phone?: string | null): number | null {
+  const digits = query.replace(/\D/g, "");
+  if (digits.length >= 3 && digits.length >= query.replace(/\s/g, "").length - 1) {
+    return (phone ?? "").replace(/\D/g, "").includes(digits) ? 0 : null;
+  }
+  const hay = [...words(name), ...words(email?.split("@")[0]), ...(email ? [email.toLowerCase()] : [])];
+  let total = 0;
+  for (const t of words(query)) {
+    let best = Infinity;
+    for (const w of hay) {
+      const cap = t.length >= 7 ? 2 : t.length >= 4 ? 1 : 0;
+      const s = w.startsWith(t) ? 0
+        : w.includes(t) ? 1
+        : cap && typos(t, w.slice(0, t.length), cap) <= cap ? 2 // typo in what they've typed so far
+        : cap && typos(t, w, cap) <= cap ? 3
+        : t.length >= 3 && [...t].every(((i) => (c: string) => (i = w.indexOf(c, i) + 1) > 0)(0)) ? 4 // letters in order
+        : Infinity;
+      best = Math.min(best, s);
+      if (best === 0) break;
+    }
+    if (best === Infinity) return null;
+    total += best;
+  }
+  return total;
+}
+
+/** Plan lengths an offer can price separately: the membership lengths, plus one-day passes (trial / day pass). */
+export const OFFER_LENGTHS: [number, string][] = [...DURATIONS.map((d) => [d.days, d.label] as [number, string]), [1, "Day pass / trial"]];
+
+/** An offer's discount in words: "25% off", or per length "10% Monthly · 15% Quarterly · 25% Yearly". */
+export function offerLabel(o: Offer) {
+  if (!o.percent_by_days) return `${o.percent_off}% off`;
+  return OFFER_LENGTHS.filter(([d]) => o.percent_by_days![String(d)]).map(([d, label]) => `${o.percent_by_days![String(d)]}% ${label}`).join(" · ");
 }

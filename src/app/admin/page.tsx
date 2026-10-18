@@ -90,7 +90,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
           <span className="shrink-0 rounded-full border border-red px-3 py-1 text-xs font-bold tracking-wider text-red uppercase">{badge}</span>
         </Link>
         <MemberActions
-          canDelete={isOwner}
+          owner={isOwner}
           member={m}
           passId={runningSubId}
           cancelSubId={runningSubId}
@@ -111,7 +111,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       <PageHeader title={`Hi, ${profile.full_name.split(" ")[0] || "coach"}`} intro={`Here's Stars Gym on ${prettyDay(today)}.`}>
         <Link href="/admin/members?new=1" className="btn-red">+ New member</Link>
         {isOwner && <Link href="/admin/pricing" className="btn-ghost">Edit prices</Link>}
-        {isOwner && <Link href="/admin/branches#holidays" className="btn-ghost">Declare holiday</Link>}
+        <Link href="/admin/branches?holiday=1#holidays" className="btn-ghost">Add holiday</Link>
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -190,7 +190,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         )}
       </Panel>
 
-      <Panel title="Coming up" action={isOwner && <Link href="/admin/branches#holidays" className="text-sm font-bold text-red hover:text-chalk">Manage →</Link>}>
+      <Panel title="Coming up" action={<Link href="/admin/branches#holidays" className="text-sm font-bold text-red hover:text-chalk">Manage →</Link>}>
         <ul className="flex flex-col gap-2 text-sm">
           {((holidays.data ?? []) as Holiday[]).map((h) => (
             <li key={h.id}><span className="font-bold">Closed {prettyDay(h.day)}</span> <span className="text-ash">· {where(h)}{h.note && ` · ${h.note}`}</span></li>

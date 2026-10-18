@@ -51,6 +51,19 @@ html { color-scheme: dark; }
 body { background: var(--color-ink); color: var(--color-chalk); font-family: var(--font-sans); }
 /* app feel on phones: no grey flash on tap, no double-tap zoom delay */
 html { -webkit-tap-highlight-color: transparent; }
+/* never pan sideways, on any screen: clip whatever pokes past the edge. clip (not hidden) makes no scroll container, so
+   the sticky header still sticks and the swipe rows still scroll on their own */
+html, body { overflow-x: clip; }
+/* a hidden (sr-only) input is absolutely positioned: anchor it inside the label that wraps it. Otherwise clicking an
+   option focuses an input sitting far away, and the browser scrolls a pop-up there (it jumped to its empty bottom) */
+label:has(> .sr-only) { position: relative; }
+/* form validation (checkFields): the message under the field, and its box outlined in red */
+[data-error]::after { content: attr(data-error); display: block; margin-top: 0.375rem; font-size: 0.8125rem; font-weight: 600; color: var(--color-red); }
+[data-error] :is(.field, input:not([type="radio"], [type="checkbox"], [type="file"]), select, textarea) { border-color: var(--color-red); }
+fieldset[data-error] label, [data-field][data-error] > div:first-of-type { border-color: var(--color-red); }
+/* a form's error box (ResultToast) gets a full line of its own, under the button row */
+.form-alert { flex-basis: 100%; width: 100%; }
+:has(> .form-alert) { flex-wrap: wrap; }
 a, button, select, label, summary { touch-action: manipulation; }
 /* opened from the home screen: no long-press link previews (pull-to-refresh stays — it's the app's reload) */
 @media (display-mode: standalone) {
@@ -79,7 +92,7 @@ a, button, select, label, summary { touch-action: manipulation; }
 
 /* Scroll reveal: elements with data-reveal fade up when they enter the viewport (see SmoothScroll). */
 [data-reveal] { opacity: 0; transform: translateY(48px); transition: opacity 0.9s var(--ease-lift), transform 0.9s var(--ease-lift); }
-[data-reveal].is-in { opacity: 1; transform: none; }
+[data-reveal][data-shown] { opacity: 1; transform: none; } /* data-shown is set outside React, so hydration and re-renders leave it alone */
 
 .marquee:hover .marquee-track { animation-play-state: paused; }
 
@@ -110,23 +123,15 @@ a, button, select, label, summary { touch-action: manipulation; }
   .ring-burst { display: none; }
 }
 
-/* ── Gym loader: plates slide on, the bar presses, lines rotate. Fades in late so quick loads never flash it. ── */
+/* ── Gym loader (components/loader.tsx animates the lifter itself, SMIL). Fades in late so quick loads never flash it. ── */
 @keyframes loader-fade { from { opacity: 0; } to { opacity: 1; } }
 .loader-fade { animation: loader-fade 0.3s ease-out 0.15s both; }
-@keyframes plate-l { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes plate-r { from { transform: translateX(60px); opacity: 0; } to { transform: none; opacity: 1; } }
-.loader-plate-l { animation: plate-l 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.2s both; }
-.loader-plate-r { animation: plate-r 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.35s both; }
-@keyframes loader-press { 0%, 100% { transform: translateY(0); } 45%, 55% { transform: translateY(-22px); } }
-.loader-press { animation: loader-press 1.3s cubic-bezier(0.45, 0, 0.25, 1) 0.85s infinite; }
-@keyframes loader-shadow { 0%, 100% { transform: scaleX(1); opacity: 1; } 45%, 55% { transform: scaleX(0.7); opacity: 0.5; } }
-.loader-shadow { transform-box: fill-box; transform-origin: center; animation: loader-shadow 1.3s cubic-bezier(0.45, 0, 0.25, 1) 0.85s infinite; }
 /* six lines (the last repeats the first) step up one 1.5rem line at a time, then jump back unseen */
 @keyframes loader-quips { 0%, 16% { transform: translateY(0); } 20%, 36% { transform: translateY(-1.5rem); } 40%, 56% { transform: translateY(-3rem); }
   60%, 76% { transform: translateY(-4.5rem); } 80%, 96% { transform: translateY(-6rem); } 100% { transform: translateY(-7.5rem); } }
 .loader-quips { animation: loader-quips 8s cubic-bezier(0.6, 0, 0.2, 1) infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .loader-plate-l, .loader-plate-r, .loader-press, .loader-shadow, .loader-quips { animation: none; }
+  .loader-quips { animation: none; }
 }
 
 /* training log: days fade up one after another */
@@ -153,9 +158,14 @@ a, button, select, label, summary { touch-action: manipulation; }
 @media (max-width: 1023px) {
   .door-title { --ts: 0.7; --tx: calc(-50vw + 83vw * 0.7 / 2 + 1rem); --ty: calc(50svh - 19vw * 0.85 * 0.7 / 2 - 21.5rem); }
 }
-/* phones: two stacked lines at 40vw ("STARS" is 2.27em ≈ 91vw wide, two lines ≈ 68vw tall), landing at 40% */
+/* phones: two stacked lines at 40vw ("STARS" is 2.27em ≈ 91vw wide, two lines ≈ 68vw tall), landing at 55% — big enough
+   to read — with its bottom 17.5rem up, just above the landed band. The outlined "GYM" gets a thicker stroke there:
+   scaled down, the desktop hairline went fuzzy. */
 @media (max-width: 639px) {
-  .door-title { --ts: 0.4; --tx: calc(-50vw + 90.7vw * 0.4 / 2 + 1rem); --ty: calc(50svh - 68vw * 0.4 / 2 - 21.5rem); }
+  .door-title { --ts: 0.55; --tx: calc(-50vw + 90.7vw * 0.55 / 2 + 1rem); --ty: calc(50svh - 68vw * 0.55 / 2 - 17.5rem); }
+  /* an offer pill makes the band below taller: land a little higher then */
+  .doors[data-offer] .door-title { --ty: calc(50svh - 68vw * 0.55 / 2 - 20.5rem); }
+  .door-outline { -webkit-text-stroke: 0.028em var(--color-chalk) !important; }
 }
 .door-meta { display: none; }
 .door-window { --door: inset(26% 31% 22% 31% round 28px); }

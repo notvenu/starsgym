@@ -16,7 +16,8 @@ export type Review = { author: string; photo?: string; rating: number; text: str
 export async function getNotices(supabase = publicDb()) {
   const today = gymDate();
   const [offers, holidays] = await Promise.all([
-    supabase.from("offers").select("*").eq("active", true).gte("ends_on", today).order("percent_off", { ascending: false }),
+    // only offers running today: one that starts later would advertise a price checkout won't give yet
+    supabase.from("offers").select("*").eq("active", true).lte("starts_on", today).gte("ends_on", today).order("percent_off", { ascending: false }),
     supabase.from("holidays").select("*").gte("day", today).lte("day", gymDate(new Date(Date.now() + 30 * 864e5))).order("day"),
   ]);
   return { offers: (offers.data ?? []) as Offer[], holidays: (holidays.data ?? []) as Holiday[] };

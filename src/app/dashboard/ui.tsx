@@ -7,7 +7,7 @@ import { GENDERS, ladiesLabel, weekHolidays, type Branch, type Holiday, type Ses
 import { PhotoCapture } from "@/components/photo";
 import { Sheet } from "@/components/sheet";
 import { ScanButton } from "@/components/scanner";
-import { ResultToast, toast, toastResult } from "@/components/feedback";
+import { ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
 import { cancelRequest, checkIn, postShowcase, requestChange, saveProfile, type Result } from "./actions";
 
 const MILESTONES = [7, 30, 60, 100, 200, 365];
@@ -170,7 +170,7 @@ export function ShowcaseForm({ defaultLink }: { defaultLink: string }) {
   const [preview, setPreview] = useState<string>();
 
   return (
-    <form action={action} className="flex flex-col gap-3">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-3">
       <label className="flex cursor-pointer items-center gap-4 rounded border border-dashed border-strong p-3 hover:border-red">
         <span className="stripes flex size-16 shrink-0 items-center justify-center overflow-hidden rounded text-2xl text-ash">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -278,7 +278,7 @@ function RequestForm({ profile, branches, onDone }: { profile: Profile; branches
     return r;
   }, undefined);
   return (
-    <form action={action} className="flex flex-col gap-4 rounded-xl border border-line p-4">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4 rounded-xl border border-line p-4">
       <p className="text-sm text-ash">Change only what&apos;s wrong — the desk checks and approves it.</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Name" name="full_name" defaultValue={profile.full_name} autoComplete="name" />
@@ -310,7 +310,7 @@ function RequestForm({ profile, branches, onDone }: { profile: Profile; branches
 function ContactForm({ profile }: { profile: Profile }) {
   const [state, action, pending] = useActionState(saveProfile, undefined);
   return (
-    <form action={action} className="flex flex-col gap-4 border-t border-line pt-6">
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4 border-t border-line pt-6">
       <p className="label">Contact &amp; socials · edit any time</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={profile.phone ?? ""} required />

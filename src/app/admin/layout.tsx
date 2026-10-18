@@ -3,6 +3,7 @@ import { Logo } from "@/components/site";
 import { requireStaff } from "@/lib/supabase";
 import { AccountPrompt } from "@/components/account-prompt";
 import { BranchSwitch } from "./ui";
+import { openEnquiries } from "./data";
 import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
@@ -10,11 +11,11 @@ import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
 export const metadata = { title: "Admin — Stars Gym" };
 
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
-  const { supabase, profile, isOwner, view, canSwitch } = await requireStaff();
+  const { supabase, profile, isOwner, view, canSwitch, branchId } = await requireStaff();
   const pendingCount = supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending");
   const [pending, enquiries, branch, branchList, requests] = await Promise.all([
     view ? pendingCount.eq("branch_id", view) : pendingCount, // staff: their branch (RLS)
-    supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
+    openEnquiries(branchId, view), // staff: their branch's (and any-branch) enquiries
     view ? supabase.from("branches").select("name").eq("id", view).maybeSingle() : null,
     canSwitch ? supabase.from("branches").select("id,name").eq("active", true).order("created_at") : null,
     supabase.from("profile_requests").select("id", { count: "exact", head: true }).eq("status", "pending"), // RLS: what this desk can see
@@ -26,6 +27,13 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       { href: "/admin", label: "Overview", icon: "overview", badge: requests.count ?? 0 },
       { href: "/admin/members", label: "Members", icon: "members" },
       { href: "/admin/payments", label: "Payments", icon: "payments", badge: pending.count ?? 0 },
+      { href: "/admin/checkins", label: "Check-ins", icon: "scan" },
+      // staff: holidays, enquiries and the running offers here; the owner has the full pages in their own sections
+      ...(isOwner ? [] : [
+        { href: "/admin/enquiries", label: "Enquiries", icon: "enquiries" as const, badge: enquiries.count ?? 0 },
+        { href: "/admin/offers", label: "Offers", icon: "plans" as const },
+        { href: "/admin/branches", label: "Holidays", icon: "branches" as const },
+      ]),
     ],
   };
   // staff get the front desk for their branch; everything else is the owner's
@@ -40,7 +48,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
         { href: "/admin/team", label: "Team", icon: "staff" },
       ],
     },
-    { label: "Insights", items: [{ href: "/admin/analytics", label: "Analytics", icon: "analytics" }] },
+    { label: "Insights", items: [{ href: "/admin/summary", label: "Daily summary", icon: "overview" }, { href: "/admin/analytics", label: "Analytics", icon: "analytics" }, { href: "/admin/log", label: "Staff log", icon: "log" }] },
     {
       label: "Website",
       items: [

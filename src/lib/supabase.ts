@@ -86,6 +86,10 @@ const session = cache(async () => {
   return profile ? { supabase, user: { id: claims.sub, email: (claims.email as string | undefined) ?? null }, profile } : null;
 });
 
+/** Signed in AND the account's profile loads — the same test requireUser makes. A token alone isn't enough: one whose
+ *  account was deleted (or whose profile can't be read) would bounce between /login and the page it protects forever. */
+export const signedIn = async () => !!(await session());
+
 export async function requireUser(next?: string) {
   const login = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
   const ctx = await session();

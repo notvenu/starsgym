@@ -35,8 +35,13 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const photo = await photoUrl(member.photo_path);
   // the starting password, for the desk to tell a member who forgot it — and whether they've replaced it since.
   // Only reached once RLS has shown this member to this desk (notFound above).
-  const starter = member.role === "member" ? starterPassword(member.full_name, member.phone) : null;
-  const onStarter = starter ? (await adminDb().auth.admin.getUserById(member.id)).data.user?.app_metadata?.temp_password === true : false;
+  // members added at the desk now get a random temporary password (shown once, never stored); older accounts got the
+  // name + phone one, which the desk can still read out
+  const meta = member.role === "member" ? (await adminDb().auth.admin.getUserById(member.id)).data.user?.app_metadata : null;
+  const onTemp = meta?.temp_password === true;
+  const random = meta?.temp_kind === "random";
+  const starter = meta && !random ? starterPassword(member.full_name, member.phone) : null;
+  const passwordNote = !meta ? null : random ? (onTemp ? "Temporary one from sign-up · still using it" : "They've set their own") : starter ? `${starter} · ${onTemp ? "still using it" : "they've set their own"}` : null;
   const plans = (subs.data ?? []) as unknown as Sub[];
   const v = (visits.data ?? []) as Visit[];
   const b = (branches.data ?? []) as Branch[];
@@ -82,7 +87,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
               <Info label="Member since" value={new Date(member.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" })} />
               <Info label="Emergency contact" value={member.emergency_contact} wide />
               <Info label="Role" value={ROLE_LABEL[member.role]} />
-              {starter && <Info label="Starting password" value={onStarter ? `${starter} · still using it` : `${starter} · they've set their own`} wide />}
+              {passwordNote && <Info label="Starting password" value={passwordNote} wide />}
             </dl>
             <div className="border-t border-line pt-4">
               <MemberPhotoForm id={member.id} url={photo} />
