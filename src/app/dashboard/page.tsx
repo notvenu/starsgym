@@ -3,6 +3,7 @@ import { Flame, Nav, Notices } from "@/components/site";
 import { getNotices, getSettings } from "@/lib/data";
 import { requireUser } from "@/lib/supabase";
 import { AccountPrompt } from "@/components/account-prompt";
+import { NotificationToggle } from "@/components/push";
 import { DAY_NAMES, inr, recentGymDates, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
 import { signOut } from "../login/actions";
 import { getPass } from "../pass/[subId]/data";
@@ -95,6 +96,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
           />
 
           <div className="flex flex-col gap-5">
+            <NotificationToggle />
             <section className="card flex flex-col gap-3 p-6">
               <p className="label">Your plan</p>
               {active ? (

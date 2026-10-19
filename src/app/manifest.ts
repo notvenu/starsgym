@@ -6,7 +6,8 @@ import type { MetadataRoute } from "next";
  * and screenshots + description for Chrome's larger install sheet. The service worker (public/sw.js) is what older
  * browsers need before they offer to install at all.
  */
-export default function manifest(): MetadataRoute.Manifest {
+// Next's type doesn't know edge_side_panel yet
+export default function manifest(): MetadataRoute.Manifest & { edge_side_panel: { preferred_width: number } } {
   return {
     id: "/app",
     name: "Stars Gym",
@@ -32,7 +33,23 @@ export default function manifest(): MetadataRoute.Manifest {
     screenshots: [
       { src: "/screenshot-home.webp", sizes: "1080x1920", type: "image/webp", form_factor: "narrow", label: "Stars Gym home" },
       { src: "/screenshot-plans.webp", sizes: "1080x1920", type: "image/webp", form_factor: "narrow", label: "Membership plans" },
+      { src: "/screenshot-wide.webp", sizes: "1920x1080", type: "image/webp", form_factor: "wide", label: "Stars Gym on a laptop" },
     ],
+    // opening the app again (icon, shared pass link) reuses the open window instead of stacking another
+    launch_handler: { client_mode: ["navigate-existing", "auto"] },
+    // browsers without standalone fall back to a minimal toolbar rather than a full browser tab
+    display_override: ["standalone", "minimal-ui"],
+    // "Share → Stars Gym" from GPay / PhonePe: the service worker keeps the screenshot and opens /share
+    share_target: {
+      action: "/share-target",
+      method: "POST",
+      enctype: "multipart/form-data",
+      params: { title: "title", text: "text", files: [{ name: "proof", accept: ["image/*"] }] },
+    },
+    // computers: "Open with → Stars Gym" on a saved screenshot lands on the same page
+    file_handlers: [{ action: "/share", accept: { "image/*": [".png", ".jpg", ".jpeg", ".webp"] } }],
+    // Microsoft Edge: pin the app in the sidebar next to any site
+    edge_side_panel: { preferred_width: 420 },
     shortcuts: [
       { name: "My pass", url: "/dashboard", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
       { name: "Front desk", url: "/admin", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },

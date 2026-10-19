@@ -9,7 +9,7 @@ import { Field, MemberDetailsFields } from "@/components/client";
 import { confirmDialog, ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
 import QRCode from "qrcode";
 import { PhotoCapture } from "@/components/photo";
-import { ProofInput, ReceiptScan } from "@/components/receipt";
+import { ProofCheck, ProofInput, ReceiptScan } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
 import { offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
 import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
@@ -28,7 +28,7 @@ export function AdminModal({ label, title, className = "btn-red", startOpen, chi
 }
 
 /** An unpaid order. Staff take the money; the owner can also reprice, cancel, and settle staff discount requests. */
-export function PendingRow({ id, title, meta, method, approval, ask, owner, proof }: { id: string; title: string; meta: string; method: string; approval: string | null; ask: string | null; owner: boolean; proof: string | null }) {
+export function PendingRow({ id, title, meta, method, approval, ask, owner, proof, amountPaise, createdAt }: { id: string; title: string; meta: string; method: string; approval: string | null; ask: string | null; owner: boolean; proof: string | null; amountPaise: number; createdAt: string }) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<Result>();
   const [editing, setEditing] = useState(false);
@@ -72,7 +72,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
           <button type="button" onClick={() => setEditing(true)} className="mt-1 cursor-pointer text-sm font-bold text-red hover:text-chalk">Change price</button>
         ))}
         <Status state={state} />
-        {paying && <MarkPaidForm id={id} cash={method === "cash"} sent={proof} onClose={() => setPaying(false)} />}
+        {paying && <MarkPaidForm id={id} cash={method === "cash"} sent={proof} amountPaise={amountPaise} createdAt={createdAt} onClose={() => setPaying(false)} />}
       </div>
       {!paying && <div className="flex shrink-0 flex-wrap gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
         {owner && waiting ? (
@@ -96,7 +96,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
 
 /** "Mark paid" on an order: the payment photo (UPI screenshot required, a cash receipt optional), then confirm.
  *  A screenshot the member already sent counts — the desk checks it against their UPI app first. */
-function MarkPaidForm({ id, cash, sent, onClose }: { id: string; cash: boolean; sent: string | null; onClose: () => void }) {
+function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, onClose }: { id: string; cash: boolean; sent: string | null; amountPaise: number; createdAt: string; onClose: () => void }) {
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await markPaid(prev, form);
     if (r?.ok) toastResult(r); // the paid row leaves the list with the refresh, taking its own toast with it
@@ -110,9 +110,10 @@ function MarkPaidForm({ id, cash, sent, onClose }: { id: string; cash: boolean; 
           <span className="label">Member&apos;s screenshot</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={sent} alt="Payment screenshot the member sent" className="max-h-80 w-full rounded-md border border-line bg-ink object-contain" />
-          <span className="text-xs text-ash">Check the amount and UTR in your UPI app before confirming. Tap to open full size.</span>
+          <span className="text-xs text-ash">Tap to open full size.</span>
         </a>
       )}
+      {sent && <ProofCheck src={sent} amountPaise={amountPaise} createdAt={createdAt} />}
       <ProofInput required={!cash && !sent} hint={sent ? "Only if you want to replace theirs." : cash ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment."} />
       <div className="flex flex-wrap items-center gap-2">
         <button disabled={pending} className="btn-red min-h-11 px-5 text-xs whitespace-nowrap max-sm:flex-1">{pending ? "Saving…" : "Confirm paid"}</button>

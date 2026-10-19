@@ -9,6 +9,7 @@ import { emailAll } from "@/lib/email";
 import { formPhoto, hasProof, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
 import { gymDate, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
+import { notifyAfter, ownerIds } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
 import { allow, SLOW_DOWN } from "@/lib/rate-limit";
 
@@ -70,6 +71,7 @@ export async function markPaid(_: Result, form: FormData): Promise<Result> {
   const { error } = await supabase.rpc("activate_subscription", { p_sub: subId });
   if (error) return { error: error.message };
   await logAction(me, "Marked paid", { memberId: sub.user_id, branchId: sub.branch_id, detail: inr(sub.amount_paise) });
+  notifyAfter([sub.user_id], { title: "Payment confirmed", body: `${inr(sub.amount_paise)} received — your pass is ready.`, url: `/pass/${subId}`, tag: `paid-${subId}` });
   return done("Marked paid");
 }
 
@@ -247,6 +249,7 @@ async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: str
   const sold = { label, amount: total, subId: sub.id as string, endsOn: null };
   if (needsApproval) {
     await logAction(me, "Asked for a discount", { memberId: userId, branchId, detail: what });
+    notifyAfter(ownerIds, { title: "Discount to approve", body: `${me.full_name || "Staff"}: ${what}`, url: "/admin/payments", tag: `discount-${sub.id}` });
     return { ...sold, state: "approval" };
   }
   await logAction(me, pay === "qr" ? "Created order" : "Sold plan", { memberId: userId, branchId, detail: `${what} · ${pay === "split" ? "cash + UPI" : pay === "cash" ? "cash" : "UPI"}` });
@@ -261,8 +264,9 @@ async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: str
   }
   const act = await supabase.rpc("activate_subscription", { p_sub: sub.id });
   if (act.error) return { error: act.error.message };
-  const { data: after } = await supabase.from("subscriptions").select("ends_on").eq("id", sub.id).maybeSingle();
-  return { ...sold, state: "paid", endsOn: (after?.ends_on as string | null) ?? null };
+  const { data: active } = await supabase.from("subscriptions").select("ends_on").eq("id", sub.id).maybeSingle();
+  notifyAfter([userId], { title: "Payment confirmed", body: `${label} · ${inr(total)} — your pass is ready.`, url: `/pass/${sub.id}`, tag: `paid-${sub.id}` });
+  return { ...sold, state: "paid", endsOn: (active?.ends_on as string | null) ?? null };
 }
 
 /** Owner: a staff member asked to sell below the standard price. Approve it, or put the order back at the standard price. */
@@ -270,12 +274,15 @@ export async function decideDiscount(subId: string, approve: boolean): Promise<R
   const { profile: me } = await requireAdmin();
   if (!UUID.test(subId)) return { error: "Reload and try again." };
   const db = adminDb();
-  const { data: sub } = await db.from("subscriptions").select("user_id,amount_paise,standard_paise,branch_id").eq("id", subId).eq("approval", "pending").maybeSingle();
+  const { data: sub } = await db.from("subscriptions").select("user_id,amount_paise,standard_paise,branch_id,requested_by").eq("id", subId).eq("approval", "pending").maybeSingle();
   if (!sub) return { error: "That request was already handled." };
   const standard = (sub.standard_paise as number | null) ?? sub.amount_paise;
   const { error } = await db.from("subscriptions").update(approve ? { approval: "approved" } : { approval: "rejected", amount_paise: standard }).eq("id", subId);
   if (error) return { error: error.message };
   await logAction(me, approve ? "Approved discount" : "Turned down discount", { memberId: sub.user_id, branchId: sub.branch_id, detail: `${inr(sub.amount_paise)} (standard ${inr(standard)})` });
+  notifyAfter([sub.requested_by as string | null], approve
+    ? { title: "Discount approved", body: `${inr(sub.amount_paise)} is fine — take the money and mark it paid.`, url: "/admin/payments", tag: `discount-${subId}` }
+    : { title: "Discount turned down", body: `The order is back at the standard ${inr(standard)}.`, url: "/admin/payments", tag: `discount-${subId}` });
   return done(approve ? "Approved — the desk can take the money now" : "Turned down — the order is back at the standard price");
 }
 
@@ -432,6 +439,10 @@ Your streak is safe: holidays never break it.
 — Stars Gym`,
     );
   }
+  notifyAfter(async () => {
+    const q = adminDb().from("profiles").select("id").eq("role", "member");
+    return ((await (branchId ? q.eq("home_branch_id", branchId) : q)).data ?? []).map((p) => p.id as string);
+  }, { title: `Closed ${prettyDay(day)}`, body: `${note ? `${note} · ` : ""}Your streak is safe — holidays never break it.`, url: "/dashboard", tag: `holiday-${day}` });
   return logged(me, "Declared holiday", emailed ? `Holiday added · emailed ${emailed} members` : "Holiday added · members see it on the site", { branchId, detail: `${prettyDay(day)}${note ? ` · ${note}` : ""}` });
 }
 
@@ -513,6 +524,9 @@ export async function decideRequest(id: string, approve: boolean): Promise<Resul
   const { error } = await supabase.from("profile_requests").update({ status: approve ? "approved" : "rejected", decided_at: new Date().toISOString(), decided_by: me.id }).eq("id", id);
   if (error) return { error: error.message };
   revalidatePath(`/admin/members/${r.user_id}`);
+  notifyAfter([r.user_id], approve
+    ? { title: "Profile change approved", body: "The desk updated your details.", url: "/dashboard", tag: "request" }
+    : { title: "Profile change declined", body: "Ask at the desk if something still needs fixing.", url: "/dashboard", tag: "request" });
   return logged(me, approve ? "Approved change request" : "Declined change request", approve ? "Change approved" : "Request declined", { memberId: r.user_id });
 }
 

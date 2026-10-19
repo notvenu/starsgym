@@ -7,6 +7,7 @@ import { openEnquiries } from "./data";
 import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
+import { NotificationToggle } from "@/components/push";
 
 export const metadata = { title: "Admin — Stars Gym" };
 
@@ -65,6 +66,8 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
 
   const footer = (
     <div className="flex flex-col gap-1">
+      {/* desk alerts: UPI screenshots to verify, discounts to approve */}
+      <div className="px-3 pb-2"><NotificationToggle compact /></div>
       <Link href="/" className="rounded px-3 py-2.5 text-sm text-ash hover:bg-steel hover:text-chalk">View website ↗</Link>
       <Link href="/dashboard" className="rounded px-3 py-2.5 text-sm text-ash hover:bg-steel hover:text-chalk">My dashboard</Link>
       <form action={signOut}>

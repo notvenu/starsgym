@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { parseReceipt } from "@/lib/receipt";
+import { useEffect, useRef, useState } from "react";
+import { checkPayment, parseReceipt, type PaymentCheck } from "@/lib/receipt";
 
 /** A phone photo shrunk to a JPEG of at most 1600 px (~200–400 KB), so it uploads fast and stays under the 2 MB cap. */
-async function shrink(file: File): Promise<File> {
+export async function shrink(file: File): Promise<File> {
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
   const canvas = document.createElement("canvas");
@@ -72,6 +72,17 @@ function fill(el: Element | null, value: string) {
 }
 const tick = () => new Promise((r) => setTimeout(r, 50));
 
+/** Reads the text in an image on this device (Tesseract: ~5 MB of reader + English data, fetched on first use only). */
+async function readText(image: Blob, onProgress?: (pct: number) => void) {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("eng", 1, { logger: (m) => m.status === "recognizing text" && onProgress?.(Math.round(m.progress * 100)) });
+  try {
+    return (await worker.recognize(image)).data.text;
+  } finally {
+    await worker.terminate();
+  }
+}
+
 /**
  * New member from a paper receipt: photograph it, read it on the phone (Tesseract, no upload), and fill in what was
  * found — name, phone, email, plan length and amount — for the desk to check. The photo is only read, never saved.
@@ -89,13 +100,7 @@ export function ReceiptScan() {
     setStatus("Loading the reader…");
     try {
       const photo = await shrink(file);
-      const { createWorker } = await import("tesseract.js"); // ~5 MB of reader + English data, only when used
-      const worker = await createWorker("eng", 1, {
-        logger: (m) => m.status === "recognizing text" && setStatus(`Reading… ${Math.round(m.progress * 100)}%`),
-      });
-      const { data } = await worker.recognize(photo);
-      await worker.terminate();
-      const r = parseReceipt(data.text);
+      const r = parseReceipt(await readText(photo, (pct) => setStatus(`Reading… ${pct}%`)));
       const q = (name: string) => form.querySelector(`[name="${name}"]`);
       const found: string[] = [];
       if (fill(q("full_name"), r.name ?? "")) found.push("name");
@@ -136,6 +141,46 @@ export function ReceiptScan() {
         </label>
       </div>
       {status && <p role="status" className="text-sm text-body">{status}</p>}
+    </div>
+  );
+}
+
+/**
+ * At the desk, before "Confirm paid": reads the member's UPI screenshot and scores how well it matches the order
+ * (amount, "successful", paid to the gym, a UTR, the date). Advice only — it never approves anything; an edited
+ * screenshot can pass, so the panel always says to confirm the money in the UPI app.
+ */
+export function ProofCheck({ src, amountPaise, createdAt }: { src: string; amountPaise: number; createdAt: string }) {
+  const [result, setResult] = useState<PaymentCheck | "error" | null>(null);
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const blob = await (await fetch(src)).blob();
+      const text = await readText(blob, (pct) => live && setProgress(pct));
+      if (live) setResult(checkPayment(text, { amountPaise, createdAt, upiId: process.env.NEXT_PUBLIC_UPI_ID }));
+    })().catch(() => live && setResult("error"));
+    return () => void (live = false);
+  }, [src, amountPaise, createdAt]);
+
+  if (!result) return <p role="status" className="text-sm text-ash">Checking the screenshot… {progress ? `${progress}%` : ""}</p>;
+  if (result === "error") return <p className="text-sm text-ash">Couldn&apos;t read the screenshot — check it by eye.</p>;
+  const tone = result.verdict === "looks right" ? "text-[#4ade80] border-[#4ade80]/40" : result.verdict === "check carefully" ? "text-[#fbbf24] border-[#fbbf24]/40" : "text-red border-redline";
+  return (
+    <div className={`flex flex-col gap-3 rounded-md border bg-ink p-3 ${tone}`}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 text-sm font-bold uppercase tracking-wider">{result.failed ? "Shows a failed / pending payment" : { "looks right": "Matches the order", "check carefully": "Check carefully", "doesn't match": "Doesn't match the order" }[result.verdict]}</p>
+        <span className="shrink-0 font-display text-3xl leading-none">{result.score}<span className="text-base text-ash">/100</span></span>
+      </div>
+      <ul className="grid gap-1 text-sm text-body">
+        {result.checks.map((c) => (
+          <li key={c.label} className="flex items-start gap-2">
+            <span aria-hidden="true" className={c.ok ? "text-[#4ade80]" : "text-red"}>{c.ok ? "✓" : "✗"}</span>
+            <span className="min-w-0"><span className="sr-only">{c.ok ? "Matches: " : "Not found: "}</span>{c.label}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-ash">Read automatically, never auto-approved. Edited screenshots can pass — confirm the UTR and amount in your UPI app.</p>
     </div>
   );
 }
