@@ -93,7 +93,7 @@ const PERKS: Record<string, string[]> = {
   strength: ["Free weights & machines", "Daily check-in & streaks", "Streak Wall profile"],
   strength_cardio: ["Everything in Strength", "Cardio zone access", "Any branch"],
   couples: ["Strength + Cardio for two", "Train together, save more", "Daily check-in & streaks"],
-  personal_training: ["Everything in Strength + Cardio", "1:1 coach", "Personal program"],
+  personal_training: ["1:1 coach", "Personal program", "Added to any membership"],
 };
 
 export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[]; offers: Offer[]; admissionPaise?: number }) {
@@ -162,7 +162,7 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
                 <span key={days} className="inline-block animate-rise [animation-duration:.5s]">
                   {plan ? <Price paise={plan.price_paise} offer={offer} days={days} size="text-[48px]" /> : <span className="font-display text-[48px]">—</span>}
                 </span>
-                <p className="mt-1.5 text-[15px] text-ash">per {per}</p>
+                <p className="mt-1.5 text-[15px] text-ash">{track === "personal_training" ? `trainer fee per ${per}, on top of a membership` : `per ${per}`}</p>
                 {(() => {
                   const s = plan && savings(plans, offers, plan);
                   return s ? (
@@ -187,8 +187,8 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
                 ))}
               </ul>
               {plan ? (
-                <Link href={`/buy/${plan.id}`} className={`mt-auto min-h-13 ${featured ? "btn-red" : "btn-ghost"}`}>
-                  Buy online
+                <Link href={track === "personal_training" ? "/personal-training" : `/buy/${plan.id}`} className={`mt-auto min-h-13 ${featured ? "btn-red" : "btn-ghost"}`}>
+                  {track === "personal_training" ? "Add a coach" : "Buy online"}
                 </Link>
               ) : (
                 <span className="btn-ghost mt-auto min-h-13 opacity-50">Not available</span>

@@ -124,7 +124,7 @@ function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, upiId, onClose }
   );
 }
 
-type Kind = "membership" | "day_pass" | "trial" | "none";
+type Kind = "membership" | "day_pass" | "trial" | "none" | "pt";
 const KINDS: [Kind, string, string][] = [
   ["membership", "Membership", "Monthly to yearly"],
   ["day_pass", "Day pass", "One day"],
@@ -132,6 +132,9 @@ const KINDS: [Kind, string, string][] = [
   ["none", "Account only", "Sell later"],
 ];
 const MEMBERSHIPS: Track[] = ["strength", "strength_cardio", "couples", "personal_training"];
+// personal training is sold as an add-on on top of one of these, with its own fee
+const GYM_TRACKS: Track[] = ["strength", "strength_cardio", "couples"];
+const PT_ONLY: [Kind, string, string] = ["pt", "PT only", "Add-on to their plan"];
 
 /** Desk onboarding: details → pass → payment, then straight to the member's ticket. */
 type NewMemberProps = { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise?: number };
@@ -179,7 +182,6 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
       toast("Couldn't copy — read it out instead", "error");
     }
   };
-  const plan = c.plan;
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
@@ -226,8 +228,8 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
           The plan wasn&apos;t sold: {c.planError} Sell it from the member&apos;s ⋯ menu → Renew.
         </p>
       )}
-      {plan && (
-        <div className="flex flex-col gap-3 rounded-lg border border-line p-4 sm:flex-row sm:items-center sm:justify-between">
+      {c.plans.map((plan) => (
+        <div key={plan.subId} className="flex flex-col gap-3 rounded-lg border border-line p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="font-bold">{plan.label} · {inr(plan.amount)}</p>
             <p className="text-sm text-ash">
@@ -237,7 +239,7 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
           {plan.state === "pay" && <Link href={`/pay/${plan.subId}`} className="btn-red min-h-11 shrink-0 px-4 text-xs">Show UPI QR</Link>}
           {plan.state === "paid" && <a href={`/pass/${plan.subId}/receipt`} download className="btn-red min-h-11 shrink-0 px-4 text-xs">Download receipt</a>}
         </div>
-      )}
+      ))}
 
       <button type="button" onClick={onAnother} className="btn-ghost min-h-12">Add another member</button>
     </div>
@@ -258,7 +260,7 @@ export function RenewForm({ userId, branchId, plans, offers, trainers, owner, ad
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
       <input type="hidden" name="user_id" value={userId} />
       <input type="hidden" name="branch_id" value={branchId ?? ""} />
-      <PlanSteps plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} kinds={KINDS.filter(([k]) => k === "membership" || k === "day_pass")} first={1} verb="Renew" pending={pending} state={state} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} kinds={[...KINDS.filter(([k]) => k === "membership" || k === "day_pass"), PT_ONLY]} first={1} verb="Renew" pending={pending} state={state} />
     </form>
   );
 }
@@ -272,8 +274,19 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
   const [days, setDays] = useState(30);
   const [payment, setPayment] = useState("cash");
   const [asking, setAsking] = useState(false); // staff priced it below standard: it waits for the owner, nothing is paid yet
+  const [ptAsking, setPtAsking] = useState(false);
+  const [withPt, setWithPt] = useState(false); // membership + personal training add-on
+  const [ptDays, setPtDays] = useState(30);
+  const [gymTotal, setGymTotal] = useState(0);
+  const [ptTotal, setPtTotal] = useState(0);
   const plan =
-    kind === "none" ? undefined : plans.find((p) => (kind === "membership" ? p.track === track && p.duration_days === days : p.track === kind));
+    kind === "none" || kind === "pt" ? undefined : plans.find((p) => (kind === "membership" ? p.track === track && p.duration_days === days : p.track === kind));
+  const ptPlans = plans.filter((p) => p.track === "personal_training");
+  const ptPlan = kind === "pt" || (kind === "membership" && withPt) ? ptPlans.find((p) => p.duration_days === ptDays) : undefined;
+  const selling = !!plan || !!ptPlan;
+  const anyAsking = (!!plan && asking) || (!!ptPlan && ptAsking);
+  // a QR covers one plan: with PT, the money is taken at the desk (a QR picked earlier reads as cash)
+  const pay = plan && ptPlan && payment === "qr" ? "cash" : payment;
   const n = (i: number) => String(first + i).padStart(2, "0");
 
   return (
@@ -286,8 +299,8 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
         </div>
         {kind === "membership" && (
           <div className="flex flex-col gap-2">
-            <Segmented label="Track" options={MEMBERSHIPS.map((t) => [t, TRACKS[t]])} value={track} onChange={(v) => setTrack(v as Track)} />
-            <Segmented label="Length" options={DURATIONS.map((d) => [String(d.days), d.label])} value={String(days)} onChange={(v) => setDays(Number(v))} />
+            <Segmented label="Track" options={GYM_TRACKS.map((t) => [t, TRACKS[t]])} value={track} onChange={(v) => setTrack(v as Track)} />
+            <Segmented label="Length" options={DURATIONS.map((d) => [String(d.days), d.label])} value={String(days)} onChange={(v) => { setDays(Number(v)); if (!withPt) setPtDays(Number(v)); }} />
           </div>
         )}
         {plan && (
@@ -298,10 +311,35 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
             admission={MEMBERSHIPS.includes(plan.track) ? admissionPaise : null}
             owner={owner}
             onAsk={setAsking}
+            onTotal={setGymTotal}
           />
         )}
-        {plan?.track === "personal_training" && trainers.length > 0 && <Select label="Trainer" name="trainer_id" options={[["", "Not assigned yet"], ...trainers]} />}
-        {plan && (
+        {kind === "membership" && plan && ptPlans.length > 0 && (
+          <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md border border-line px-4 has-checked:border-red has-checked:bg-redwash">
+            <input type="checkbox" checked={withPt} onChange={(e) => { setWithPt(e.target.checked); setPtDays(days); }} className="size-5 shrink-0 accent-red" />
+            <span className="min-w-0"><span className="block font-bold">Add personal training</span><span className="block text-xs text-ash">A trainer, with its own fee on top of the plan</span></span>
+          </label>
+        )}
+        {(kind === "pt" || (kind === "membership" && withPt && !!plan)) && (
+          <div className="flex flex-col gap-3 rounded-md border border-redline bg-redwash/40 p-4">
+            <p className="label text-chalk">Personal training</p>
+            <Segmented label="PT length" options={DURATIONS.filter((d) => ptPlans.some((p) => p.duration_days === d.days)).map((d) => [String(d.days), d.label])} value={String(ptDays)} onChange={(v) => setPtDays(Number(v))} />
+            {trainers.length > 0 && <Select label="Trainer" name="trainer_id" options={[["", "Not assigned yet"], ...trainers]} />}
+            {ptPlan ? (
+              <PtFee key={ptPlan.id} standard={discounted(ptPlan.price_paise, bestOffer(offers, ptPlan.track, ptPlan.duration_days), ptPlan.duration_days)} owner={owner} onAsk={setPtAsking} onTotal={setPtTotal} />
+            ) : (
+              <p className="text-red">No personal training price for that length — set it on the Pricing page.</p>
+            )}
+            <input type="hidden" name="pt_plan_id" value={ptPlan?.id ?? ""} />
+          </div>
+        )}
+        {plan && ptPlan && (
+          <p className="flex items-baseline justify-between rounded-md border border-line bg-panel px-4 py-3">
+            <span className="label">Total to collect · plan + PT</span>
+            <span className="font-display text-3xl">{inr(gymTotal + ptTotal)}</span>
+          </p>
+        )}
+        {selling && (
           // blank = today, or the day after their current plan ends; pick one to backdate (any past date) or start later (up to 60 days)
           <label className="flex flex-col gap-1.5 sm:max-w-64">
             <span className="label">Start date (optional)</span>
@@ -309,23 +347,23 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
             <span className="text-xs text-ash">Leave blank to start today — or the day after their current plan ends.</span>
           </label>
         )}
-        {kind !== "none" && !plan && <p className="text-red">That plan isn&apos;t available.</p>}
+        {kind !== "none" && kind !== "pt" && !plan && <p className="text-red">That plan isn&apos;t available.</p>}
         <input type="hidden" name="plan_id" value={plan?.id ?? ""} />
       </Step>
 
-      {plan && (
+      {selling && (
         <Step n={n(1)} title="Payment">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               ["cash", "Cash received", "Activates now"],
               ["upi_paid", "UPI received", "Activates now"],
               ["split", "Cash + UPI", "Part of each"],
-              ["qr", "Show UPI QR", "Mark paid after"],
+              ...(plan && ptPlan ? [] : [["qr", "Show UPI QR", "Mark paid after"]]),
             ].map(([v, label, sub]) => (
-              <Choice key={v} name="payment" value={v} checked={payment === v} onChange={() => setPayment(v)} label={label} sub={sub} />
+              <Choice key={v} name="payment" value={v} checked={pay === v} onChange={() => setPayment(v)} label={label} sub={sub} />
             ))}
           </div>
-          {payment === "split" && (
+          {pay === "split" && (
             <label className="flex flex-col gap-1.5 sm:w-64">
               <span className="label">Cash part</span>
               <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
@@ -336,15 +374,15 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
             </label>
           )}
           {/* taken now: UPI needs its screenshot, cash may have the paper receipt. A QR (or an owner approval) is paid later */}
-          {payment !== "qr" && !asking && (
-            <ProofInput required={payment !== "cash"} hint={payment === "cash" ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment on their phone or yours."} />
+          {pay !== "qr" && !anyAsking && (
+            <ProofInput required={pay !== "cash"} hint={pay === "cash" ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment on their phone or yours."} />
           )}
         </Step>
       )}
 
       <div className="flex flex-wrap items-center gap-4">
-        <button disabled={pending || (kind !== "none" && !plan)} className="btn-red min-h-14 px-8 text-base max-sm:w-full">
-          {pending ? "Saving…" : !plan ? "Create account" : payment === "qr" ? `${verb} & show QR` : `${verb} & issue pass`}
+        <button disabled={pending || (kind !== "none" && !selling)} className="btn-red min-h-14 px-8 text-base max-sm:w-full">
+          {pending ? "Saving…" : !selling ? "Create account" : pay === "qr" ? `${verb} & show QR` : `${verb} & issue pass`}
         </button>
         <Status state={state} />
       </div>
@@ -353,7 +391,7 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
 }
 
 /** Desk pricing: starts at the standard price (offer applied) and admission; staff can change either after negotiating. */
-function NegotiatedPrice({ standard, list, admission, owner, onAsk }: { standard: number; list: number; admission: number | null; owner: boolean; onAsk: (asking: boolean) => void }) {
+function NegotiatedPrice({ standard, list, admission, owner, onAsk, onTotal }: { standard: number; list: number; admission: number | null; owner: boolean; onAsk: (asking: boolean) => void; onTotal?: (paise: number) => void }) {
   const [price, setPrice] = useState(String(standard / 100));
   const [fee, setFee] = useState(admission !== null ? String(admission / 100) : "0");
   const changed = Math.round(Number(price) * 100) !== standard;
@@ -361,6 +399,7 @@ function NegotiatedPrice({ standard, list, admission, owner, onAsk }: { standard
   const asking = !owner && (changed || (admission !== null && Math.round(Number(fee) * 100) !== admission));
   useEffect(() => onAsk(asking), [asking, onAsk]);
   const total = (Number(price) || 0) + (admission !== null ? Number(fee) || 0 : 0);
+  useEffect(() => onTotal?.(Math.round(total * 100)), [total, onTotal]);
   const money = (label: string, name: string, value: string, set: (v: string) => void, hint: React.ReactNode) => (
     <label className="flex min-w-0 flex-col gap-1.5">
       <span className="label">{label}</span>
@@ -384,6 +423,25 @@ function NegotiatedPrice({ standard, list, admission, owner, onAsk }: { standard
       {admission !== null && <p className="-mt-2 text-xs text-ash">If they&apos;ve had a membership before, admission is skipped automatically.</p>}
       {!owner && <p className="-mt-1 text-sm font-semibold text-red">Any price below the standard goes to the owner to approve before you take the money.</p>}
     </div>
+  );
+}
+
+/** The PT add-on's fee: starts at the standard (offer applied); a staff price below it waits for the owner, like plans. */
+function PtFee({ standard, owner, onAsk, onTotal }: { standard: number; owner: boolean; onAsk: (asking: boolean) => void; onTotal: (paise: number) => void }) {
+  const [price, setPrice] = useState(String(standard / 100));
+  const paise = Math.round((Number(price) || 0) * 100);
+  const asking = !owner && paise !== standard;
+  useEffect(() => onAsk(asking), [asking, onAsk]);
+  useEffect(() => onTotal(paise), [paise, onTotal]);
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5 sm:max-w-64">
+      <span className="label">Trainer fee</span>
+      <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
+        <span className="pl-3 text-ash">₹</span>
+        <input name="pt_price" type="number" inputMode="decimal" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} className="min-h-11 w-full min-w-0 bg-transparent px-2 font-bold text-chalk outline-none" />
+      </span>
+      <span className="text-xs text-ash">{paise !== standard ? <span className="text-red">Negotiated · standard {inr(standard)}</span> : "On top of the plan · no admission on PT"}</span>
+    </label>
   );
 }
 
@@ -989,7 +1047,10 @@ export function PriceForm({ plans }: { plans: Plan[] }) {
           const monthly = Number(values[find(t, 30)?.id ?? ""]?.rupees) || undefined;
           return (
             <div key={t} className="grid grid-cols-2 gap-x-3 gap-y-4 border-t border-line py-4 md:grid-cols-[11rem_repeat(4,minmax(0,1fr))]">
-              <p className="col-span-2 font-display text-2xl leading-none uppercase md:col-span-1">{TRACKS[t]}</p>
+              <p className="col-span-2 font-display text-2xl leading-none uppercase md:col-span-1">
+                {TRACKS[t]}
+                {t === "personal_training" && <span className="mt-1 block font-sans text-xs font-normal tracking-normal normal-case text-ash">Trainer fee only — added on top of a membership</span>}
+              </p>
               {DURATIONS.map((d) => (
                 <div key={d.days} className="min-w-0">
                   <p className="label mb-1.5 md:hidden">{d.label}</p>

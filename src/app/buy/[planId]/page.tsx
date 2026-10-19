@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Nav } from "@/components/site";
 import { requireUser } from "@/lib/supabase";
 import { Price } from "@/components/client";
@@ -22,6 +22,8 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
     supabase.from("plans").select("*").eq("active", true),
   ]);
   if (!plan) notFound();
+  // personal training is an add-on the desk sells on top of a membership, not a plan of its own
+  if (plan.track === "personal_training") redirect("/personal-training");
   // on a monthly plan, offer the longer ones of the same track with what they save
   const sameTrack = ((all ?? []) as Plan[]).filter((p) => p.track === plan.track && p.duration_days > plan.duration_days);
   const upsell = plan.duration_days === 30 ? sameTrack.map((p) => ({ p, s: savings((all ?? []) as Plan[], offers, p) })).filter((x) => x.s).sort((a, b) => a.p.duration_days - b.p.duration_days) : [];

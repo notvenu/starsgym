@@ -19,10 +19,10 @@ export type Created = {
   name: string; email: string; phone: string;
   password: string | null; // null: they already had an account
   loginUrl: string | null; // one-time link for the QR: signs them in on their phone, no password typed
-  plan: { label: string; amount: number; state: "paid" | "pay" | "approval"; subId: string; endsOn: string | null } | null;
+  plans: SoldPlan[]; // the membership and/or PT add-on sold with the account (none for "account only")
   planError?: string; // the account was made but the plan wasn't sold (still show the password and QR)
 };
-type Sold = { error: string } | NonNullable<Created["plan"]>;
+export type SoldPlan = { label: string; amount: number; state: "paid" | "pay" | "approval"; subId: string; endsOn: string | null };
 
 /** A temporary password nobody can work out from the member's details: 8 random characters, no look-alikes (0/o, 1/l). */
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -55,7 +55,7 @@ export async function markPaid(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me } = await requireStaff();
   const subId = s(form, "id");
   if (!UUID.test(subId)) return { error: "Reload and try again." };
-  const { data: sub } = await supabase.from("subscriptions").select("user_id,amount_paise,approval,branch_id,method,starts_on,plans(duration_days)").eq("id", subId).maybeSingle();
+  const { data: sub } = await supabase.from("subscriptions").select("user_id,amount_paise,approval,branch_id,method,starts_on").eq("id", subId).maybeSingle();
   if (!sub) return NOT_YOURS;
   if (sub.approval === "pending") return { error: "The owner hasn't approved this price yet." };
   const proof = formPhoto(form, "proof");
@@ -70,12 +70,9 @@ export async function markPaid(_: Result, form: FormData): Promise<Result> {
   }
   const { error } = await supabase.rpc("activate_subscription", { p_sub: subId });
   if (error) return { error: error.message };
-  // the desk picked a start date when it made the order: keep it, rather than "from today"
-  const days = (sub.plans as unknown as { duration_days: number } | null)?.duration_days;
-  if (sub.starts_on && days) {
-    const e = await startOn(subId, sub.starts_on as string, days);
-    if (e) return { error: `Marked paid, but the start date didn't save: ${e}` };
-  }
+  // its dates: the start the desk picked when it made the order, else after their current plan (see placeDates)
+  const dates = await placeDates(subId, sub.user_id, (sub.starts_on as string | null) ?? null);
+  if (dates.error) return { error: `Marked paid, but the dates didn't save: ${dates.error}` };
   await logAction(me, "Marked paid", { memberId: sub.user_id, branchId: sub.branch_id, detail: inr(sub.amount_paise) });
   notifyAfter([sub.user_id], { title: "Payment confirmed", body: `${inr(sub.amount_paise)} received — your pass is ready.`, url: `/pass/${subId}`, tag: `paid-${subId}` });
   return done("Marked paid");
@@ -108,13 +105,6 @@ function pickedStart(form: FormData): { start: string | null; error?: string } {
   return { start };
 }
 
-/** Moves an active plan to start on `start` and run its full length (a 30-day plan from 19 Oct ends 17 Nov). */
-async function startOn(subId: string, start: string, days: number) {
-  const ends = new Date(Date.parse(`${start}T12:00:00Z`) + (days - 1) * 864e5).toISOString().slice(0, 10);
-  const { error } = await adminDb().from("subscriptions").update({ starts_on: start, ends_on: ends }).eq("id", subId).eq("status", "active");
-  return error ? error.message : null;
-}
-
 /** Desk sign-up: creates the member and optionally sells their first plan — paid now, or shown as a UPI QR. */
 export async function addMember(_: Result, form: FormData): Promise<Result> {
   const { supabase, branchId, profile: me, isOwner } = await requireStaff();
@@ -126,10 +116,11 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   const photo = formPhoto(form);
   if (photo.error) return { error: photo.error };
   // the plan's own mistakes are checked here too, before an account exists (sellPlan checks again; these are cheap)
-  if (s(form, "plan_id")) {
+  if (s(form, "plan_id") || s(form, "pt_plan_id")) {
     const start = pickedStart(form);
     if (start.error) return { error: start.error };
-    if (["price", "admission"].some((k) => s(form, k) !== "" && !(Number(s(form, k)) >= 0))) return { error: "Prices must be zero or more." };
+    if (["price", "admission", "pt_price"].some((k) => s(form, k) !== "" && !(Number(s(form, k)) >= 0))) return { error: "Prices must be zero or more." };
+    if (s(form, "payment") === "qr" && s(form, "plan_id") && s(form, "pt_plan_id")) return { error: "With personal training, take the payment at the desk (cash or UPI) — a QR covers one plan." };
   }
 
   const { data: existing } = email ? await supabase.from("profiles").select("id,photo_path").eq("email", email).maybeSingle() : { data: null };
@@ -174,13 +165,13 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   }
   await logAction(me, existing ? "Updated member" : "Added member", { memberId: userId, memberName: s(form, "full_name"), branchId: branch || null });
 
-  const sold = s(form, "plan_id") ? await sellPlan(supabase, me, isOwner, userId, branch || null, form) : null;
+  const sold = s(form, "plan_id") || s(form, "pt_plan_id") ? await sellPlans(supabase, me, isOwner, userId, branch || null, form) : null;
   const planError = sold && "error" in sold ? sold.error : undefined;
   revalidatePath("/admin", "layout");
   // even when the plan fails, the account exists: always hand over its password and sign-in QR (sell the plan after)
   return {
     ok: existing ? "Member already exists — updated." : "Account created",
-    created: { name: s(form, "full_name"), email, phone: read.details.phone, password, loginUrl: password ? await loginLink(signInAs) : null, plan: sold && !planError ? (sold as NonNullable<Created["plan"]>) : null, planError },
+    created: { name: s(form, "full_name"), email, phone: read.details.phone, password, loginUrl: password ? await loginLink(signInAs) : null, plans: sold && !("error" in sold) ? sold : [], planError },
   };
 }
 
@@ -188,18 +179,22 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
  *  Staff renew at the standard price; a discount waits for the owner like any other sale. */
 export async function renewMember(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me, branchId, isOwner } = await requireStaff();
-  if (!s(form, "plan_id")) return { error: "Pick a plan." };
   const userId = s(form, "user_id");
   if (!(await sees(supabase, "profiles", userId))) return NOT_YOURS;
-  const sold = await sellPlan(supabase, me, isOwner, userId, branchId ?? (s(form, "branch_id") || null), form);
+  const sold = await sellPlans(supabase, me, isOwner, userId, branchId ?? (s(form, "branch_id") || null), form);
   if ("error" in sold) return sold;
-  if (sold.state === "approval") return done(`Sent to the owner to approve ${inr(sold.amount)}. Take the money once it's approved — it shows under Payments.`);
   // a QR still has to be shown to the member; a paid renewal just confirms — the pass is the member's, not the desk's
-  if (sold.state === "pay") {
+  const qr = sold.find((x) => x.state === "pay");
+  if (qr) {
     revalidatePath("/admin", "layout");
-    redirect(`/pay/${sold.subId}`);
+    redirect(`/pay/${qr.subId}`);
   }
-  return done(`Renewed · ${sold.label}${sold.endsOn ? ` till ${prettyDay(sold.endsOn)}` : ""}`);
+  const paid = sold.filter((x) => x.state === "paid");
+  const asked = sold.filter((x) => x.state === "approval");
+  return done([
+    paid.length && `Renewed · ${paid.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}`,
+    asked.length && `Sent to the owner to approve ${asked.map((x) => `${x.label} at ${inr(x.amount)}`).join(" and ")} — take the money once it's approved (Payments)`,
+  ].filter(Boolean).join(". "));
 }
 
 /** Owner only. Deletes the member's account, plans, visits and photo. Staff and admin accounts can't be deleted here. */
@@ -215,99 +210,168 @@ export async function deleteMember(id: string): Promise<Result> {
   return done("Member deleted");
 }
 
+type SaleItem = { planId: string; price: number | null; admission: number | null; trainerId: string | null; addOn: boolean };
+
+/** What's being sold, off the form: a membership (plan_id) and/or a personal-training add-on (pt_plan_id). */
+function saleItems(form: FormData): { error: string } | SaleItem[] {
+  const num = (k: string) => (s(form, k) === "" ? null : Number(s(form, k)));
+  const items: SaleItem[] = [];
+  if (s(form, "plan_id")) items.push({ planId: s(form, "plan_id"), price: num("price"), admission: num("admission"), trainerId: s(form, "pt_plan_id") ? null : s(form, "trainer_id") || null, addOn: false });
+  if (s(form, "pt_plan_id")) items.push({ planId: s(form, "pt_plan_id"), price: num("pt_price"), admission: null, trainerId: s(form, "trainer_id") || null, addOn: true });
+  if (!items.length || !items.every((i) => UUID.test(i.planId))) return { error: "Pick a plan." };
+  if (items.some((i) => [i.price, i.admission].some((v) => v !== null && !(Number.isFinite(v) && v >= 0)))) return { error: "Prices must be zero or more." };
+  return items;
+}
+
+const dayAfter = (iso: string, n = 1) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+
 /**
- * Creates the order for form's plan_id, then activates it (cash / UPI received) or shows the QR.
- * The owner can set any price. For staff, the standard price (live offer applied by the database) goes straight
- * through; anything else — or a waived admission — waits, unpaid, for the owner to approve (0018).
+ * Puts a just-activated plan on the calendar (the app decides, not the database's activation, which can't tell a
+ * PT add-on from a gym plan): the start the desk picked; else a membership the day after their current membership
+ * ends (today if none), a PT add-on the day after their current PT — or alongside the membership it goes with —
+ * and a day pass or trial today. It then runs its full length: a 30-day plan from 19 Oct ends 17 Nov.
  */
-async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: string, branchId: string | null, form: FormData): Promise<Sold> {
-  const planId = s(form, "plan_id");
+async function placeDates(subId: string, userId: string, picked: string | null): Promise<{ ends?: string; error?: string }> {
+  const db = adminDb();
+  const today = gymDate();
+  const { data } = await db.from("subscriptions").select("id,starts_on,ends_on,created_at,plans(track,duration_days)").eq("user_id", userId).eq("status", "active");
+  const rows = (data ?? []) as unknown as { id: string; starts_on: string | null; ends_on: string | null; created_at: string; plans: Pick<Plan, "track" | "duration_days"> | null }[];
+  const mine = rows.find((r) => r.id === subId);
+  if (!mine?.plans) return {};
+  const days = mine.plans.duration_days;
+  const isPt = mine.plans.track === "personal_training";
+  const running = rows.filter((r) => r.id !== subId && r.plans && r.plans.duration_days > 1 && r.ends_on && r.ends_on >= today);
+  let start = picked;
+  if (!start) {
+    const last = running.filter((r) => (r.plans!.track === "personal_training") === isPt).map((r) => r.ends_on!).sort().at(-1);
+    if (days <= 1) start = today;
+    else if (last) start = dayAfter(last);
+    else if (isPt) {
+      // a PT add-on starts with the membership it was sold alongside (the newest one), not after it
+      const gym = running.filter((r) => r.plans!.track !== "personal_training").sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+      start = gym?.starts_on && gym.starts_on > today ? gym.starts_on : today;
+    } else start = today;
+  }
+  const ends = dayAfter(start, days - 1);
+  const { error } = await db.from("subscriptions").update({ starts_on: start, ends_on: ends }).eq("id", subId).eq("status", "active");
+  return error ? { error: error.message } : { ends };
+}
+
+/**
+ * Sells the membership and/or PT add-on on the form, from one payment: creates each order (the database prices it,
+ * live offer applied, admission only on a first membership — never on PT), then activates it (cash / UPI received)
+ * or leaves it for the QR. The owner can set any price; a staff price below the standard (or a changed admission)
+ * waits, unpaid, for the owner (0018). A cash part covers the membership first, then the PT.
+ */
+async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: string, branchId: string | null, form: FormData): Promise<{ error: string } | SoldPlan[]> {
+  const items = saleItems(form);
+  if ("error" in items) return items;
   const pay = s(form, "payment"); // "cash" | "upi_paid" | "split" (part cash, rest UPI) | "qr"
-  // negotiated at the desk: the plan price and the admission fee (blank = standard)
-  const price = s(form, "price") === "" ? null : Number(s(form, "price"));
-  const admission = s(form, "admission") === "" ? null : Number(s(form, "admission"));
-  if ([price, admission].some((v) => v !== null && (!Number.isFinite(v) || v < 0))) return { error: "Prices must be zero or more." };
+  if (!["cash", "upi_paid", "split", "qr"].includes(pay)) return { error: "Pick how they paid." };
+  if (pay === "qr" && items.length > 1) return { error: "With personal training, take the payment at the desk (cash or UPI) — a QR covers one plan." };
   const cash = pay === "split" ? Math.round(Number(s(form, "cash")) * 100) : null;
   if (cash !== null && !(cash > 0)) return { error: "Enter the cash part of the payment." };
   const picked = pickedStart(form);
   if (picked.error) return { error: picked.error };
-  const start = picked.start;
-  const trainerId = s(form, "trainer_id") || null; // personal training: who coaches them
-  if (trainerId && !(UUID.test(trainerId) && (await supabase.from("site_items").select("id").eq("id", trainerId).eq("kind", "trainer").maybeSingle()).data))
-    return { error: "Pick a trainer from the list." };
-  const { data: sub, error } = await supabase.rpc("create_pending_subscription", {
-    p_plan: planId,
-    p_branch: branchId,
-    p_method: pay === "cash" ? "cash" : "upi_qr",
-    p_user: userId,
-  });
-  if (error) return { error: error.message };
-  const fee = (sub.admission_paise as number | undefined) ?? 0; // the database only adds it on a first membership
-  const standard = sub.amount_paise as number; // plan at today's offer + admission
-  const planPart = price !== null ? Math.round(price * 100) : standard - fee;
-  const adm = fee > 0 ? (admission !== null ? Math.round(admission * 100) : fee) : 0;
-  const total = planPart + adm;
-  const drop = () => adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", sub.id).eq("status", "pending");
-  if (cash !== null && cash >= total) {
-    await drop();
+  for (const i of items)
+    if (i.trainerId && !(UUID.test(i.trainerId) && (await supabase.from("site_items").select("id").eq("id", i.trainerId).eq("kind", "trainer").maybeSingle()).data))
+      return { error: "Pick a trainer from the list." };
+  const proof = formPhoto(form, "proof");
+  if (proof.error) return { error: proof.error };
+
+  // 1. the orders, unpaid
+  type Made = { id: string; item: SaleItem; fee: number; adm: number; standard: number; total: number; discounted: boolean; needsApproval: boolean; label: string; method?: string; cashPart?: number | null };
+  const made: Made[] = [];
+  const dropAll = () => Promise.all(made.map((m) => adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", m.id).eq("status", "pending")));
+  for (const i of items) {
+    const { data: sub, error } = await supabase.rpc("create_pending_subscription", { p_plan: i.planId, p_branch: branchId, p_method: pay === "cash" ? "cash" : "upi_qr", p_user: userId });
+    if (error) {
+      await dropAll();
+      return { error: error.message };
+    }
+    const dbFee = (sub.admission_paise as number | undefined) ?? 0;
+    const fee = i.addOn ? 0 : dbFee; // an add-on never carries admission
+    const standard = (sub.amount_paise as number) - (dbFee - fee); // plan at today's offer (+ admission on a first membership)
+    const planPart = i.price !== null ? Math.round(i.price * 100) : standard - fee;
+    const adm = fee > 0 ? (i.admission !== null ? Math.round(i.admission * 100) : fee) : 0;
+    const total = planPart + adm;
+    const discounted = total !== standard || adm !== fee;
+    const { data: plan } = await supabase.from("plans").select("track,duration_days").eq("id", i.planId).maybeSingle();
+    made.push({ id: sub.id as string, item: i, fee, adm, standard, total, discounted, needsApproval: discounted && !isOwner, label: plan ? `${planName(plan as Plan)}${i.addOn ? " (add-on)" : ""}` : "Plan" });
+  }
+
+  // 2. who pays what
+  const grand = made.reduce((n, m) => n + m.total, 0);
+  if (cash !== null && cash >= grand) {
+    await dropAll();
     return { error: "The cash part must be less than the total — otherwise pick Cash received." };
   }
-  const discounted = total !== standard || adm !== fee;
-  const needsApproval = discounted && !isOwner;
-  // taken now (not a QR, not waiting for the owner): UPI needs its screenshot; cash may have a photo of the receipt
-  const takenNow = pay !== "qr" && !needsApproval;
-  const proof = formPhoto(form, "proof");
-  if (takenNow && (proof.error || (pay !== "cash" && !proof.file))) {
-    await drop();
-    return { error: proof.error ?? "Add a screenshot of the UPI payment." };
+  let left = cash ?? 0;
+  for (const m of made) {
+    const part = pay === "split" ? Math.min(left, m.total) : pay === "cash" ? m.total : 0;
+    if (pay === "split") left -= part;
+    m.method = pay === "cash" || (pay === "split" && part >= m.total) ? "cash" : "upi_qr";
+    m.cashPart = pay === "split" && part > 0 && part < m.total ? part : null;
   }
-  // a picked start rides on the order (paid later: Mark paid applies it); paid now, it's applied after activation below
-  if (discounted || cash !== null || trainerId || start) {
-    // service key: desk-only path (checked above), and it doesn't depend on column grants
-    const { error: e } = await adminDb()
+  // taken now (not a QR, not waiting for the owner): any UPI needs its screenshot; cash may have a photo of the receipt
+  const takenNow = (m: Made) => pay !== "qr" && !m.needsApproval;
+  if (made.some((m) => takenNow(m) && m.method !== "cash") && !proof.file) {
+    await dropAll();
+    return { error: "Add a screenshot of the UPI payment." };
+  }
+
+  // 3. each order's agreed price, how it was paid, trainer and picked start (service key: desk-only path, checked above)
+  for (const m of made) {
+    const { error } = await adminDb()
       .from("subscriptions")
       .update({
-        amount_paise: total,
-        ...(fee > 0 && { admission_paise: adm }),
-        ...(cash !== null && { cash_paise: cash }),
-        ...(trainerId && { trainer_id: trainerId }),
-        ...(start && { starts_on: start }),
-        ...(needsApproval && { approval: "pending", standard_paise: standard, requested_by: me.id }),
+        amount_paise: m.total,
+        admission_paise: m.adm,
+        method: m.method,
+        cash_paise: m.cashPart ?? null,
+        ...(m.item.trainerId && { trainer_id: m.item.trainerId }),
+        ...(picked.start && { starts_on: picked.start }), // paid later: Mark paid keeps it
+        ...(m.needsApproval && { approval: "pending", standard_paise: m.standard, requested_by: me.id }),
       })
-      .eq("id", sub.id);
-    if (e) {
-      await drop();
-      return { error: e.message };
+      .eq("id", m.id);
+    if (error) {
+      await dropAll();
+      return { error: error.message };
     }
   }
-  const { data: plan } = await supabase.from("plans").select("track,duration_days").eq("id", planId).maybeSingle();
-  const label = plan ? planName(plan as Plan) : "Plan";
-  const what = `${label} · ${inr(total)}${discounted ? ` (standard ${inr(standard)})` : ""}`;
-  const sold = { label, amount: total, subId: sub.id as string, endsOn: null };
-  if (needsApproval) {
-    await logAction(me, "Asked for a discount", { memberId: userId, branchId, detail: what });
-    notifyAfter(ownerIds, { title: "Discount to approve", body: `${me.full_name || "Staff"}: ${what}`, url: "/admin/payments", tag: `discount-${sub.id}` });
-    return { ...sold, state: "approval" };
-  }
-  await logAction(me, pay === "qr" ? "Created order" : "Sold plan", { memberId: userId, branchId, detail: `${what} · ${pay === "split" ? "cash + UPI" : pay === "cash" ? "cash" : "UPI"}` });
-  if (pay === "qr") return { ...sold, state: "pay" };
-  if (proof.file) {
-    try {
-      await saveProof(sub.id, proof.file);
-    } catch (e) {
-      await drop();
-      return { error: `Couldn't save the payment photo: ${(e as Error).message}` };
+
+  // 4. approvals wait; the rest is logged, then activated now or left for the QR
+  const out: SoldPlan[] = [];
+  for (const m of made) {
+    const what = `${m.label} · ${inr(m.total)}${m.discounted ? ` (standard ${inr(m.standard)})` : ""}`;
+    const sold = { label: m.label, amount: m.total, subId: m.id, endsOn: null };
+    if (m.needsApproval) {
+      await logAction(me, "Asked for a discount", { memberId: userId, branchId, detail: what });
+      notifyAfter(ownerIds, { title: "Discount to approve", body: `${me.full_name || "Staff"}: ${what}`, url: "/admin/payments", tag: `discount-${m.id}` });
+      out.push({ ...sold, state: "approval" });
+      continue;
     }
+    await logAction(me, pay === "qr" ? "Created order" : "Sold plan", { memberId: userId, branchId, detail: `${what} · ${m.method === "cash" ? "cash" : m.cashPart ? "cash + UPI" : "UPI"}` });
+    if (pay === "qr") {
+      out.push({ ...sold, state: "pay" });
+      continue;
+    }
+    if (proof.file) {
+      try {
+        await saveProof(m.id, proof.file);
+      } catch (e) {
+        return { error: `Couldn't save the payment photo: ${(e as Error).message}` };
+      }
+    }
+    const act = await supabase.rpc("activate_subscription", { p_sub: m.id });
+    if (act.error) return { error: act.error.message };
+    const dates = await placeDates(m.id, userId, picked.start);
+    if (dates.error) return { error: `Sold, but the dates didn't save: ${dates.error}` };
+    out.push({ ...sold, state: "paid", endsOn: dates.ends ?? null });
   }
-  const act = await supabase.rpc("activate_subscription", { p_sub: sub.id });
-  if (act.error) return { error: act.error.message };
-  if (start && plan) {
-    const e = await startOn(sub.id, start, plan.duration_days as number);
-    if (e) return { error: `Sold, but the start date didn't save: ${e}` };
-  }
-  const { data: active } = await supabase.from("subscriptions").select("ends_on").eq("id", sub.id).maybeSingle();
-  notifyAfter([userId], { title: "Payment confirmed", body: `${label} · ${inr(total)} — your pass is ready.`, url: `/pass/${sub.id}`, tag: `paid-${sub.id}` });
-  return { ...sold, state: "paid", endsOn: (active?.ends_on as string | null) ?? null };
+  const paid = out.filter((x) => x.state === "paid");
+  if (paid.length) notifyAfter([userId], { title: "Payment confirmed", body: `${paid.map((x) => x.label).join(" + ")} · ${inr(paid.reduce((n, x) => n + x.amount, 0))} — your pass is ready.`, url: `/pass/${paid[0].subId}`, tag: `paid-${paid[0].subId}` });
+  return out;
 }
 
 /** Owner: a staff member asked to sell below the standard price. Approve it, or put the order back at the standard price. */

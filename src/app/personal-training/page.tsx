@@ -43,13 +43,17 @@ export default async function PersonalTrainingPage() {
 
       {pt.length > 0 && (
         <section className="wrap flex flex-col gap-8 pb-20">
-          <h2 className="h-section" data-reveal>Pick your length.</h2>
+          <div className="flex flex-col gap-3" data-reveal>
+            <h2 className="h-section">Pick your length.</h2>
+            <p className="max-w-2xl text-body">Personal training is added on top of any membership — this is the trainer fee. Add it at the desk when you join or renew, or book a free consult first.</p>
+          </div>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {pt.map((p) => (
               <div key={p.id} className="lift flex flex-col gap-5 rounded-md border border-line bg-carbon p-7" data-reveal>
                 <p className="label">{DURATIONS.find((d) => d.days === p.duration_days)?.label}</p>
                 <Price paise={p.price_paise} offer={bestOffer(offers, "personal_training", p.duration_days)} days={p.duration_days} size="text-5xl" />
-                <Link href={`/buy/${p.id}`} className="btn-red mt-auto">Start</Link>
+                <p className="-mt-2 text-sm text-ash">+ your membership</p>
+                <Link href="/contact?topic=personal_training" className="btn-red mt-auto">Book at the desk</Link>
               </div>
             ))}
           </div>
