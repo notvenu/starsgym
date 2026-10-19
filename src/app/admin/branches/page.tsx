@@ -42,6 +42,7 @@ export default async function BranchesPage({ searchParams }: PageProps<"/admin/b
               <div className="min-w-0">
                 <h2 className="font-display text-3xl leading-none uppercase">{x.name}</h2>
                 {x.address && <p className="mt-1.5 line-clamp-2 text-sm text-ash" title={x.address}>{x.address}</p>}
+                {isOwner && <p className="mt-1 truncate text-sm text-ash">UPI · <span className="text-chalk">{x.upi_id || `${process.env.NEXT_PUBLIC_UPI_ID ?? "not set"} (gym-wide)`}</span></p>}
               </div>
               {isOwner && <BranchModal branch={x} label="Edit" className="btn-ghost min-h-10 shrink-0 px-4 text-xs" />}
             </div>

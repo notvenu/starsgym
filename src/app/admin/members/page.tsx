@@ -31,7 +31,7 @@ const SORTS = [
   ["name", "Name A–Z"],
 ] as const;
 
-const PER_PAGE = 60;
+const PER_PAGE = 25; // a phone screenful or three; more made the page slow to open on phones
 const pick = <T extends string>(list: readonly (readonly [T, string])[], v: unknown, fallback: T) =>
   list.some(([k]) => k === v) ? (v as T) : fallback;
 

@@ -46,8 +46,11 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
   const [state, action, saving] = useActionState(async (prev: Result, form: FormData) => {
     const res = await saveTeam(prev, form);
     if (res?.password) await showPassword(res.password);
-    if (res?.ok) onDone?.();
-    return res;
+    if (res?.ok) {
+      toastResult(res); // shown here: a form that closes on success takes its own message with it
+      onDone?.();
+    }
+    return res?.ok ? undefined : res;
   }, undefined);
   const item = person?.item;
   const access = role === "trainer" ? "none" : role === "admin" ? "admin" : "staff";

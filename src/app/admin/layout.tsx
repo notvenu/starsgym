@@ -31,6 +31,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       { href: "/admin/checkins", label: "Check-ins", icon: "scan" },
       // staff: holidays, enquiries and the running offers here; the owner has the full pages in their own sections
       ...(isOwner ? [] : [
+        { href: "/admin/summary", label: "Daily summary", icon: "overview" as const },
         { href: "/admin/enquiries", label: "Enquiries", icon: "enquiries" as const, badge: enquiries.count ?? 0 },
         { href: "/admin/offers", label: "Offers", icon: "plans" as const },
         { href: "/admin/branches", label: "Holidays", icon: "branches" as const },
@@ -69,7 +70,6 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       {/* desk alerts: UPI screenshots to verify, discounts to approve */}
       <div className="px-3 pb-2"><NotificationToggle compact /></div>
       <Link href="/" className="rounded px-3 py-2.5 text-sm text-ash hover:bg-steel hover:text-chalk">View website ↗</Link>
-      <Link href="/dashboard" className="rounded px-3 py-2.5 text-sm text-ash hover:bg-steel hover:text-chalk">My dashboard</Link>
       <form action={signOut}>
         <button className="w-full cursor-pointer rounded px-3 py-2.5 text-left text-sm text-ash hover:bg-steel hover:text-chalk">Sign out</button>
       </form>

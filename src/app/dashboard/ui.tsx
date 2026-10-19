@@ -276,8 +276,11 @@ function ProfileBody({ profile, photo, branches, request }: { profile: Profile; 
 function RequestForm({ profile, branches, onDone }: { profile: Profile; branches: Branch[]; onDone: () => void }) {
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await requestChange(prev, form);
-    if (r?.ok) onDone();
-    return r;
+    if (r?.ok) {
+      toastResult(r); // the form closes on success, taking its own message with it
+      onDone();
+    }
+    return r?.ok ? undefined : r;
   }, undefined);
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4 rounded-xl border border-line p-4">

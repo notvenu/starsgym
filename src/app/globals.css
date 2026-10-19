@@ -207,6 +207,12 @@ a, button, select, label, summary { touch-action: manipulation; }
 @keyframes door-scrim { from { opacity: 0; } }
 @keyframes door-land { from { opacity: 0; transform: translateY(48px); visibility: hidden; } }
 
+/* a page reload in progress (admin branch switch): thin red bar sweeping the top, the page dimmed and not tappable */
+html[data-busy] main { opacity: 0.55; pointer-events: none; transition: opacity 0.15s; }
+html[data-busy]::before { content: ""; position: fixed; z-index: 100; top: 0; left: 0; height: 3px; width: 40%; background: var(--color-red); animation: busy-bar 0.9s ease-in-out infinite; }
+@keyframes busy-bar { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+@media (prefers-reduced-motion: reduce) { html[data-busy]::before { animation: none; width: 100%; opacity: 0.6; } }
+
 /* top bar: branch statuses slide up in turn */
 .ticker-in { animation: ticker-in 0.6s var(--ease-lift) both; }
 @keyframes ticker-in { from { transform: translateY(110%); opacity: 0; } to { transform: none; opacity: 1; } }

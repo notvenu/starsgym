@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { adminDb, requireUser, UUID } from "@/lib/supabase";
 import { GENDERS, LOGIN_EMAIL_DOMAIN, phoneKey, readPersonalDetails } from "@/lib/gym";
 import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
+import { deskIds, notifyAfter } from "@/lib/push";
 
 export type Result = { error?: string; ok?: string } | undefined;
 
@@ -71,6 +72,7 @@ export async function requestChange(_: Result, form: FormData): Promise<Result> 
   }
   revalidatePath("/dashboard");
   revalidatePath("/admin", "layout");
+  notifyAfter(() => deskIds(profile.home_branch_id), { title: "Profile change to approve", body: `${profile.full_name || "A member"} asked to change their details.`, url: "/admin", tag: `request-${user.id}` });
   return { ok: "Sent to the desk — you'll see it here once it's approved." };
 }
 

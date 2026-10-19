@@ -32,12 +32,12 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const view = (await cookies()).get("members_view")?.value ?? "";
   const back = `/admin/members${view.startsWith("?") ? view : ""}`;
 
-  const photo = await photoUrl(member.photo_path);
   // the starting password, for the desk to tell a member who forgot it — and whether they've replaced it since.
   // Only reached once RLS has shown this member to this desk (notFound above).
   // members added at the desk now get a random temporary password (shown once, never stored); older accounts got the
-  // name + phone one, which the desk can still read out
-  const meta = member.role === "member" ? (await adminDb().auth.admin.getUserById(member.id)).data.user?.app_metadata : null;
+  // name + phone one, which the desk can still read out. Fetched together with the photo: two waits, one round trip.
+  const [photo, account] = await Promise.all([photoUrl(member.photo_path), member.role === "member" ? adminDb().auth.admin.getUserById(member.id) : null]);
+  const meta = account?.data.user?.app_metadata ?? null;
   const onTemp = meta?.temp_password === true;
   const random = meta?.temp_kind === "random";
   const starter = meta && !random ? starterPassword(member.full_name, member.phone) : null;

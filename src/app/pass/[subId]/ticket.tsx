@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { gymDate, inr, payMethod, planName, prettyDay } from "@/lib/gym";
+import { discountOf, gymDate, inr, payMethod, planName, prettyDay } from "@/lib/gym";
 import type { PassData } from "./data";
 import { LiveQr, PassActions } from "./ui";
 
@@ -12,6 +12,7 @@ export function Ticket({ pass }: { pass: PassData }) {
   const oneDay = pass.plans.duration_days === 1;
   const daysLeft = valid ? Math.round((Date.parse(pass.ends_on!) - Date.parse(today)) / 864e5) + 1 : 0;
   const ref = pass.id.slice(0, 8).toUpperCase();
+  const saved = discountOf(pass);
   const state = valid ? "Valid" : upcoming ? "Starts soon" : pass.status === "pending" ? "Awaiting payment" : "Expired";
 
   return (
@@ -41,6 +42,7 @@ export function Ticket({ pass }: { pass: PassData }) {
           {pass.paid_at && (
             <>
               <Detail label={pass.admission_paise > 0 ? `Paid · incl. ${inr(pass.admission_paise)} admission` : "Paid"} value={`${inr(pass.amount_paise)} · ${payMethod(pass)}`} wide />
+              {saved > 0 && <Detail label="You saved" value={`${inr(saved)} off the ${inr(pass.list_price_paise!)} price`} wide />}
               <Detail label="Paid on" value={new Date(pass.paid_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })} />
             </>
           )}
@@ -71,7 +73,7 @@ export function Ticket({ pass }: { pass: PassData }) {
 
       {pass.status === "active" && (
         <PassActions subId={pass.id} ref_={ref} phone={pass.profiles?.phone ?? null} name={pass.profiles?.full_name ?? ""} paid={!!pass.paid_at}
-          receipt={pass.paid_at ? `${planName(pass.plans)}${pass.ends_on ? `, valid till ${prettyDay(pass.ends_on)}` : ""}. Paid ${inr(pass.amount_paise)} (${payMethod(pass)}).` : ""} />
+          receipt={pass.paid_at ? `${planName(pass.plans)}${pass.ends_on ? `, valid till ${prettyDay(pass.ends_on)}` : ""}. Paid ${inr(pass.amount_paise)} (${payMethod(pass)})${saved > 0 ? `, saving ${inr(saved)}` : ""}.` : ""} />
       )}
     </>
   );

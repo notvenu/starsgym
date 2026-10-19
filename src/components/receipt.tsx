@@ -150,7 +150,7 @@ export function ReceiptScan() {
  * (amount, "successful", paid to the gym, a UTR, the date). Advice only — it never approves anything; an edited
  * screenshot can pass, so the panel always says to confirm the money in the UPI app.
  */
-export function ProofCheck({ src, amountPaise, createdAt }: { src: string; amountPaise: number; createdAt: string }) {
+export function ProofCheck({ src, amountPaise, createdAt, upiId }: { src: string; amountPaise: number; createdAt: string; upiId: string }) {
   const [result, setResult] = useState<PaymentCheck | "error" | null>(null);
   const [progress, setProgress] = useState(0);
   useEffect(() => {
@@ -158,10 +158,10 @@ export function ProofCheck({ src, amountPaise, createdAt }: { src: string; amoun
     (async () => {
       const blob = await (await fetch(src)).blob();
       const text = await readText(blob, (pct) => live && setProgress(pct));
-      if (live) setResult(checkPayment(text, { amountPaise, createdAt, upiId: process.env.NEXT_PUBLIC_UPI_ID }));
+      if (live) setResult(checkPayment(text, { amountPaise, createdAt, upiId }));
     })().catch(() => live && setResult("error"));
     return () => void (live = false);
-  }, [src, amountPaise, createdAt]);
+  }, [src, amountPaise, createdAt, upiId]);
 
   if (!result) return <p role="status" className="text-sm text-ash">Checking the screenshot… {progress ? `${progress}%` : ""}</p>;
   if (result === "error") return <p className="text-sm text-ash">Couldn&apos;t read the screenshot — check it by eye.</p>;

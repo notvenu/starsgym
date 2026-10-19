@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { adminDb, requireUser } from "@/lib/supabase";
 import { allow, SLOW_DOWN } from "@/lib/rate-limit";
 import { activateByOrder, createOrder, razorpayEnabled, verifyCheckout } from "@/lib/razorpay";
+import { deskIds, notifyAfter } from "@/lib/push";
+import { inr } from "@/lib/gym";
 
 type Pending = { id: string; amount_paise: number };
 
@@ -22,6 +24,8 @@ async function createPending(planId: string, branchId: string, method: "razorpay
 export async function payAtDesk(planId: string, branchId: string) {
   const res = await createPending(planId, branchId, "upi_qr");
   if ("error" in res) return { error: res.error };
+  // so the desk expects them (and has the UPI screenshot to verify when it arrives)
+  notifyAfter(() => deskIds(branchId || null), { title: "Order waiting for payment", body: `${res.profile.full_name || "A member"} chose pay at the desk · ${inr(res.sub.amount_paise)}.`, url: "/admin/payments", tag: `order-${res.sub.id}` });
   redirect(`/pay/${res.sub.id}`);
 }
 

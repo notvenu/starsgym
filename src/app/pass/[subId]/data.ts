@@ -9,6 +9,7 @@ export type PassData = {
   ends_on: string | null;
   pass_token: string;
   amount_paise: number;
+  list_price_paise: number | null;
   admission_paise: number;
   cash_paise: number | null;
   method: string;
@@ -22,7 +23,7 @@ export type PassData = {
 export async function getPass(supabase: SupabaseClient, id: string) {
   const { data } = await supabase
     .from("subscriptions")
-    .select("id,status,starts_on,ends_on,pass_token,amount_paise,admission_paise,cash_paise,method,paid_at,plans(*),profiles!subscriptions_user_id_fkey(full_name,phone),branches(name)")
+    .select("id,status,starts_on,ends_on,pass_token,amount_paise,list_price_paise,admission_paise,cash_paise,method,paid_at,plans(*),profiles!subscriptions_user_id_fkey(full_name,phone),branches(name)")
     .eq("id", id)
     .maybeSingle();
   return data as unknown as PassData | null;

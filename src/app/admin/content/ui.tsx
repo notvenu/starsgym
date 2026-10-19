@@ -51,8 +51,11 @@ export function ItemForm({ kind, item, trainers = [], onDone }: { kind: ItemKind
   const f = FIELDS[kind];
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const res = await saveItem(prev, form);
-    if (res?.ok) onDone?.();
-    return res;
+    if (res?.ok) {
+      toastResult(res); // shown here: a form that closes on success takes its own message with it
+      onDone?.();
+    }
+    return res?.ok ? undefined : res;
   }, undefined);
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4" key={item?.id ?? "new"}>

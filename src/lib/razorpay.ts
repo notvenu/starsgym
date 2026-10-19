@@ -1,6 +1,8 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { adminDb } from "./supabase";
+import { deskIds, notifyAfter } from "./push";
+import { inr } from "./gym";
 
 const KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "";
 const SECRET = process.env.RAZORPAY_KEY_SECRET ?? "";
@@ -38,9 +40,15 @@ export const verifyWebhook = (rawBody: string, signature: string) =>
 /** Idempotent: the checkout callback and the webhook may both arrive. */
 export async function activateByOrder(orderId: string, paymentId: string) {
   const supabase = adminDb();
-  const { data: sub } = await supabase.from("subscriptions").select("id").eq("razorpay_order_id", orderId).single();
+  const { data: sub } = await supabase.from("subscriptions").select("id,user_id,branch_id,status,amount_paise,profiles!subscriptions_user_id_fkey(full_name)").eq("razorpay_order_id", orderId).single();
   if (!sub) throw new Error(`No subscription for order ${orderId}`);
   const { error } = await supabase.rpc("activate_subscription", { p_sub: sub.id, p_payment_id: paymentId });
   if (error) throw new Error(error.message);
+  if (sub.status === "pending") {
+    // first time only (the checkout callback and the webhook both land here): tell the member, and the desk
+    const who = (sub.profiles as unknown as { full_name: string } | null)?.full_name || "A member";
+    notifyAfter([sub.user_id], { title: "Payment confirmed", body: `${inr(sub.amount_paise)} received — your pass is ready.`, url: `/pass/${sub.id}`, tag: `paid-${sub.id}` });
+    notifyAfter(() => deskIds(sub.branch_id as string | null), { title: "Online payment received", body: `${who} paid ${inr(sub.amount_paise)} online.`, url: "/admin/payments", tag: `online-${sub.id}` });
+  }
   return sub.id as string;
 }

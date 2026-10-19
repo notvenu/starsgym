@@ -18,7 +18,7 @@ const worker = async () => (await navigator.serviceWorker.getRegistration("/")) 
 type State = "loading" | "unsupported" | "ios-install" | "blocked" | "off" | "on";
 
 /** Notifications on/off for this device. iPhones only allow them once the app is on the home screen. */
-export function NotificationToggle({ compact }: { compact?: boolean }) {
+export function NotificationToggle({ compact, nudge }: { compact?: boolean; nudge?: boolean }) {
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
 
@@ -76,6 +76,7 @@ export function NotificationToggle({ compact }: { compact?: boolean }) {
   }
 
   if (state === "loading" || state === "unsupported") return null;
+  if (nudge && state !== "off") return null; // a reminder to turn them on: gone once they're on (or can't be)
   const hint = {
     "ios-install": "On iPhone: Share → Add to Home Screen, then open Stars Gym from there to turn these on.",
     blocked: "Blocked for this site. Allow notifications in your browser's site settings, then come back.",

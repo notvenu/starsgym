@@ -11,7 +11,7 @@ import QRCode from "qrcode";
 import { PhotoCapture } from "@/components/photo";
 import { ProofCheck, ProofInput, ReceiptScan } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
-import { offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
+import { offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
 import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
@@ -28,7 +28,7 @@ export function AdminModal({ label, title, className = "btn-red", startOpen, chi
 }
 
 /** An unpaid order. Staff take the money; the owner can also reprice, cancel, and settle staff discount requests. */
-export function PendingRow({ id, title, meta, method, approval, ask, owner, proof, amountPaise, createdAt }: { id: string; title: string; meta: string; method: string; approval: string | null; ask: string | null; owner: boolean; proof: string | null; amountPaise: number; createdAt: string }) {
+export function PendingRow({ id, title, meta, method, approval, ask, owner, proof, amountPaise, createdAt, upiId }: { id: string; title: string; meta: string; method: string; approval: string | null; ask: string | null; owner: boolean; proof: string | null; amountPaise: number; createdAt: string; upiId: string }) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<Result>();
   const [editing, setEditing] = useState(false);
@@ -72,7 +72,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
           <button type="button" onClick={() => setEditing(true)} className="mt-1 cursor-pointer text-sm font-bold text-red hover:text-chalk">Change price</button>
         ))}
         <Status state={state} />
-        {paying && <MarkPaidForm id={id} cash={method === "cash"} sent={proof} amountPaise={amountPaise} createdAt={createdAt} onClose={() => setPaying(false)} />}
+        {paying && <MarkPaidForm id={id} cash={method === "cash"} sent={proof} amountPaise={amountPaise} createdAt={createdAt} upiId={upiId} onClose={() => setPaying(false)} />}
       </div>
       {!paying && <div className="flex shrink-0 flex-wrap gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
         {owner && waiting ? (
@@ -96,7 +96,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
 
 /** "Mark paid" on an order: the payment photo (UPI screenshot required, a cash receipt optional), then confirm.
  *  A screenshot the member already sent counts — the desk checks it against their UPI app first. */
-function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, onClose }: { id: string; cash: boolean; sent: string | null; amountPaise: number; createdAt: string; onClose: () => void }) {
+function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, upiId, onClose }: { id: string; cash: boolean; sent: string | null; amountPaise: number; createdAt: string; upiId: string; onClose: () => void }) {
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await markPaid(prev, form);
     if (r?.ok) toastResult(r); // the paid row leaves the list with the refresh, taking its own toast with it
@@ -113,7 +113,7 @@ function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, onClose }: { id:
           <span className="text-xs text-ash">Tap to open full size.</span>
         </a>
       )}
-      {sent && <ProofCheck src={sent} amountPaise={amountPaise} createdAt={createdAt} />}
+      {sent && <ProofCheck src={sent} amountPaise={amountPaise} createdAt={createdAt} upiId={upiId} />}
       <ProofInput required={!cash && !sent} hint={sent ? "Only if you want to replace theirs." : cash ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment."} />
       <div className="flex flex-wrap items-center gap-2">
         <button disabled={pending} className="btn-red min-h-11 px-5 text-xs whitespace-nowrap max-sm:flex-1">{pending ? "Saving…" : "Confirm paid"}</button>
@@ -235,7 +235,7 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
             </p>
           </div>
           {plan.state === "pay" && <Link href={`/pay/${plan.subId}`} className="btn-red min-h-11 shrink-0 px-4 text-xs">Show UPI QR</Link>}
-          {plan.state === "paid" && <Link href={`/pass/${plan.subId}`} className="btn-red min-h-11 shrink-0 px-4 text-xs">Pass &amp; receipt</Link>}
+          {plan.state === "paid" && <a href={`/pass/${plan.subId}/receipt`} download className="btn-red min-h-11 shrink-0 px-4 text-xs">Download receipt</a>}
         </div>
       )}
 
@@ -245,8 +245,15 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
 }
 
 /** Members list → Renew: sell an existing member their next plan. Starts the day after their current one ends. */
-export function RenewForm({ userId, branchId, plans, offers, trainers, owner, admissionPaise }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise: number | null }) {
-  const [state, action, pending] = useActionState(renewMember, undefined);
+export function RenewForm({ userId, branchId, plans, offers, trainers, owner, admissionPaise, onDone }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise: number | null; onDone?: () => void }) {
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const r = await renewMember(prev, form);
+    if (r?.ok) {
+      toastResult(r); // the sheet closes, so the confirmation can't live inside it
+      onDone?.();
+    }
+    return r?.ok ? undefined : r;
+  }, undefined);
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
       <input type="hidden" name="user_id" value={userId} />
@@ -294,6 +301,14 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
           />
         )}
         {plan?.track === "personal_training" && trainers.length > 0 && <Select label="Trainer" name="trainer_id" options={[["", "Not assigned yet"], ...trainers]} />}
+        {plan && (
+          // blank = today, or the day after their current plan ends; pick one to backdate (any past date) or start later (up to 60 days)
+          <label className="flex flex-col gap-1.5 sm:max-w-64">
+            <span className="label">Start date (optional)</span>
+            <input type="date" name="start_on" max={gymDateIn(60)} className="field" />
+            <span className="text-xs text-ash">Leave blank to start today — or the day after their current plan ends.</span>
+          </label>
+        )}
         {kind !== "none" && !plan && <p className="text-red">That plan isn&apos;t available.</p>}
         <input type="hidden" name="plan_id" value={plan?.id ?? ""} />
       </Step>
@@ -429,8 +444,11 @@ export function HolidayModal({ branches, emailEnabled, canEmail, startOpen }: { 
 function HolidayForm({ branches, emailEnabled, canEmail, onDone }: { branches: Branch[]; emailEnabled: boolean; canEmail: boolean; onDone: () => void }) {
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const res = await addHoliday(prev, form);
-    if (res?.ok) onDone();
-    return res;
+    if (res?.ok) {
+      toastResult(res); // shown here: a form that closes on success takes its own message with it
+      onDone();
+    }
+    return res?.ok ? undefined : res;
   }, undefined);
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4">
@@ -621,7 +639,7 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
           {sheet === "edit" ? (
             <MemberEditForm member={member} branches={branches} />
           ) : (
-            <RenewForm userId={member.id} branchId={member.home_branch_id} plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} />
+            <RenewForm userId={member.id} branchId={member.home_branch_id} plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} onDone={() => setSheet(null)} />
           )}
         </Sheet>
       )}
@@ -632,6 +650,11 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
 /** Owner and both-branch staff: which branch the desk shows. A compact pill in the top bar / sidebar. */
 export function BranchSwitch({ branches, value }: { branches: [string, string][]; value: string }) {
   const [pending, start] = useTransition();
+  // while the page reloads for the new branch: a progress bar and a dimmed, untappable page (globals.css [data-busy])
+  useEffect(() => {
+    document.documentElement.toggleAttribute("data-busy", pending);
+    return () => document.documentElement.removeAttribute("data-busy");
+  }, [pending]);
   return (
     <label className={`relative flex min-w-0 shrink items-center text-chalk ${pending ? "opacity-60" : ""}`}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="pointer-events-none absolute left-3 text-red">
@@ -1019,8 +1042,11 @@ export function BranchModal({ branch, label, className }: { branch?: Branch; lab
 function BranchForm({ branch: b, onDone }: { branch?: Branch; onDone: () => void }) {
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const res = await saveBranch(prev, form);
-    if (res?.ok) onDone();
-    return res;
+    if (res?.ok) {
+      toastResult(res); // shown here: a form that closes on success takes its own message with it
+      onDone();
+    }
+    return res?.ok ? undefined : res;
   }, undefined);
   const t = (v: string | null | undefined) => (v ? hhmm(v) : "");
   return (
@@ -1029,6 +1055,7 @@ function BranchForm({ branch: b, onDone }: { branch?: Branch; onDone: () => void
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Name" name="name" defaultValue={b?.name} required />
         <Field label="Address" name="address" defaultValue={b?.address} />
+        <Field label="UPI ID for this branch (optional)" name="upi_id" defaultValue={b?.upi_id ?? ""} placeholder={process.env.NEXT_PUBLIC_UPI_ID || "stargym@okaxis"} autoComplete="off" spellCheck={false} />
       </div>
 
       <fieldset className="flex flex-col gap-4">

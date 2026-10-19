@@ -24,7 +24,11 @@ export type Branch = {
   ladies_evening_close: string | null;
   grace_minutes: number; // check-in stays open this long after each closing time
   active: boolean;
+  upi_id?: string | null; // this branch's UPI ID for desk QR codes (0022); none = NEXT_PUBLIC_UPI_ID
 };
+
+/** The UPI ID payments for this branch go to: its own, or the gym-wide one. */
+export const branchUpi = (b?: { upi_id?: string | null } | null) => b?.upi_id?.trim() || process.env.NEXT_PUBLIC_UPI_ID || "";
 
 export type Gender = "female" | "male" | "other";
 export const GENDERS: [Gender, string][] = [["female", "Female"], ["male", "Male"], ["other", "Other"]];
@@ -115,6 +119,11 @@ export const payMethod = (p: { method: string; amount_paise: number; cash_paise?
   p.cash_paise ? `${METHOD[p.method] ?? p.method} ${inr(p.amount_paise - p.cash_paise)} + Cash ${inr(p.cash_paise)}` : (METHOD[p.method] ?? p.method);
 
 export const hhmm = (t: string) => t.slice(0, 5);
+
+/** What the customer saved on the plan itself: its list price minus what they were charged for it (admission is
+ *  separate). Counts any discount — a running offer or a price negotiated at the desk. 0 when there was none. */
+export const discountOf = (s: { list_price_paise: number | null; amount_paise: number; admission_paise?: number | null }) =>
+  Math.max(0, (s.list_price_paise ?? 0) - (s.amount_paise - (s.admission_paise ?? 0)));
 
 /** "2026-10-25" → "Sat, 25 Oct" */
 export const prettyDay = (iso: string) =>
@@ -256,9 +265,9 @@ export function readMemberDetails(form: FormData): { error: string } | { details
 }
 
 /** UPI deep link; the QR at the desk encodes this. */
-export function upiLink(amountPaise: number, ref: string) {
+export function upiLink(amountPaise: number, ref: string, upiId = process.env.NEXT_PUBLIC_UPI_ID ?? "") {
   const q = new URLSearchParams({
-    pa: process.env.NEXT_PUBLIC_UPI_ID ?? "",
+    pa: upiId,
     pn: "Stars Gym",
     am: (amountPaise / 100).toFixed(2),
     cu: "INR",

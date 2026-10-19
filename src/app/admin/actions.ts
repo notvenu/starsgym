@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { adminDb, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, hasProof, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { gymDate, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, type Plan, type Track } from "@/lib/gym";
+import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter, ownerIds } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
@@ -55,7 +55,7 @@ export async function markPaid(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me } = await requireStaff();
   const subId = s(form, "id");
   if (!UUID.test(subId)) return { error: "Reload and try again." };
-  const { data: sub } = await supabase.from("subscriptions").select("user_id,amount_paise,approval,branch_id,method").eq("id", subId).maybeSingle();
+  const { data: sub } = await supabase.from("subscriptions").select("user_id,amount_paise,approval,branch_id,method,starts_on,plans(duration_days)").eq("id", subId).maybeSingle();
   if (!sub) return NOT_YOURS;
   if (sub.approval === "pending") return { error: "The owner hasn't approved this price yet." };
   const proof = formPhoto(form, "proof");
@@ -70,6 +70,12 @@ export async function markPaid(_: Result, form: FormData): Promise<Result> {
   }
   const { error } = await supabase.rpc("activate_subscription", { p_sub: subId });
   if (error) return { error: error.message };
+  // the desk picked a start date when it made the order: keep it, rather than "from today"
+  const days = (sub.plans as unknown as { duration_days: number } | null)?.duration_days;
+  if (sub.starts_on && days) {
+    const e = await startOn(subId, sub.starts_on as string, days);
+    if (e) return { error: `Marked paid, but the start date didn't save: ${e}` };
+  }
   await logAction(me, "Marked paid", { memberId: sub.user_id, branchId: sub.branch_id, detail: inr(sub.amount_paise) });
   notifyAfter([sub.user_id], { title: "Payment confirmed", body: `${inr(sub.amount_paise)} received — your pass is ready.`, url: `/pass/${subId}`, tag: `paid-${subId}` });
   return done("Marked paid");
@@ -93,6 +99,22 @@ export async function cancelSub(subId: string): Promise<Result> {
   return done("Cancelled");
 }
 
+/** The start date the desk picked: blank = automatic (today, or the day after their current plan ends). Any past date
+ *  (a member entered months late, old records) or up to 60 days ahead (a plan that begins next month). */
+function pickedStart(form: FormData): { start: string | null; error?: string } {
+  const start = s(form, "start_on");
+  if (!start) return { start: null };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || start < "2015-01-01" || start > gymDateIn(60)) return { start: null, error: "Pick a start date up to 60 days from today (any past date is fine)." };
+  return { start };
+}
+
+/** Moves an active plan to start on `start` and run its full length (a 30-day plan from 19 Oct ends 17 Nov). */
+async function startOn(subId: string, start: string, days: number) {
+  const ends = new Date(Date.parse(`${start}T12:00:00Z`) + (days - 1) * 864e5).toISOString().slice(0, 10);
+  const { error } = await adminDb().from("subscriptions").update({ starts_on: start, ends_on: ends }).eq("id", subId).eq("status", "active");
+  return error ? error.message : null;
+}
+
 /** Desk sign-up: creates the member and optionally sells their first plan — paid now, or shown as a UPI QR. */
 export async function addMember(_: Result, form: FormData): Promise<Result> {
   const { supabase, branchId, profile: me, isOwner } = await requireStaff();
@@ -103,6 +125,12 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   if ("error" in read) return read;
   const photo = formPhoto(form);
   if (photo.error) return { error: photo.error };
+  // the plan's own mistakes are checked here too, before an account exists (sellPlan checks again; these are cheap)
+  if (s(form, "plan_id")) {
+    const start = pickedStart(form);
+    if (start.error) return { error: start.error };
+    if (["price", "admission"].some((k) => s(form, k) !== "" && !(Number(s(form, k)) >= 0))) return { error: "Prices must be zero or more." };
+  }
 
   const { data: existing } = email ? await supabase.from("profiles").select("id,photo_path").eq("email", email).maybeSingle() : { data: null };
   if (!photo.file && !existing?.photo_path) return { error: "Take or upload the member's photo — staff check it when they scan the pass." };
@@ -166,8 +194,12 @@ export async function renewMember(_: Result, form: FormData): Promise<Result> {
   const sold = await sellPlan(supabase, me, isOwner, userId, branchId ?? (s(form, "branch_id") || null), form);
   if ("error" in sold) return sold;
   if (sold.state === "approval") return done(`Sent to the owner to approve ${inr(sold.amount)}. Take the money once it's approved — it shows under Payments.`);
-  revalidatePath("/admin", "layout");
-  redirect(sold.state === "pay" ? `/pay/${sold.subId}` : `/pass/${sold.subId}?new=1`); // renewals: straight to the QR or the new pass
+  // a QR still has to be shown to the member; a paid renewal just confirms — the pass is the member's, not the desk's
+  if (sold.state === "pay") {
+    revalidatePath("/admin", "layout");
+    redirect(`/pay/${sold.subId}`);
+  }
+  return done(`Renewed · ${sold.label}${sold.endsOn ? ` till ${prettyDay(sold.endsOn)}` : ""}`);
 }
 
 /** Owner only. Deletes the member's account, plans, visits and photo. Staff and admin accounts can't be deleted here. */
@@ -197,6 +229,9 @@ async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: str
   if ([price, admission].some((v) => v !== null && (!Number.isFinite(v) || v < 0))) return { error: "Prices must be zero or more." };
   const cash = pay === "split" ? Math.round(Number(s(form, "cash")) * 100) : null;
   if (cash !== null && !(cash > 0)) return { error: "Enter the cash part of the payment." };
+  const picked = pickedStart(form);
+  if (picked.error) return { error: picked.error };
+  const start = picked.start;
   const trainerId = s(form, "trainer_id") || null; // personal training: who coaches them
   if (trainerId && !(UUID.test(trainerId) && (await supabase.from("site_items").select("id").eq("id", trainerId).eq("kind", "trainer").maybeSingle()).data))
     return { error: "Pick a trainer from the list." };
@@ -226,7 +261,8 @@ async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: str
     await drop();
     return { error: proof.error ?? "Add a screenshot of the UPI payment." };
   }
-  if (discounted || cash !== null || trainerId) {
+  // a picked start rides on the order (paid later: Mark paid applies it); paid now, it's applied after activation below
+  if (discounted || cash !== null || trainerId || start) {
     // service key: desk-only path (checked above), and it doesn't depend on column grants
     const { error: e } = await adminDb()
       .from("subscriptions")
@@ -235,6 +271,7 @@ async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: str
         ...(fee > 0 && { admission_paise: adm }),
         ...(cash !== null && { cash_paise: cash }),
         ...(trainerId && { trainer_id: trainerId }),
+        ...(start && { starts_on: start }),
         ...(needsApproval && { approval: "pending", standard_paise: standard, requested_by: me.id }),
       })
       .eq("id", sub.id);
@@ -264,6 +301,10 @@ async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: str
   }
   const act = await supabase.rpc("activate_subscription", { p_sub: sub.id });
   if (act.error) return { error: act.error.message };
+  if (start && plan) {
+    const e = await startOn(sub.id, start, plan.duration_days as number);
+    if (e) return { error: `Sold, but the start date didn't save: ${e}` };
+  }
   const { data: active } = await supabase.from("subscriptions").select("ends_on").eq("id", sub.id).maybeSingle();
   notifyAfter([userId], { title: "Payment confirmed", body: `${label} · ${inr(total)} — your pass is ready.`, url: `/pass/${sub.id}`, tag: `paid-${sub.id}` });
   return { ...sold, state: "paid", endsOn: (active?.ends_on as string | null) ?? null };
@@ -312,14 +353,22 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
     ladies_morning_close: s(form, "ladies_morning_close") || null,
     ladies_evening_open: s(form, "ladies_evening_open") || null,
     ladies_evening_close: s(form, "ladies_evening_close") || null,
+    upi_id: s(form, "upi_id").toLowerCase() || null, // this branch's own UPI ID (blank = the gym-wide one)
   };
+  if (row.upi_id && !/^[a-z0-9._-]{2,256}@[a-z][a-z0-9.-]{1,63}$/.test(row.upi_id)) return { error: "That UPI ID doesn't look right — like stargym@okaxis." };
   if (!row.name) return { error: "Branch name is required." };
   if (![row.maps_url, row.image_url].every((u) => !u || u.startsWith("https://"))) return { error: "Links must start with https://" };
   if (!row.evening_open !== !row.evening_close) return { error: "Set both evening times, or leave both blank." };
   if (!row.ladies_morning_open !== !row.ladies_morning_close || !row.ladies_evening_open !== !row.ladies_evening_close)
     return { error: "Set both times for a ladies' window, or leave both blank." };
   const id = s(form, "id");
-  const { error } = id ? await supabase.from("branches").update(row).eq("id", id) : await supabase.from("branches").insert(row);
+  const save = (r: Partial<typeof row>) => (id ? supabase.from("branches").update(r).eq("id", id) : supabase.from("branches").insert(r));
+  let { error } = await save(row);
+  if (error && /upi_id/.test(error.message)) {
+    // 0022 not run yet: save everything else, and say why the UPI ID didn't stick
+    ({ error } = await save({ ...row, upi_id: undefined }));
+    if (!error) return { error: "Saved — but run 0022 in Supabase to store a UPI ID per branch." };
+  }
   return error ? { error: error.message } : logged(me, id ? "Edited branch" : "Added branch", id ? "Branch saved" : "Branch added", { detail: row.name });
 }
 
@@ -474,6 +523,10 @@ export async function saveOffer(_: Result, form: FormData): Promise<Result> {
   if (!row.title || !row.starts_on || !row.ends_on) return { error: "Title and dates are required." };
   if (row.ends_on < row.starts_on) return { error: "End date is before the start date." };
   const { error } = await supabase.from("offers").insert(row);
+  if (!error) {
+    notifyAfter(async () => ((await adminDb().from("profiles").select("id").eq("role", "member")).data ?? []).map((p) => p.id as string),
+      { title: `${row.title} · ${percent}% off`, body: `${row.description || "A new offer on memberships"} · till ${prettyDay(row.ends_on)}.`, url: "/#plans", tag: "offer" });
+  }
   return error ? { error: error.message } : logged(me, "Added offer", "Offer live", { detail: `${row.title} · ${perDays ? Object.entries(perDays).map(([d, v]) => `${v}% ${d}d`).join(", ") : `${percent}%`} · ${row.starts_on} → ${row.ends_on}` });
 }
 

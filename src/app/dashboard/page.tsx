@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Flame, Nav, Notices } from "@/components/site";
 import { getNotices, getSettings } from "@/lib/data";
 import { requireUser } from "@/lib/supabase";
@@ -20,6 +21,7 @@ type Sub = { id: string; status: string; method: string; starts_on: string | nul
 export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
   const openPass = (await searchParams).pass; // set after a purchase: open that pass straight away
   const { supabase, user, profile } = await requireUser();
+  if (profile.role !== "member") redirect("/admin"); // staff and the owner work from the front desk; this page is for members
   const month = recentGymDates(30);
   const dates = month.slice(-7);
   const today = dates[6];

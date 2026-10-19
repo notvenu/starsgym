@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { currentUserId, db } from "@/lib/supabase";
-import { inr, payMethod, planName, prettyDay } from "@/lib/gym";
+import { discountOf, inr, payMethod, planName, prettyDay } from "@/lib/gym";
 import { getPass } from "../data";
 
 const anton = readFile(join(process.cwd(), "node_modules/@fontsource/anton/files/anton-latin-400-normal.woff"));
@@ -21,7 +21,13 @@ export async function GET(_: Request, { params }: RouteContext<"/pass/[subId]/re
   const paidOn = new Date(pass.paid_at).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
   const oneDay = pass.plans.duration_days === 1;
   const period = pass.starts_on && pass.ends_on ? (oneDay ? prettyDay(pass.starts_on) : `${prettyDay(pass.starts_on)} – ${prettyDay(pass.ends_on)}`) : "—";
-  const lines: [string, number][] = [[planName(pass.plans), pass.amount_paise - pass.admission_paise], ...(pass.admission_paise > 0 ? [["Admission (one-time)", pass.admission_paise] as [string, number]] : [])];
+  // the plan at its list price, then what was taken off (an offer or a price agreed at the desk), then admission
+  const saved = discountOf(pass);
+  const lines: [string, number][] = [
+    [planName(pass.plans), pass.amount_paise - pass.admission_paise + saved],
+    ...(saved > 0 ? [["Discount", -saved] as [string, number]] : []),
+    ...(pass.admission_paise > 0 ? [["Admission (one-time)", pass.admission_paise] as [string, number]] : []),
+  ];
   const muted = { fontSize: 24, letterSpacing: 3, color: "#777", textTransform: "uppercase" as const };
   const row = { display: "flex", justifyContent: "space-between", alignItems: "baseline" };
 
@@ -60,7 +66,7 @@ export async function GET(_: Request, { params }: RouteContext<"/pass/[subId]/re
 
         <div style={{ display: "flex", flexDirection: "column", marginTop: 56, gap: 24, paddingTop: 40, borderTop: "3px dashed #c9c5bd" }}>
           {lines.map(([k, v]) => (
-            <div key={k} style={row}><span>{k}</span><span>{inr(v)}</span></div>
+            <div key={k} style={{ ...row, color: v < 0 ? "#b8111a" : "#0a0a0a" }}><span>{k}</span><span>{v < 0 ? `− ${inr(-v)}` : inr(v)}</span></div>
           ))}
           <div style={{ ...row, marginTop: 16, paddingTop: 28, borderTop: "3px solid #0a0a0a" }}>
             <span style={{ fontFamily: "Anton", fontSize: 48, textTransform: "uppercase" }}>Total paid</span>
