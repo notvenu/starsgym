@@ -25,10 +25,7 @@ function attach(input: HTMLInputElement, file: File) {
   input.dispatchEvent(new Event("change", { bubbles: true })); // clears an "Add a photo" message
 }
 
-/**
- * Payment proof: a screenshot of the UPI payment, or a photo of the paper receipt. Submitted as the form's "proof"
- * field. Also filled in by ReceiptScan when the desk scans a receipt.
- */
+/** Payment proof: a screenshot of the UPI payment, or a photo of the paper receipt. Submitted as the form's "proof" field. */
 export function ProofInput({ required, hint }: { required?: boolean; hint?: string }) {
   const input = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -47,12 +44,7 @@ export function ProofInput({ required, hint }: { required?: boolean; hint?: stri
   return (
     <div data-field className="flex flex-col gap-2">
       <span className="label">Payment photo{required ? "" : " (optional)"}</span>
-      <input ref={input} type="file" name="proof" accept="image/jpeg" required={required} tabIndex={-1} aria-hidden="true" className="hidden"
-        onChange={(e) => {
-          // ReceiptScan attaches the receipt photo straight to this input: show it here too
-          const f = e.currentTarget.files?.[0];
-          if (f) setPreview((old) => (old && URL.revokeObjectURL(old), URL.createObjectURL(f)));
-        }} />
+      <input ref={input} type="file" name="proof" accept="image/jpeg" required={required} tabIndex={-1} aria-hidden="true" className="hidden" />
       <div className="flex items-center gap-3">
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -82,7 +74,7 @@ const tick = () => new Promise((r) => setTimeout(r, 50));
 
 /**
  * New member from a paper receipt: photograph it, read it on the phone (Tesseract, no upload), and fill in what was
- * found — name, phone, email, plan length and amount — for the desk to check. The photo also becomes the payment proof.
+ * found — name, phone, email, plan length and amount — for the desk to check. The photo is only read, never saved.
  * ponytail: printed and neat handwriting only; messy handwriting needs a vision model (the Claude API) instead.
  */
 export function ReceiptScan() {
@@ -123,8 +115,6 @@ export function ReceiptScan() {
         const admission = Number((q("admission") as HTMLInputElement | null)?.value) || 0;
         if (fill(q("price"), String(r.amount > admission ? r.amount - admission : r.amount))) found.push(`₹${r.amount.toLocaleString("en-IN")} total`);
       }
-      const proof = q("proof") as HTMLInputElement | null;
-      if (proof && !proof.files?.length) attach(proof, photo);
       setStatus(found.length ? `Filled in ${found.join(", ")} — check them before saving.` : "Couldn't read anything useful — type the details in.");
     } catch {
       setStatus("Couldn't read that photo — type the details in.");

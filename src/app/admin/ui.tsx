@@ -28,7 +28,7 @@ export function AdminModal({ label, title, className = "btn-red", startOpen, chi
 }
 
 /** An unpaid order. Staff take the money; the owner can also reprice, cancel, and settle staff discount requests. */
-export function PendingRow({ id, title, meta, method, approval, ask, owner }: { id: string; title: string; meta: string; method: string; approval: string | null; ask: string | null; owner: boolean }) {
+export function PendingRow({ id, title, meta, method, approval, ask, owner, proof }: { id: string; title: string; meta: string; method: string; approval: string | null; ask: string | null; owner: boolean; proof: string | null }) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<Result>();
   const [editing, setEditing] = useState(false);
@@ -40,6 +40,13 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner }: { 
         <p className="font-bold">{title}</p>
         <p className="text-sm text-ash">{meta}</p>
         {ask && <p className="mt-1 text-sm font-semibold text-red">Discount request · {ask}</p>}
+        {proof && !paying && (
+          <a href={proof} target="_blank" rel="noreferrer" className="mt-2 flex w-fit items-center gap-3 text-sm font-bold text-chalk hover:text-red">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={proof} alt="" className="size-11 shrink-0 rounded-md border border-red object-cover" />
+            Payment screenshot sent · check it
+          </a>
+        )}
         {owner && (editing ? (
           // agreed a different price at the desk (admission, if any, stays on top)
           <form
@@ -65,7 +72,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner }: { 
           <button type="button" onClick={() => setEditing(true)} className="mt-1 cursor-pointer text-sm font-bold text-red hover:text-chalk">Change price</button>
         ))}
         <Status state={state} />
-        {paying && <MarkPaidForm id={id} cash={method === "cash"} onClose={() => setPaying(false)} />}
+        {paying && <MarkPaidForm id={id} cash={method === "cash"} sent={proof} onClose={() => setPaying(false)} />}
       </div>
       {!paying && <div className="flex shrink-0 flex-wrap gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
         {owner && waiting ? (
@@ -79,7 +86,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner }: { 
           <>
             <a href={`/pay/${id}`} className="btn-ghost min-h-10 px-3.5 text-xs">QR</a>
             {owner && <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Cancel this order?", body: meta, confirm: "Cancel order", danger: true })) && start(async () => toastResult(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>}
-            <button disabled={pending} onClick={() => setPaying(true)} className="btn-red min-h-10 px-4 text-xs">Mark paid</button>
+            <button disabled={pending} onClick={() => setPaying(true)} className="btn-red min-h-10 px-4 text-xs">{proof ? "Verify & mark paid" : "Mark paid"}</button>
           </>
         )}
       </div>}
@@ -87,15 +94,28 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner }: { 
   );
 }
 
-/** "Mark paid" on an order: the payment photo (UPI screenshot required, a cash receipt optional), then confirm. */
-function MarkPaidForm({ id, cash, onClose }: { id: string; cash: boolean; onClose: () => void }) {
-  const [state, action, pending] = useActionState(markPaid, undefined);
+/** "Mark paid" on an order: the payment photo (UPI screenshot required, a cash receipt optional), then confirm.
+ *  A screenshot the member already sent counts — the desk checks it against their UPI app first. */
+function MarkPaidForm({ id, cash, sent, onClose }: { id: string; cash: boolean; sent: string | null; onClose: () => void }) {
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const r = await markPaid(prev, form);
+    if (r?.ok) toastResult(r); // the paid row leaves the list with the refresh, taking its own toast with it
+    return r?.ok ? undefined : r;
+  }, undefined);
   return (
     <form noValidate onSubmit={keepFields(action)} className="mt-3 flex flex-col gap-3 rounded-md border border-line bg-panel p-3">
       <input type="hidden" name="id" value={id} />
-      <ProofInput required={!cash} hint={cash ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment."} />
+      {sent && (
+        <a href={sent} target="_blank" rel="noreferrer" className="flex flex-col gap-2">
+          <span className="label">Member&apos;s screenshot</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={sent} alt="Payment screenshot the member sent" className="max-h-80 w-full rounded-md border border-line bg-ink object-contain" />
+          <span className="text-xs text-ash">Check the amount and UTR in your UPI app before confirming. Tap to open full size.</span>
+        </a>
+      )}
+      <ProofInput required={!cash && !sent} hint={sent ? "Only if you want to replace theirs." : cash ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment."} />
       <div className="flex flex-wrap items-center gap-2">
-        <button disabled={pending} className="btn-red min-h-11 px-5 text-xs max-sm:flex-1">{pending ? "Saving…" : "Confirm paid"}</button>
+        <button disabled={pending} className="btn-red min-h-11 px-5 text-xs whitespace-nowrap max-sm:flex-1">{pending ? "Saving…" : "Confirm paid"}</button>
         <button type="button" onClick={onClose} className="btn-ghost min-h-11 px-4 text-xs max-sm:flex-1">Cancel</button>
         <Status state={state} />
       </div>

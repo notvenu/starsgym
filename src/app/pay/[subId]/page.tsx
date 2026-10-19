@@ -6,6 +6,8 @@ import { inr, planName, upiLink, type Plan } from "@/lib/gym";
 import { getPass } from "../../pass/[subId]/data";
 import { Ticket } from "../../pass/[subId]/ticket";
 import { PassDialog } from "../../pass/[subId]/ui";
+import { proofUrls } from "@/lib/photo";
+import { ProofUpload } from "./proof";
 
 export const metadata = { title: "Pay at desk — Stars Gym" };
 
@@ -27,6 +29,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
     ? await QRCode.toDataURL(upiLink(sub.amount_paise, ref), { margin: 1, width: 560, color: { dark: "#0a0a0a", light: "#f4f2ee" } })
     : null;
   const pass = sub.status === "active" ? await getPass(supabase, sub.id) : null;
+  const sent = sub.status === "pending" && qr ? (await proofUrls([sub.id])).get(sub.id) ?? null : null;
 
   return (
     <main className="min-h-dvh pb-20">
@@ -53,7 +56,8 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
               <p className="text-ash">Pay at the desk by cash or UPI and mention this reference.</p>
             )}
             <p className="font-label text-2xl font-bold tracking-[0.2em]">REF {ref}</p>
-            <p className="max-w-sm text-ash">{qr ? "Scan with any UPI app, then show this screen at the desk." : "Show this screen at the desk."} Staff will mark it paid and your plan starts right away.</p>
+            <p className="max-w-sm text-ash">{qr ? "Scan with any UPI app, then send the screenshot below — or show this screen at the desk." : "Show this screen at the desk."} Your plan starts once staff confirm the payment.</p>
+            {qr && <ProofUpload subId={sub.id} sent={sent} />}
           </>
         )}
       </div>

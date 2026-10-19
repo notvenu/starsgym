@@ -45,6 +45,10 @@
 }
 
 html { color-scheme: dark; }
+/* Chrome on Android "boosts" text it thinks is too small to read — with a larger phone font size it blows up whole
+   paragraphs (12–14 px → ~18 px) and they stop wrapping, running off the side of cards and pop-ups. Tailwind only sets
+   the -webkit- version, which Chrome ignores. The user's own font-size and zoom settings still apply. */
+html { text-size-adjust: 100%; }
 
 /* the page background, frozen at :root so it survives into .dark-zone (ticket notches cut through to it) */
 :root { --behind: var(--color-ink); }

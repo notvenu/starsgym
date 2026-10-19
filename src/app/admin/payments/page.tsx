@@ -25,7 +25,8 @@ export default async function PaymentsPage() {
     view ? recent.eq("branch_id", view) : recent,
   ]);
   const rows = (paid.data ?? []) as unknown as Paid[];
-  const proofs = await proofUrls(rows.map((p) => p.id)); // the UPI screenshot / receipt photo taken at the desk
+  // UPI screenshots / receipt photos: taken at the desk, or sent by members who paid a website order
+  const proofs = await proofUrls([...rows.map((p) => p.id), ...pending.rows.map((p) => p.id), ...(asks?.rows ?? []).map((p) => p.id)]);
 
   return (
     <>
@@ -33,12 +34,12 @@ export default async function PaymentsPage() {
 
       {asks && asks.count > 0 && (
         <Panel title={`Discount requests · ${asks.count}`} intro="Staff asked to sell below the standard price. Approve it, or turn it down to put the order back at the standard price." flush>
-          <div className="divide-y divide-line">{asks.rows.map((r) => <PendingRow key={r.id} {...r} owner />)}</div>
+          <div className="divide-y divide-line">{asks.rows.map((r) => <PendingRow key={r.id} {...r} proof={proofs.get(r.id) ?? null} owner />)}</div>
         </Panel>
       )}
 
-      <Panel title={`Awaiting payment · ${pending.count}`} intro="Check the REF on the member's screen, take the money, then mark it paid." flush>
-        {pending.rows.length ? <div className="divide-y divide-line">{pending.rows.map((r) => <PendingRow key={r.id} {...r} owner={isOwner} />)}</div> : <Empty>Nothing to confirm right now.</Empty>}
+      <Panel title={`Awaiting payment · ${pending.count}`} intro="Take the money, or check the member's UPI screenshot against your UPI app (amount and UTR), then mark it paid." flush>
+        {pending.rows.length ? <div className="divide-y divide-line">{pending.rows.map((r) => <PendingRow key={r.id} {...r} proof={proofs.get(r.id) ?? null} owner={isOwner} />)}</div> : <Empty>Nothing to confirm right now.</Empty>}
       </Panel>
 
       <Panel title="Recently paid" flush>
