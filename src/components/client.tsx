@@ -13,7 +13,8 @@ export function SmoothScroll() {
 
   const admin = pathname.startsWith("/admin"); // a work tool: plain native scrolling there
   useEffect(() => {
-    if (admin || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // touch screens: Lenis leaves finger scrolling native anyway, so there it was only a frame loop burning battery
+    if (admin || matchMedia("(prefers-reduced-motion: reduce), (pointer: coarse)").matches) return;
     const lenis = new Lenis({
       anchors: true,
       lerp: 0.1,
@@ -211,19 +212,30 @@ export function Marquee({ children, label, className = "", speed = 28 }: { child
     const phone = matchMedia("(max-width: 767px)"); // tablets and up show a grid instead
     let held = 0; // hover / touch / focus / drag in progress
     let restAt = 0; // after the visitor scrolled it themselves, wait before drifting again
-    const set = () => el.scrollWidth / COPIES; // the width of one set of children
-    let pos = set(); // start on the first copy, so it can loop backwards too
+    // the width of one set of children, measured on resize — reading scrollWidth every frame forced a layout each frame
+    let w = 0;
+    const ro = new ResizeObserver(() => (w = el.scrollWidth / COPIES));
+    ro.observe(el);
+    w = el.scrollWidth / COPIES;
+    let pos = w; // start on the first copy, so it can loop backwards too
     let last = performance.now();
     let frame = 0;
     if (phone.matches) el.scrollLeft = pos;
+    // only drift while on screen and on a phone (a grid from tablet up): no frame loop otherwise
+    let visible = false;
+    const run = () => {
+      cancelAnimationFrame(frame);
+      if (visible && phone.matches) {
+        last = performance.now();
+        frame = requestAnimationFrame(tick);
+      }
+    };
+    const io = new IntersectionObserver(([e]) => ((visible = e.isIntersecting), run()));
+    io.observe(el);
+    phone.addEventListener("change", run);
     const tick = (t: number) => {
       const dt = Math.min(64, t - last);
       last = t;
-      if (!phone.matches) {
-        frame = requestAnimationFrame(tick); // a grid now (window widened): nothing to scroll
-        return;
-      }
-      const w = set();
       if (!still && !held && t > restAt) pos += (speed * dt) / 1000;
       else pos = el.scrollLeft; // follow their swipe
       if (pos >= w * 2) pos -= w; // seamless: every set looks the same
@@ -231,7 +243,6 @@ export function Marquee({ children, label, className = "", speed = 28 }: { child
       if (Math.abs(el.scrollLeft - pos) > 0.5 || (!held && t > restAt)) el.scrollLeft = pos;
       frame = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
     const hold = () => void held++;
     const release = () => ((held = Math.max(0, held - 1)), (restAt = performance.now() + 2500));
     const rest = () => (restAt = performance.now() + 2500);
@@ -265,6 +276,9 @@ export function Marquee({ children, label, className = "", speed = 28 }: { child
     addEventListener("pointerup", up);
     return () => {
       cancelAnimationFrame(frame);
+      ro.disconnect();
+      io.disconnect();
+      phone.removeEventListener("change", run);
       on.forEach(([type, fn]) => el.removeEventListener(type, fn));
       removeEventListener("pointermove", move);
       removeEventListener("pointerup", up);
