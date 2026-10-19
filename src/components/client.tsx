@@ -58,6 +58,16 @@ export function SmoothScroll() {
   return null;
 }
 
+/** Registers /sw.js — what makes "Install app" show on older Android browsers too, and the offline page. Production
+ *  only: in dev a worker would outlive code changes. updateViaCache "none": a new sw.js is picked up on the next visit. */
+export function ServiceWorker() {
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).catch(() => {}); // the site works without it
+  }, []);
+  return null;
+}
+
 /** Live "Open now" label, ticking every minute in gym time. */
 export function OpenStatus({ branch, holidays = [], withHours = false }: { branch: Branch; holidays?: Holiday[]; withHours?: boolean }) {
   const [state, setState] = useState<ReturnType<typeof openState> | null>(null);

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<title>Offline — Stars Gym</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0a0a0a; color: #f4f2ee; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; box-sizing: border-box; text-align: center; }
+  img { width: 96px; height: 96px; border-radius: 50%; }
+  h1 { margin: 8px 0 0; font-size: 28px; letter-spacing: .04em; text-transform: uppercase; }
+  p { margin: 0; max-width: 320px; color: #a3a3a3; line-height: 1.5; }
+  button { margin-top: 8px; min-height: 48px; padding: 0 28px; border: 0; border-radius: 4px; background: #e3141c; color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <img src="/icon-192.png" alt="">
+  <h1>You're offline</h1>
+  <p>Stars Gym needs the internet for your pass and check-ins. Connect to Wi-Fi or mobile data, then try again.</p>
+  <button type="button" onclick="location.reload()">Try again</button>
+</main>
+<script>addEventListener("online", function () { location.reload(); });</script>
+</body>
+</html>

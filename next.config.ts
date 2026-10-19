@@ -19,6 +19,14 @@ const nextConfig: NextConfig = {
   // baseline hardening: no framing (clickjacking on the desk), no MIME sniffing, no full URLs leaked to other sites.
   // Camera (member photos) and location (check-in) stay allowed for this site only.
   headers: async () => [
+    // the service worker: always re-checked, so a fixed sw.js reaches every phone on its next visit
+    {
+      source: "/sw.js",
+      headers: [
+        { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+        { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+      ],
+    },
     {
       source: "/:path*",
       headers: [
