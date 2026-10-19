@@ -27,7 +27,6 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
   const itemId = s(form, "item_id") || null;
   const all = branch === "all";
   const isNew = !profileId && !itemId;
-  let password: string | undefined; // set when a new desk account is created
 
   if (!name) return { error: "Name is required." };
   if (!all && !UUID.test(branch)) return { error: "Pick a branch, or both." };
@@ -46,10 +45,12 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
         if (!/^\S+@\S+\.\S+$/.test(email)) return { error: "Enter their email — it's how they sign in." };
         const { data: existing } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
         if (existing?.id === me.id) return { error: "That's your own account." };
-        if (existing) profileId = existing.id as string;
+        if (existing) profileId = existing.id as string; // already a member: they keep their own password
         else {
-          password = tempPassword();
-          const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true, password, app_metadata: { temp_password: true }, user_metadata: { full_name: name } });
+          // the owner typed it in the form, so it's not a temporary one to replace at first sign-in
+          const chosen = String(form.get("password") ?? "");
+          if (chosen.length < 8) return { error: "Set a password of at least 8 characters." };
+          const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true, password: chosen, user_metadata: { full_name: name } });
           if (error) return { error: error.message };
           profileId = data.user.id;
         }
@@ -91,7 +92,7 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
 
   revalidatePath("/", "layout"); // the website's trainer pages and the admin
   await logAction(me, isNew ? "Added to team" : "Edited team member", { memberId: profileId, memberName: name, detail: access === "none" ? "trainer card" : access });
-  return { ok: isNew ? "Added to the team" : "Saved", password };
+  return { ok: isNew ? "Added to the team" : "Saved" };
 }
 
 /** Owner: a staff member (or co-owner) can't sign in. Sets a one-time password to hand over in person. */

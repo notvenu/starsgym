@@ -42,7 +42,7 @@ export function LiveQr({ subId }: { subId: string }) {
   );
 }
 
-export function PassActions({ subId, ref_, phone, name, receipt }: { subId: string; ref_: string; phone: string | null; name: string; receipt: string }) {
+export function PassActions({ subId, ref_, phone, name, receipt, paid }: { subId: string; ref_: string; phone: string | null; name: string; receipt: string; paid: boolean }) {
   const [busy, setBusy] = useState(false);
   const file = `stars-gym-pass-${ref_}.png`;
 
@@ -61,7 +61,7 @@ export function PassActions({ subId, ref_, phone, name, receipt }: { subId: stri
   }
 
   const whatsapp = () => {
-    const text = `Hi ${name.split(" ")[0] || ""}! Your Stars Gym pass is ready (REF ${ref_}). ${receipt ? `${receipt} ` : ""}Sign in to see it: ${location.origin}/pass/${subId}`;
+    const text = `Hi ${name.split(" ")[0] || ""}! Your Stars Gym pass is ready (REF ${ref_}). ${receipt ? `${receipt} ` : ""}Pass and receipt: ${location.origin}/pass/${subId}`;
     const to = phone?.replace(/\D/g, "").replace(/^(\d{10})$/, "91$1") ?? "";
     return `https://wa.me/${to}?text=${encodeURIComponent(text)}`;
   };
@@ -70,6 +70,7 @@ export function PassActions({ subId, ref_, phone, name, receipt }: { subId: stri
     <div className="flex w-full max-w-[400px] flex-wrap gap-2">
       <a href={`/pass/${subId}/download`} download={file} className="btn-red flex-1">Download</a>
       <button onClick={share} disabled={busy} className="btn-ghost flex-1">{busy ? "…" : "Share"}</button>
+      {paid && <a href={`/pass/${subId}/receipt`} download={`stars-gym-receipt-${ref_}.png`} className="btn-ghost w-full">Download receipt</a>}
       {phone && <button onClick={() => window.open(whatsapp(), "_blank", "noopener")} className="btn-ghost w-full">Send on WhatsApp</button>}
     </div>
   );

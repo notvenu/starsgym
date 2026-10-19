@@ -19,6 +19,7 @@ export async function getPending(supabase: SupabaseClient, limit = 100, branchId
     id: s.id,
     title: `${s.profiles.full_name || s.profiles.email} · ${planName(s.plans)}`,
     approval: s.approval,
+    method: s.method,
     ask: s.approval === "pending" ? `${s.requester?.full_name || "Staff"} asked for ${inr(s.amount_paise)} · standard ${inr(s.standard_paise ?? s.amount_paise)}` : null,
     meta: `${inr(s.amount_paise)} · ${s.method === "razorpay" ? "online (unconfirmed)" : s.method === "upi_qr" ? "UPI at desk" : s.method} · REF ${s.id.slice(0, 8).toUpperCase()} · ${new Date(s.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`,
   }));

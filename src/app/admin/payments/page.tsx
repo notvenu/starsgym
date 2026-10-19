@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/supabase";
 import { inr, payMethod, planName, type Plan } from "@/lib/gym";
+import { proofUrls } from "@/lib/photo";
 import { getPending } from "../data";
 import { Empty, PageHeader, Panel } from "../kit";
 import { PendingRow } from "../ui";
@@ -23,6 +24,8 @@ export default async function PaymentsPage() {
     isOwner ? getPending(supabase, 100, view, true) : null,
     view ? recent.eq("branch_id", view) : recent,
   ]);
+  const rows = (paid.data ?? []) as unknown as Paid[];
+  const proofs = await proofUrls(rows.map((p) => p.id)); // the UPI screenshot / receipt photo taken at the desk
 
   return (
     <>
@@ -39,18 +42,22 @@ export default async function PaymentsPage() {
       </Panel>
 
       <Panel title="Recently paid" flush>
-        {(paid.data ?? []).length ? (
+        {rows.length ? (
           // rows, not a table: they stack on phones and line up as columns from md up
           <ul className="divide-y divide-line text-sm">
-            <li aria-hidden="true" className="hidden px-5 py-3 font-label text-xs tracking-[0.16em] text-ash uppercase md:grid md:grid-cols-[1.3fr_1.5fr_9rem_6rem_10rem_3rem] md:gap-4">
+            <li aria-hidden="true" className="hidden px-5 py-3 font-label text-xs tracking-[0.16em] text-ash uppercase md:grid md:grid-cols-[1.3fr_1.5fr_9rem_6rem_10rem_8rem] md:gap-4">
               <span>Member</span><span>Plan</span><span>Method</span><span className="text-right">Amount</span><span>Paid</span><span />
             </li>
-            {((paid.data ?? []) as unknown as Paid[]).map((p) => (
-              <li key={p.id} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 px-4 py-3 hover:bg-steel/50 sm:px-5 md:grid-cols-[1.3fr_1.5fr_9rem_6rem_10rem_3rem] md:items-center">
+            {rows.map((p) => (
+              <li key={p.id} className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 px-4 py-3 hover:bg-steel/50 sm:px-5 md:grid-cols-[1.3fr_1.5fr_9rem_6rem_10rem_8rem] md:items-center">
                 <span className="truncate font-bold">{p.profiles.full_name || p.profiles.email}</span>
                 <span className="text-right font-bold md:order-4">{inr(p.amount_paise)}</span>
                 <span className="truncate text-body md:order-2">{planName(p.plans)}</span>
-                <Link href={`/pass/${p.id}`} className="text-right font-bold text-red hover:text-chalk md:order-6">Pass</Link>
+                <span className="flex justify-end gap-3 font-bold md:order-6">
+                  {proofs.has(p.id) && <a href={proofs.get(p.id)} target="_blank" rel="noreferrer" className="text-ash hover:text-chalk">Proof</a>}
+                  <a href={`/pass/${p.id}/receipt`} download className="text-ash hover:text-chalk">Receipt</a>
+                  <Link href={`/pass/${p.id}`} className="text-red hover:text-chalk">Pass</Link>
+                </span>
                 <span className="col-span-2 text-xs text-ash md:col-span-1 md:order-3 md:text-sm">
                   {payMethod(p)}
                   <span className="md:hidden"> · {new Date(p.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>

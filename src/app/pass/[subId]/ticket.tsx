@@ -70,7 +70,7 @@ export function Ticket({ pass }: { pass: PassData }) {
       </article>
 
       {pass.status === "active" && (
-        <PassActions subId={pass.id} ref_={ref} phone={pass.profiles?.phone ?? null} name={pass.profiles?.full_name ?? ""}
+        <PassActions subId={pass.id} ref_={ref} phone={pass.profiles?.phone ?? null} name={pass.profiles?.full_name ?? ""} paid={!!pass.paid_at}
           receipt={pass.paid_at ? `${planName(pass.plans)}${pass.ends_on ? `, valid till ${prettyDay(pass.ends_on)}` : ""}. Paid ${inr(pass.amount_paise)} (${payMethod(pass)}).` : ""} />
       )}
     </>

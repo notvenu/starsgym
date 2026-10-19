@@ -17,7 +17,7 @@ export function AccountNudge({ password, email }: { password: boolean; email: bo
       <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4">
         {password && <p className="text-sm text-body">You&apos;re signed in with the starting password from the desk. Anyone who knows your name and phone number could guess it, so pick your own.</p>}
         {email && <p className="text-sm text-body">Add your email so you can also sign in with it, and so we can reach you about holidays and your plan.</p>}
-        {email && <Field label="Email" name="email" type="email" autoComplete="email" inputMode="email" required />}
+        {email && <Field label={password ? "Email (optional)" : "Email"} name="email" type="email" autoComplete="email" inputMode="email" required={!password} />}
         {password && (
           <>
             <Field label="New password" name="password" type="password" autoComplete="new-password" minLength={8} required />

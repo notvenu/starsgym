@@ -230,15 +230,21 @@ export const ageOf = (m: { date_of_birth: string | null; age: number | null }) =
 
 export type MemberDetails = { gender: Gender; phone: string; date_of_birth: string | null; emergency_contact: string | null };
 
-/** Phone, date of birth and emergency contact — the details members can change any time. */
+/** Phone, date of birth and emergency contact (desk entry and sign-up). */
 export function readContactDetails(form: FormData): { error: string } | { details: Omit<MemberDetails, "gender"> } {
-  const get = (k: string) => String(form.get(k) ?? "").trim();
-  const phone = get("phone");
+  const phone = String(form.get("phone") ?? "").trim();
   if (phone.replace(/\D/g, "").length < 10) return { error: "Enter a 10-digit phone number." };
+  const rest = readPersonalDetails(form);
+  return "error" in rest ? rest : { details: { phone, ...rest.details } };
+}
+
+/** Date of birth and emergency contact — what members edit themselves any time (phone and email go through the desk). */
+export function readPersonalDetails(form: FormData): { error: string } | { details: Pick<MemberDetails, "date_of_birth" | "emergency_contact"> } {
+  const get = (k: string) => String(form.get(k) ?? "").trim();
   const dob = get("date_of_birth");
   if (dob && (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob < "1900-01-01" || dob > gymDate())) return { error: "Check the date of birth." };
   const emergency = get("emergency_contact").slice(0, 120);
-  return { details: { phone, date_of_birth: dob || null, emergency_contact: emergency || null } };
+  return { details: { date_of_birth: dob || null, emergency_contact: emergency || null } };
 }
 
 /** Validates the member-details fields (sign-up, setup, desk entry). Gender decides ladies'-hours access. */

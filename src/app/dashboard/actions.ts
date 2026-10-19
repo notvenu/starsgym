@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { adminDb, requireUser, UUID } from "@/lib/supabase";
-import { GENDERS, readContactDetails } from "@/lib/gym";
+import { GENDERS, LOGIN_EMAIL_DOMAIN, phoneKey, readPersonalDetails } from "@/lib/gym";
 import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
 
 export type Result = { error?: string; ok?: string } | undefined;
@@ -15,12 +15,12 @@ export async function checkIn(branchId: string, lat?: number, lng?: number): Pro
   return { ok: "Checked in", streak: data as number };
 }
 
-/** Phone, date of birth, emergency contact and socials: members change these any time. */
+/** Date of birth, emergency contact and socials: members change these any time (phone and email are a request). */
 export async function saveProfile(_: Result, form: FormData): Promise<Result> {
   const { supabase, user } = await requireUser();
   const instagram = String(form.get("instagram_url") ?? "").trim();
   if (instagram && !instagram.startsWith("https://")) return { error: "Social link must start with https://" };
-  const read = readContactDetails(form);
+  const read = readPersonalDetails(form);
   if ("error" in read) return read;
   const { error } = await supabase.from("profiles").update({ ...read.details, instagram_url: instagram || null }).eq("id", user.id);
   if (error) return { error: error.message };
@@ -29,7 +29,8 @@ export async function saveProfile(_: Result, form: FormData): Promise<Result> {
 }
 
 /**
- * Name, gender, home branch and photo are set once; after that the desk approves a change. Only what differs is sent.
+ * Name, gender, home branch and photo are set once, and phone and email (how they sign in) are the desk's: a change is
+ * a request the desk approves. Only what differs is sent.
  * Written with the service key after checking who's asking, so the photo path is always under their own folder.
  */
 export async function requestChange(_: Result, form: FormData): Promise<Result> {
@@ -38,16 +39,22 @@ export async function requestChange(_: Result, form: FormData): Promise<Result> 
   const name = s("full_name");
   const gender = s("gender");
   const branch = s("home_branch_id");
+  const phone = s("phone");
+  const email = s("email").toLowerCase();
   const change = {
     full_name: name && name !== profile.full_name ? name.slice(0, 80) : null,
     gender: gender && gender !== profile.gender ? gender : null,
     home_branch_id: branch && branch !== profile.home_branch_id ? branch : null,
+    phone: phone && phoneKey(phone) !== phoneKey(profile.phone) ? phone.slice(0, 20) : null,
+    email: email && email !== (profile.email ?? "") ? email : null,
   };
   if (change.gender && !GENDERS.some(([g]) => g === change.gender)) return { error: "Pick a gender." };
   if (change.home_branch_id && !UUID.test(change.home_branch_id)) return { error: "Pick a branch." };
+  if (change.phone && phoneKey(change.phone).length < 10) return { error: "Enter a 10-digit phone number." };
+  if (change.email && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(change.email) || change.email.endsWith(`@${LOGIN_EMAIL_DOMAIN}`))) return { error: "Enter a valid email address." };
   const photo = formPhoto(form);
   if (photo.error) return { error: photo.error };
-  if (!photo.file && !change.full_name && !change.gender && !change.home_branch_id) return { error: "Change something first." };
+  if (!photo.file && !Object.values(change).some(Boolean)) return { error: "Change something first." };
 
   const admin = adminDb();
   await dropOpenRequest(user.id); // one open request: a new one replaces it

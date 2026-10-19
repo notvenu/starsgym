@@ -46,7 +46,7 @@ export default async function BranchesPage({ searchParams }: PageProps<"/admin/b
               {isOwner && <BranchModal branch={x} label="Edit" className="btn-ghost min-h-10 shrink-0 px-4 text-xs" />}
             </div>
 
-            <dl className="grid grid-cols-3 gap-3 text-sm">
+            <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
               {([
                 ["Hours", sessions(x).map(([o, c]) => `${o}–${c}`)],
                 ["Ladies only", ladiesSessions(x).map(([o, c]) => `${o}–${c}`)],
@@ -63,9 +63,10 @@ export default async function BranchesPage({ searchParams }: PageProps<"/admin/b
               {!x.active ? (
                 <p className="rounded-lg border border-line px-4 py-3 text-sm text-ash">Inactive — hidden from the site, no check-ins. Edit to switch it back on.</p>
               ) : qr ? (
-                <div className="flex items-center gap-4 rounded-lg border border-line bg-panel p-4">
+                // phones: the QR on top and full-width buttons under it (side by side, the buttons ran out of the card)
+                <div className="flex flex-col gap-4 rounded-lg border border-line bg-panel p-4 sm:flex-row sm:items-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={qr} alt={`Entrance check-in QR for ${x.name}`} width={128} height={128} className="size-32 shrink-0 rounded-md border-4 border-red bg-white p-1" />
+                  <img src={qr} alt={`Entrance check-in QR for ${x.name}`} width={128} height={128} className="size-40 shrink-0 self-center rounded-md border-4 border-red bg-white p-1 sm:size-32" />
                   <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <p className="label">Entrance QR</p>
                     <a href={`/admin/branches/${x.id}/poster`} download={`stars-gym-checkin-${x.name.toLowerCase().replace(/\W+/g, "-")}.png`} className="btn-red min-h-11 w-full px-3 text-xs whitespace-nowrap">Download poster</a>

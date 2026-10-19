@@ -5,6 +5,7 @@ import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
 import { MemberActions, RequestRow } from "./ui";
 import { getTrainers } from "./data";
+import { siteOrigin } from "@/lib/pass";
 import { ScanButton } from "@/components/scanner";
 
 type Visit = { created_at: string; session: string; branch_id: string; user_id: string; profiles: { full_name: string; photo_path: string | null } | null };
@@ -25,7 +26,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
     // ponytail: counts distinct members client-side; switch to an SQL count past ~10k active plans
     only(supabase.from("subscriptions").select("user_id").eq("status", "active").lte("starts_on", today).gte("ends_on", today)).limit(10000),
-    only(supabase.from("subscriptions").select("amount_paise").eq("status", "active").gte("paid_at", `${monthStart}T00:00:00+05:30`)).limit(10000),
+    // the month's takings are the owner's; staff see who to renew instead
+    isOwner ? only(supabase.from("subscriptions").select("amount_paise").eq("status", "active").gte("paid_at", `${monthStart}T00:00:00+05:30`)).limit(10000) : null,
     supabase.from("holidays").select("*").gte("day", today).order("day").limit(3),
     supabase.from("offers").select("*").eq("active", true).lte("starts_on", today).gte("ends_on", today),
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
@@ -39,7 +41,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .limit(50),
     supabase.from("plans").select("*").eq("active", true).order("track").order("duration_days"),
     // members' name / gender / branch / photo change requests this desk can see (RLS); none before 0015
-    supabase.from("profile_requests").select("*,profiles!profile_requests_user_id_fkey(full_name,photo_path,gender,home_branch_id)").eq("status", "pending").order("created_at"),
+    supabase.from("profile_requests").select("*,profiles!profile_requests_user_id_fkey(full_name,photo_path,gender,home_branch_id,phone,email)").eq("status", "pending").order("created_at"),
     // plans that ran out in the last 30 days — the renewal list (members who bought again are dropped below)
     only(supabase
       .from("subscriptions")
@@ -53,7 +55,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   ]);
   const b = (branches.data ?? []) as Branch[];
   const members = new Set(((active.data ?? []) as { user_id: string }[]).map((r) => r.user_id)).size;
-  const collected = ((paid.data ?? []) as { amount_paise: number }[]).reduce((sum, r) => sum + r.amount_paise, 0);
+  const collected = ((paid?.data ?? []) as { amount_paise: number }[]).reduce((sum, r) => sum + r.amount_paise, 0);
+  const origin = await siteOrigin();
   const visits = (checkins.data ?? []) as unknown as Visit[];
   const ending = (expiring.data ?? []) as unknown as Ending[];
   // lapsed: their latest plan ended in the last 30 days and nothing runs today or later
@@ -65,7 +68,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const back = new Set((renewed ?? []).map((r) => r.user_id as string));
   const lapsed = endedRows.filter((e, i) => !back.has(e.user_id) && endedRows.findIndex((x) => x.user_id === e.user_id) === i);
   type Req = { id: string; user_id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null; note: string | null;
-    profiles: { full_name: string; photo_path: string | null; gender: string | null; home_branch_id: string | null } | null };
+    phone?: string | null; email?: string | null;
+    profiles: { full_name: string; photo_path: string | null; gender: string | null; home_branch_id: string | null; phone: string | null; email: string | null } | null };
   const queue = (requests.data ?? []) as unknown as Req[];
   const photos = await photoUrls([...visits.map((v) => v.profiles?.photo_path), ...ending.map((e) => e.profiles?.photo_path), ...lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path])]);
   const pic = (p?: string | null) => (p ? photos.get(p) : null);
@@ -73,10 +77,13 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const where = (h: Holiday) => (h.branch_id ? b.find((x) => x.id === h.branch_id)?.name ?? "One branch" : "All branches");
   const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
-  // one row for the renewal lists: who, which plan, a badge, and the ⋯ menu with a ready WhatsApp message
+  // one row for the renewal lists: who, which plan, a badge, a one-tap WhatsApp renewal message, and the ⋯ menu
   const renewRow = (e: Ending, badge: string, message: string, runningSubId: string | null) => {
     const m = e.profiles;
     if (!m) return null;
+    // the same plan, bought online (they sign in with their phone first); a plan since switched off → all plans
+    const renew = `${origin}${e.plans.active ? `/buy/${e.plans.id}` : "/#plans"}`;
+    const wa = m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}! ${message} Renew online: ${renew} — or at the desk.`) : null;
     return (
       <li key={e.id} className="flex items-center gap-2 pr-3 transition-colors hover:bg-steel/60 sm:pr-5">
         <Link href={`/admin/members/${e.user_id}`} className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-5">
@@ -86,15 +93,22 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
             <span className="block truncate text-xs text-ash">{[branchName(m.home_branch_id ?? ""), ageOf(m) != null && `${ageOf(m)} yrs`, GENDERS.find(([k]) => k === m.gender)?.[1]].filter(Boolean).join(" · ")}</span>
             <span className="block truncate text-sm text-ash">{[m.phone, m.email].filter(Boolean).join(" · ")}</span>
             <span className="block truncate text-sm text-ash">{planName(e.plans)} · {runningSubId ? "till" : "ended"} {prettyDay(e.ends_on)}</span>
+            <span className="mt-1 inline-block rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-red uppercase sm:hidden">{badge}</span>
           </span>
-          <span className="shrink-0 rounded-full border border-red px-3 py-1 text-xs font-bold tracking-wider text-red uppercase">{badge}</span>
+          <span className="shrink-0 rounded-full border border-red px-3 py-1 text-xs font-bold tracking-wider text-red uppercase max-sm:hidden">{badge}</span>
         </Link>
+        {wa && (
+          <a href={wa} target="_blank" rel="noreferrer" aria-label={`Send ${m.full_name} a renewal message on WhatsApp`} title="Renewal message on WhatsApp"
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-ink transition-transform hover:scale-105">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.4z" /><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8a5 5 0 0 1-2.8-2.8l.8-1-1-2z" /></svg>
+          </a>
+        )}
         <MemberActions
           owner={isOwner}
           member={m}
           passId={runningSubId}
           cancelSubId={runningSubId}
-          waHref={m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}! ${message}`) : null}
+          waHref={wa}
           branches={b.filter((x) => !branchId || x.id === branchId)}
           plans={(plans.data ?? []) as Plan[]}
           offers={(offers.data ?? []) as Offer[]}
@@ -117,12 +131,21 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Active members" value={members} href="/admin/members?show=active" />
         <Stat label="Check-ins today" value={visits.length} href="#today" />
-        <Stat label="Collected this month" value={inr(collected)} href="/admin/payments" />
-        <Stat label="New enquiries" value={enquiries.count ?? 0} href={isOwner ? "/admin/enquiries" : undefined} tone={enquiries.count ? "red" : undefined} />
+        {isOwner ? (
+          <>
+            <Stat label="Collected this month" value={inr(collected)} href="/admin/payments" />
+            <Stat label="New enquiries" value={enquiries.count ?? 0} href="/admin/enquiries" tone={enquiries.count ? "red" : undefined} />
+          </>
+        ) : (
+          <>
+            <Stat label="Expiring in 7 days" value={ending.length} href="#expiring" tone={ending.length ? "red" : undefined} />
+            <Stat label="Expired · not renewed" value={lapsed.length} href="#expired" tone={lapsed.length ? "red" : undefined} />
+          </>
+        )}
       </div>
 
       {queue.length > 0 && (
-        <Panel title={`Change requests · ${queue.length}`} intro="Members asking to fix their name, gender, branch or photo." flush>
+        <Panel title={`Change requests · ${queue.length}`} intro="Members asking to change their name, gender, branch, phone, email or photo." flush>
           <ul className="divide-y divide-line">
             {queue.map((r) => {
               const g = (x: string | null) => GENDERS.find(([k]) => k === x)?.[1] ?? "—";
@@ -130,6 +153,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
                 ...(r.full_name ? [["Name", r.profiles?.full_name || "—", r.full_name] as [string, string, string]] : []),
                 ...(r.gender ? [["Gender", g(r.profiles?.gender ?? null), g(r.gender)] as [string, string, string]] : []),
                 ...(r.home_branch_id ? [["Branch", branchName(r.profiles?.home_branch_id ?? "") || "—", branchName(r.home_branch_id) || "—"] as [string, string, string]] : []),
+                ...(r.phone ? [["Phone", r.profiles?.phone || "—", r.phone] as [string, string, string]] : []),
+                ...(r.email ? [["Email", r.profiles?.email || "—", r.email] as [string, string, string]] : []),
               ];
               return (
                 <RequestRow key={r.id} id={r.id} name={r.profiles?.full_name || "Member"} href={`/admin/members/${r.user_id}`}
@@ -164,12 +189,12 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         )}
       </Panel>
 
-      <Panel title="Expiring soon" intro="Ending in the next 7 days: renew, edit or nudge them." flush action={<Link href="/admin/members?show=expiring&sort=ending" className="text-sm font-bold text-red hover:text-chalk">All →</Link>}>
+      <Panel id="expiring" title={`Expiring soon · ${ending.length}`} intro="Ending in the next 7 days. Tap the green button to send a renewal message." flush action={<Link href="/admin/members?show=expiring&sort=ending" className="text-sm font-bold text-red hover:text-chalk">All →</Link>}>
         {ending.length ? (
           <ul className="divide-y divide-line">
             {ending.map((e) => {
               const days = Math.round((Date.parse(e.ends_on) - Date.parse(today)) / 864e5) + 1;
-              return renewRow(e, days <= 1 ? "Ends today" : `${days}d left`, `Your Stars Gym plan ends on ${prettyDay(e.ends_on)}. Renew at the desk or online to keep your streak going.`, e.id);
+              return renewRow(e, days <= 1 ? "Ends today" : `${days}d left`, `Your Stars Gym ${planName(e.plans)} plan ends on ${prettyDay(e.ends_on)}. Renew to keep your streak going.`, e.id);
             })}
           </ul>
         ) : (
@@ -177,12 +202,12 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         )}
       </Panel>
 
-      <Panel title={`Lapsed · ${lapsed.length}`} intro="Plan ended in the last 30 days and they haven't renewed. Win them back." flush action={<Link href="/admin/members?show=expired" className="text-sm font-bold text-red hover:text-chalk">All →</Link>}>
+      <Panel id="expired" title={`Expired · ${lapsed.length}`} intro="Plan ended in the last 30 days and they haven't renewed. Win them back." flush action={<Link href="/admin/members?show=expired" className="text-sm font-bold text-red hover:text-chalk">All →</Link>}>
         {lapsed.length ? (
           <ul className="divide-y divide-line">
             {lapsed.map((e) => {
               const ago = Math.round((Date.parse(today) - Date.parse(e.ends_on)) / 864e5);
-              return renewRow(e, ago <= 1 ? "Ended yesterday" : `${ago}d ago`, `We miss you at Stars Gym! Your plan ended on ${prettyDay(e.ends_on)}. Renew at the desk or online and pick up where you left off.`, null);
+              return renewRow(e, ago <= 1 ? "Ended yesterday" : `${ago}d ago`, `We miss you at Stars Gym! Your ${planName(e.plans)} plan ended on ${prettyDay(e.ends_on)}. Renew and pick up where you left off.`, null);
             })}
           </ul>
         ) : (

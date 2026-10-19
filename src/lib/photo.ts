@@ -6,9 +6,9 @@ import { adminDb, type db } from "@/lib/supabase";
 const TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/webp": "webp", "image/png": "png" };
 const MAX = 2 * 1024 * 1024;
 
-/** The photo from a form (field "photo"), checked. null = none attached. */
-export function formPhoto(form: FormData): { file: File | null; error?: string } {
-  const f = form.get("photo");
+/** The photo from a form (field "photo", or `field`), checked. null = none attached. */
+export function formPhoto(form: FormData, field = "photo"): { file: File | null; error?: string } {
+  const f = form.get(field);
   if (!(f instanceof File) || !f.size) return { file: null };
   if (!TYPES[f.type]) return { file: null, error: "Photo must be JPG, PNG or WebP." };
   if (f.size > MAX) return { file: null, error: "Photo must be under 2 MB." };
@@ -50,6 +50,23 @@ export async function setMyPhoto(supabase: Awaited<ReturnType<typeof db>>, userI
   const row = (data as { old_path: string | null; changes_left: number }[])[0];
   await removePhoto(row.old_path);
   return { left: row.changes_left };
+}
+
+// Payment proof (a UPI screenshot, or the paper receipt) for an order: faces/payments/<order id>, private like faces.
+// Keyed by the order, so it needs no column: one per order, a later one replaces it.
+export const proofPath = (subId: string) => `payments/${subId}`;
+export async function saveProof(subId: string, file: File) {
+  const { error } = await adminDb().storage.from("faces").upload(proofPath(subId), file, { contentType: file.type, upsert: true });
+  if (error) throw new Error(error.message);
+}
+export async function hasProof(subId: string) {
+  const { data } = await adminDb().storage.from("faces").list("payments", { search: subId, limit: 1 });
+  return !!data?.some((f) => f.name === subId);
+}
+/** order id → signed URL of its proof, for the orders that have one. */
+export async function proofUrls(subIds: string[]) {
+  const urls = await photoUrls(subIds.map(proofPath));
+  return new Map(subIds.filter((id) => urls.has(proofPath(id))).map((id) => [id, urls.get(proofPath(id))!]));
 }
 
 /** Signed URLs for many photos in one request: path → url. */

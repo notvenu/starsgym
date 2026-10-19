@@ -76,7 +76,9 @@ export async function finishAccount(_: AuthState, form: FormData): Promise<AuthS
   const needEmail = !claims.email || String(claims.email).endsWith(`@${LOGIN_EMAIL_DOMAIN}`);
 
   const email = str(form, "email").toLowerCase();
-  if (needEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: "Enter a valid email address." };
+  // members the desk added without an email may skip it while setting their password; on its own it's the point
+  const addEmail = needEmail && (!!email || !needPassword);
+  if (addEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: "Enter a valid email address." };
   const password = str(form, "password");
   if (needPassword) {
     if (password.length < 8) return { error: "Password needs at least 8 characters." };
@@ -86,7 +88,7 @@ export async function finishAccount(_: AuthState, form: FormData): Promise<AuthS
   }
 
   const admin = adminDb();
-  if (needEmail) {
+  if (addEmail) {
     const { data: taken } = await admin.from("profiles").select("id").eq("email", email).neq("id", uid).maybeSingle();
     if (taken) return { error: "That email is already on another account — ask the desk." };
     // ponytail: saved without a confirmation link (the hidden address can't receive the "approve change" mail);
@@ -102,7 +104,7 @@ export async function finishAccount(_: AuthState, form: FormData): Promise<AuthS
   }
   await supabase.auth.refreshSession(); // a fresh token without the flags, so the pop-up stops straight away
   revalidatePath("/", "layout");
-  return { message: needPassword && needEmail ? "Saved. Sign in with your phone or email and your new password." : needPassword ? "Password updated." : "Email saved." };
+  return { message: needPassword && addEmail ? "Saved. Sign in with your phone or email and your new password." : needPassword ? "Password updated." : "Email saved." };
 }
 
 export async function signInWithGoogle(form: FormData) {

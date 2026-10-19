@@ -73,7 +73,13 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
         </div>
       )}
 
-      {needsEmail && <Field label="Email — they sign in with it" name="email" type="email" required autoComplete="off" inputMode="email" />}
+      {needsEmail && (
+        <>
+          <Field label="Email — they sign in with it" name="email" type="email" required autoComplete="off" inputMode="email" />
+          {/* the owner sets it here and tells them; no temporary password to pass along and change */}
+          <Field label="Password — at least 8 characters" name="password" type="text" required minLength={8} autoComplete="new-password" spellCheck={false} />
+        </>
+      )}
       {access !== "none" && person?.email && <p className="-mt-2 text-sm text-ash">Signs in as {person.email}</p>}
 
       {role === "admin" && (

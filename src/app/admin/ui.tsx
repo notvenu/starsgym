@@ -9,6 +9,7 @@ import { Field, MemberDetailsFields } from "@/components/client";
 import { confirmDialog, ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
 import QRCode from "qrcode";
 import { PhotoCapture } from "@/components/photo";
+import { ProofInput, ReceiptScan } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
 import { offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
 import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
@@ -27,10 +28,11 @@ export function AdminModal({ label, title, className = "btn-red", startOpen, chi
 }
 
 /** An unpaid order. Staff take the money; the owner can also reprice, cancel, and settle staff discount requests. */
-export function PendingRow({ id, title, meta, approval, ask, owner }: { id: string; title: string; meta: string; approval: string | null; ask: string | null; owner: boolean }) {
+export function PendingRow({ id, title, meta, method, approval, ask, owner }: { id: string; title: string; meta: string; method: string; approval: string | null; ask: string | null; owner: boolean }) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<Result>();
   const [editing, setEditing] = useState(false);
+  const [paying, setPaying] = useState(false);
   const waiting = approval === "pending";
   return (
     <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center">
@@ -63,8 +65,9 @@ export function PendingRow({ id, title, meta, approval, ask, owner }: { id: stri
           <button type="button" onClick={() => setEditing(true)} className="mt-1 cursor-pointer text-sm font-bold text-red hover:text-chalk">Change price</button>
         ))}
         <Status state={state} />
+        {paying && <MarkPaidForm id={id} cash={method === "cash"} onClose={() => setPaying(false)} />}
       </div>
-      <div className="flex shrink-0 flex-wrap gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
+      {!paying && <div className="flex shrink-0 flex-wrap gap-2 [&>*]:whitespace-nowrap max-sm:[&>*]:flex-1">
         {owner && waiting ? (
           <>
             <button disabled={pending} onClick={() => start(async () => toastResult(await decideDiscount(id, false)))} className="btn-ghost min-h-10 px-3.5 text-xs">Turn down</button>
@@ -76,11 +79,27 @@ export function PendingRow({ id, title, meta, approval, ask, owner }: { id: stri
           <>
             <a href={`/pay/${id}`} className="btn-ghost min-h-10 px-3.5 text-xs">QR</a>
             {owner && <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Cancel this order?", body: meta, confirm: "Cancel order", danger: true })) && start(async () => toastResult(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>}
-            <button disabled={pending} onClick={() => start(async () => toastResult(await markPaid(id)))} className="btn-red min-h-10 px-4 text-xs">Mark paid</button>
+            <button disabled={pending} onClick={() => setPaying(true)} className="btn-red min-h-10 px-4 text-xs">Mark paid</button>
           </>
         )}
-      </div>
+      </div>}
     </div>
+  );
+}
+
+/** "Mark paid" on an order: the payment photo (UPI screenshot required, a cash receipt optional), then confirm. */
+function MarkPaidForm({ id, cash, onClose }: { id: string; cash: boolean; onClose: () => void }) {
+  const [state, action, pending] = useActionState(markPaid, undefined);
+  return (
+    <form noValidate onSubmit={keepFields(action)} className="mt-3 flex flex-col gap-3 rounded-md border border-line bg-panel p-3">
+      <input type="hidden" name="id" value={id} />
+      <ProofInput required={!cash} hint={cash ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment."} />
+      <div className="flex flex-wrap items-center gap-2">
+        <button disabled={pending} className="btn-red min-h-11 px-5 text-xs max-sm:flex-1">{pending ? "Saving…" : "Confirm paid"}</button>
+        <button type="button" onClick={onClose} className="btn-ghost min-h-11 px-4 text-xs max-sm:flex-1">Cancel</button>
+        <Status state={state} />
+      </div>
+    </form>
   );
 }
 
@@ -107,10 +126,11 @@ function NewMemberForm({ branches, plans, offers, trainers, owner, admissionPais
   if (state?.created) return <AccountCreated c={state.created} onAnother={onAnother} />;
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
+      <ReceiptScan />
       <Step n="01" title="Member details">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Full name" name="full_name" required />
-          <Field label="Email" name="email" type="email" required />
+          <Field label="Email (optional)" name="email" type="email" inputMode="email" autoComplete="off" placeholder="They can sign in with their phone" />
           <Select label="Branch" name="branch_id" options={branches.map((b) => [b.id, b.name])} />
           <MemberDetailsFields />
           <div className="sm:col-span-2">
@@ -150,24 +170,25 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
       </div>
 
       <dl className="grid grid-cols-1 gap-3 rounded-lg border border-line bg-panel p-4 text-sm sm:grid-cols-2">
-        <div className="min-w-0"><dt className="label">Email</dt><dd className="mt-0.5 truncate font-semibold">{c.email}</dd></div>
+        <div className="min-w-0"><dt className="label">Email</dt><dd className={`mt-0.5 truncate font-semibold ${c.email ? "" : "text-ash"}`}>{c.email || "None — added later"}</dd></div>
         <div><dt className="label">Phone</dt><dd className="mt-0.5 font-semibold">{c.phone}</dd></div>
-        <p className="text-xs text-ash sm:col-span-2">They can sign in with either, plus the password below.</p>
+        <p className="text-xs text-ash sm:col-span-2">{c.email ? "They can sign in with either, plus the password below." : "They sign in with their phone, plus the password below."}</p>
       </dl>
 
       {c.password ? (
-        <div className="flex flex-col items-center gap-5 rounded-lg border border-redline bg-redwash p-5 text-center sm:flex-row sm:text-left">
+        // phones: the QR centred on top, everything else on the same left edge as the rest of the screen
+        <div className="flex flex-col gap-5 rounded-lg border border-redline bg-redwash p-4 sm:flex-row sm:items-center sm:p-5">
           {c.loginUrl && (qr ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={qr} alt="Sign-in QR for the member" width={176} height={176} className="size-44 shrink-0 rounded-lg bg-white p-2" />
+            <img src={qr} alt="Sign-in QR for the member" width={176} height={176} className="size-44 shrink-0 self-center rounded-lg bg-white p-2" />
           ) : (
-            <div className="size-44 shrink-0 animate-pulse rounded-lg bg-steel" />
+            <div className="size-44 shrink-0 animate-pulse self-center rounded-lg bg-steel" />
           ))}
-          <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
             <p className="label text-chalk">Temporary password</p>
-            <div className="flex items-center justify-center gap-2 sm:justify-start">
-              <span className="font-mono text-3xl font-bold tracking-wider select-all">{c.password}</span>
-              <button type="button" onClick={copy} className="btn-ghost min-h-9 px-3 text-xs">Copy</button>
+            <div className="flex items-center justify-between gap-3 rounded-md border border-redline bg-ink py-1.5 pr-1.5 pl-4">
+              <span className="min-w-0 truncate font-mono text-2xl font-bold tracking-wider select-all">{c.password}</span>
+              <button type="button" onClick={copy} className="btn-ghost min-h-10 shrink-0 px-4 text-xs">Copy</button>
             </div>
             <p className="text-sm text-body">
               {c.loginUrl ? "Have them scan the QR with their phone camera: it signs them in straight away and asks them to set their own password — no typing this one." : "Give them this password. They'll be asked to set their own when they sign in."}
@@ -185,14 +206,15 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
         </p>
       )}
       {plan && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line p-4">
-          <div>
+        <div className="flex flex-col gap-3 rounded-lg border border-line p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <p className="font-bold">{plan.label} · {inr(plan.amount)}</p>
             <p className="text-sm text-ash">
               {plan.state === "paid" ? `Paid · active${plan.endsOn ? ` till ${prettyDay(plan.endsOn)}` : ""}` : plan.state === "pay" ? "Waiting for payment" : "Waiting for the owner to approve the price"}
             </p>
           </div>
-          {plan.state === "pay" && <Link href={`/pay/${plan.subId}`} className="btn-red min-h-11 px-4 text-xs">Show UPI QR</Link>}
+          {plan.state === "pay" && <Link href={`/pay/${plan.subId}`} className="btn-red min-h-11 shrink-0 px-4 text-xs">Show UPI QR</Link>}
+          {plan.state === "paid" && <Link href={`/pass/${plan.subId}`} className="btn-red min-h-11 shrink-0 px-4 text-xs">Pass &amp; receipt</Link>}
         </div>
       )}
 
@@ -221,6 +243,7 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
   const [track, setTrack] = useState<Track>("strength");
   const [days, setDays] = useState(30);
   const [payment, setPayment] = useState("cash");
+  const [asking, setAsking] = useState(false); // staff priced it below standard: it waits for the owner, nothing is paid yet
   const plan =
     kind === "none" ? undefined : plans.find((p) => (kind === "membership" ? p.track === track && p.duration_days === days : p.track === kind));
   const n = (i: number) => String(first + i).padStart(2, "0");
@@ -246,6 +269,7 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
             list={plan.price_paise}
             admission={MEMBERSHIPS.includes(plan.track) ? admissionPaise : null}
             owner={owner}
+            onAsk={setAsking}
           />
         )}
         {plan?.track === "personal_training" && trainers.length > 0 && <Select label="Trainer" name="trainer_id" options={[["", "Not assigned yet"], ...trainers]} />}
@@ -275,11 +299,15 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
               <span className="text-xs text-ash">The rest is recorded as UPI.</span>
             </label>
           )}
+          {/* taken now: UPI needs its screenshot, cash may have the paper receipt. A QR (or an owner approval) is paid later */}
+          {payment !== "qr" && !asking && (
+            <ProofInput required={payment !== "cash"} hint={payment === "cash" ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment on their phone or yours."} />
+          )}
         </Step>
       )}
 
       <div className="flex flex-wrap items-center gap-4">
-        <button disabled={pending || (kind !== "none" && !plan)} className="btn-red min-h-14 px-8 text-base">
+        <button disabled={pending || (kind !== "none" && !plan)} className="btn-red min-h-14 px-8 text-base max-sm:w-full">
           {pending ? "Saving…" : !plan ? "Create account" : payment === "qr" ? `${verb} & show QR` : `${verb} & issue pass`}
         </button>
         <Status state={state} />
@@ -289,10 +317,13 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
 }
 
 /** Desk pricing: starts at the standard price (offer applied) and admission; staff can change either after negotiating. */
-function NegotiatedPrice({ standard, list, admission, owner }: { standard: number; list: number; admission: number | null; owner: boolean }) {
+function NegotiatedPrice({ standard, list, admission, owner, onAsk }: { standard: number; list: number; admission: number | null; owner: boolean; onAsk: (asking: boolean) => void }) {
   const [price, setPrice] = useState(String(standard / 100));
   const [fee, setFee] = useState(admission !== null ? String(admission / 100) : "0");
   const changed = Math.round(Number(price) * 100) !== standard;
+  // the server's rule (sellPlan): staff below the standard price, or a changed admission, waits for the owner
+  const asking = !owner && (changed || (admission !== null && Math.round(Number(fee) * 100) !== admission));
+  useEffect(() => onAsk(asking), [asking, onAsk]);
   const total = (Number(price) || 0) + (admission !== null ? Number(fee) || 0 : 0);
   const money = (label: string, name: string, value: string, set: (v: string) => void, hint: React.ReactNode) => (
     <label className="flex min-w-0 flex-col gap-1.5">
@@ -407,7 +438,7 @@ export function HolidayRow({ holiday, where, canRemove }: { holiday: Holiday; wh
   const title = `${prettyDay(holiday.day)}${holiday.note ? ` — ${holiday.note}` : ""}`;
   return (
     <li className="flex items-center justify-between gap-3 py-3">
-      <span>
+      <span className="min-w-0">
         <span className="block font-bold">{title}</span>
         <span className="text-sm text-ash">{where}</span>
       </span>

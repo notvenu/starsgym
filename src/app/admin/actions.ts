@@ -6,8 +6,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { adminDb, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
-import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
-import { gymDate, inr, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, type Plan, type Track } from "@/lib/gym";
+import { formPhoto, hasProof, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
+import { gymDate, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { siteOrigin } from "@/lib/pass";
 import { allow, SLOW_DOWN } from "@/lib/rate-limit";
@@ -49,11 +49,24 @@ const sees = async (supabase: Db, table: "profiles" | "subscriptions", id: strin
   !!(await supabase.from(table).select("id").eq("id", id).maybeSingle()).data;
 const NOT_YOURS = { error: "That member belongs to another branch." };
 
-export async function markPaid(subId: string): Promise<Result> {
+/** Confirm a desk payment. Anything but cash needs a screenshot of the payment (cash may have a photo of the receipt). */
+export async function markPaid(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me } = await requireStaff();
-  const { data: sub } = await supabase.from("subscriptions").select("user_id,amount_paise,approval,branch_id").eq("id", subId).maybeSingle();
+  const subId = s(form, "id");
+  if (!UUID.test(subId)) return { error: "Reload and try again." };
+  const { data: sub } = await supabase.from("subscriptions").select("user_id,amount_paise,approval,branch_id,method").eq("id", subId).maybeSingle();
   if (!sub) return NOT_YOURS;
   if (sub.approval === "pending") return { error: "The owner hasn't approved this price yet." };
+  const proof = formPhoto(form, "proof");
+  if (proof.error) return { error: proof.error };
+  if (sub.method !== "cash" && !proof.file && !(await hasProof(subId))) return { error: "Add a screenshot of the UPI payment." };
+  if (proof.file) {
+    try {
+      await saveProof(subId, proof.file);
+    } catch (e) {
+      return { error: `Couldn't save the payment photo: ${(e as Error).message}` };
+    }
+  }
   const { error } = await supabase.rpc("activate_subscription", { p_sub: subId });
   if (error) return { error: error.message };
   await logAction(me, "Marked paid", { memberId: sub.user_id, branchId: sub.branch_id, detail: inr(sub.amount_paise) });
@@ -82,22 +95,25 @@ export async function cancelSub(subId: string): Promise<Result> {
 export async function addMember(_: Result, form: FormData): Promise<Result> {
   const { supabase, branchId, profile: me, isOwner } = await requireStaff();
   const branch = branchId ?? s(form, "branch_id"); // staff sign people up at their own branch
-  const email = s(form, "email").toLowerCase();
-  if (!email) return { error: "Email is required — it's how the member signs in." };
+  const email = s(form, "email").toLowerCase(); // optional: they sign in with their phone either way
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: "Check the email — or leave it blank." };
   const read = readMemberDetails(form);
   if ("error" in read) return read;
   const photo = formPhoto(form);
   if (photo.error) return { error: photo.error };
 
-  const { data: existing } = await supabase.from("profiles").select("id,photo_path").eq("email", email).maybeSingle();
+  const { data: existing } = email ? await supabase.from("profiles").select("id,photo_path").eq("email", email).maybeSingle() : { data: null };
   if (!photo.file && !existing?.photo_path) return { error: "Take or upload the member's photo — staff check it when they scan the pass." };
   let userId = existing?.id as string | undefined;
   let password: string | null = null;
+  let signInAs = email;
   if (!userId) {
     // a random temporary password, shown to the desk once; they're asked to set their own when they first sign in
     password = tempPassword();
     const { data, error } = await adminDb().auth.admin.createUser({
-      email,
+      // no email: a hidden sign-in address, swapped in when they type their phone (like the GymPro imports). It needs
+      // the account's id, so the account starts on a throwaway one
+      email: email || `new-${crypto.randomUUID()}@${LOGIN_EMAIL_DOMAIN}`,
       email_confirm: true,
       password,
       app_metadata: { temp_password: true, temp_kind: "random" },
@@ -105,6 +121,15 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
     });
     if (error) return { error: branchId && /already/i.test(error.message) ? "That email belongs to a member of another branch — ask the owner." : error.message };
     userId = data.user.id;
+    if (!email) {
+      signInAs = loginEmail(userId);
+      const { error: e } = await adminDb().auth.admin.updateUserById(userId, { email: signInAs, email_confirm: true });
+      if (e) {
+        await adminDb().auth.admin.deleteUser(userId);
+        return { error: e.message };
+      }
+      await adminDb().from("profiles").update({ email: null }).eq("id", userId); // nothing is ever mailed to it
+    }
   }
   await supabase.from("profiles").update({ ...read.details, ...(branch && { home_branch_id: branch }) }).eq("id", userId);
   // photo taken at the desk: staff can set or replace it any time, without using up the member's own changes
@@ -125,7 +150,7 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   // even when the plan fails, the account exists: always hand over its password and sign-in QR (sell the plan after)
   return {
     ok: existing ? "Member already exists — updated." : "Account created",
-    created: { name: s(form, "full_name"), email, phone: read.details.phone, password, loginUrl: password ? await loginLink(email) : null, plan: sold && !planError ? (sold as NonNullable<Created["plan"]>) : null, planError },
+    created: { name: s(form, "full_name"), email, phone: read.details.phone, password, loginUrl: password ? await loginLink(signInAs) : null, plan: sold && !planError ? (sold as NonNullable<Created["plan"]>) : null, planError },
   };
 }
 
@@ -192,6 +217,13 @@ async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: str
   }
   const discounted = total !== standard || adm !== fee;
   const needsApproval = discounted && !isOwner;
+  // taken now (not a QR, not waiting for the owner): UPI needs its screenshot; cash may have a photo of the receipt
+  const takenNow = pay !== "qr" && !needsApproval;
+  const proof = formPhoto(form, "proof");
+  if (takenNow && (proof.error || (pay !== "cash" && !proof.file))) {
+    await drop();
+    return { error: proof.error ?? "Add a screenshot of the UPI payment." };
+  }
   if (discounted || cash !== null || trainerId) {
     // service key: desk-only path (checked above), and it doesn't depend on column grants
     const { error: e } = await adminDb()
@@ -219,6 +251,14 @@ async function sellPlan(supabase: Db, me: Profile, isOwner: boolean, userId: str
   }
   await logAction(me, pay === "qr" ? "Created order" : "Sold plan", { memberId: userId, branchId, detail: `${what} · ${pay === "split" ? "cash + UPI" : pay === "cash" ? "cash" : "UPI"}` });
   if (pay === "qr") return { ...sold, state: "pay" };
+  if (proof.file) {
+    try {
+      await saveProof(sub.id, proof.file);
+    } catch (e) {
+      await drop();
+      return { error: `Couldn't save the payment photo: ${(e as Error).message}` };
+    }
+  }
   const act = await supabase.rpc("activate_subscription", { p_sub: sub.id });
   if (act.error) return { error: act.error.message };
   const { data: after } = await supabase.from("subscriptions").select("ends_on").eq("id", sub.id).maybeSingle();
@@ -433,7 +473,7 @@ export async function setOfferActive(id: string, active: boolean): Promise<Resul
 }
 
 /**
- * Approve or reject a member's change request (name, gender, home branch, photo). Approving applies it through the
+ * Approve or reject a member's change request (name, gender, home branch, phone, email, photo). Approving applies it through the
  * desk's own session, so branch rules hold: single-branch staff can't move someone to the other branch.
  */
 export async function decideRequest(id: string, approve: boolean): Promise<Result> {
@@ -447,10 +487,20 @@ export async function decideRequest(id: string, approve: boolean): Promise<Resul
       ...(r.full_name && { full_name: r.full_name }),
       ...(r.gender && { gender: r.gender }),
       ...(r.home_branch_id && { home_branch_id: r.home_branch_id }),
+      ...(r.phone && { phone: r.phone }),
     };
     if (Object.keys(change).length) {
       const { data: done, error } = await supabase.from("profiles").update(change).eq("id", r.user_id).select("id");
       if (error || !done?.length) return { error: r.home_branch_id ? "Only the owner can move a member to another branch." : error?.message ?? "Couldn't update that member." };
+    }
+    if (r.email) {
+      // the sign-in address too, so service key (the request itself was only visible to this desk through RLS)
+      const admin = adminDb();
+      const { data: taken } = await admin.from("profiles").select("id").eq("email", r.email).neq("id", r.user_id).maybeSingle();
+      if (taken) return { error: "That email is already on another account." };
+      const { error } = await admin.auth.admin.updateUserById(r.user_id, { email: r.email, email_confirm: true });
+      if (error) return { error: /already|registered|exists/i.test(error.message) ? "That email is already on another account." : error.message };
+      await admin.from("profiles").update({ email: r.email }).eq("id", r.user_id);
     }
     if (r.photo_path) {
       const { data: old, error } = await supabase.rpc("admin_set_photo", { p_user: r.user_id, p_path: r.photo_path });

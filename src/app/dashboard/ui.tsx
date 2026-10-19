@@ -189,13 +189,14 @@ export function ShowcaseForm({ defaultLink }: { defaultLink: string }) {
 
 export type ChangeRequest = {
   id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null;
+  phone?: string | null; email?: string | null;
   status: "pending" | "approved" | "rejected"; created_at: string; decided_at: string | null; photoUrl: string | null;
   recent: boolean; // decided in the last week
 };
 
 /**
- * "Edit" next to their name opens the profile in a sheet. Name, gender, branch and photo were set once — changing them
- * is a request the desk approves. Phone, date of birth, emergency contact and socials are theirs to edit any time.
+ * "Edit" next to their name opens the profile in a sheet. Name, gender, branch, photo, phone and email go through the
+ * desk as a request. Date of birth, emergency contact and socials are theirs to edit any time.
  */
 export function ProfileEditor({ profile, photo, branches, request }: { profile: Profile; photo: string | null; branches: Branch[]; request: ChangeRequest | null }) {
   const [open, setOpen] = useState(false);
@@ -224,7 +225,7 @@ function ProfileBody({ profile, photo, branches, request }: { profile: Profile; 
   const genderName = (g: string | null) => GENDERS.find(([k]) => k === g)?.[1] ?? "—";
   const open = request?.status === "pending" ? request : null;
   const recent = request && request.status !== "pending" && request.recent ? request : null;
-  const asked = open ? [open.full_name && `name → ${open.full_name}`, open.gender && `gender → ${genderName(open.gender)}`, open.home_branch_id && `branch → ${branchName(open.home_branch_id)}`, open.photo_path && "new photo"].filter(Boolean).join(" · ") : "";
+  const asked = open ? [open.full_name && `name → ${open.full_name}`, open.gender && `gender → ${genderName(open.gender)}`, open.home_branch_id && `branch → ${branchName(open.home_branch_id)}`, open.phone && `phone → ${open.phone}`, open.email && `email → ${open.email}`, open.photo_path && "new photo"].filter(Boolean).join(" · ") : "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -241,6 +242,7 @@ function ProfileBody({ profile, photo, branches, request }: { profile: Profile; 
               <div className="col-span-2"><dt className="label text-xs">Name</dt><dd className="truncate font-bold">{profile.full_name || "—"}</dd></div>
               <div><dt className="label text-xs">Gender</dt><dd className="font-bold">{genderName(profile.gender)}</dd></div>
               <div><dt className="label text-xs">Home branch</dt><dd className="font-bold">{branchName(profile.home_branch_id)}</dd></div>
+              <div className="col-span-2"><dt className="label text-xs">Phone · email</dt><dd className="truncate font-bold">{[profile.phone, profile.email].filter(Boolean).join(" · ") || "—"}</dd></div>
             </dl>
           </div>
 
@@ -258,7 +260,7 @@ function ProfileBody({ profile, photo, branches, request }: { profile: Profile; 
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-ash">
-                {recent ? (recent.status === "approved" ? "Your last change was approved." : "Your last change request was declined — ask at the desk.") : "Need to fix your name, gender, branch or photo?"}
+                {recent ? (recent.status === "approved" ? "Your last change was approved." : "Your last change request was declined — ask at the desk.") : "Need to change your name, phone, email, branch or photo?"}
               </p>
               <button type="button" onClick={() => setAsking(true)} className="btn-ghost min-h-11">Request a change</button>
             </div>
@@ -288,6 +290,8 @@ function RequestForm({ profile, branches, onDone }: { profile: Profile; branches
             {GENDERS.map(([g, l]) => <option key={g} value={g}>{l}</option>)}
           </select>
         </label>
+        <Field label="Phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={profile.phone ?? ""} />
+        <Field label="Email" name="email" type="email" autoComplete="email" inputMode="email" defaultValue={profile.email ?? ""} />
         <label className="flex flex-col gap-1.5 sm:col-span-2">
           <span className="label">Home branch</span>
           <select name="home_branch_id" defaultValue={profile.home_branch_id ?? ""} className="field">
@@ -311,9 +315,8 @@ function ContactForm({ profile }: { profile: Profile }) {
   const [state, action, pending] = useActionState(saveProfile, undefined);
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-4 border-t border-line pt-6">
-      <p className="label">Contact &amp; socials · edit any time</p>
+      <p className="label">Birthday, emergency contact &amp; socials · edit any time</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={profile.phone ?? ""} required />
         <Field label="Date of birth" name="date_of_birth" type="date" min="1900-01-01" max={new Date().toISOString().slice(0, 10)} defaultValue={profile.date_of_birth ?? ""} />
         <Field label="Emergency contact" name="emergency_contact" placeholder="Name & phone" maxLength={120} defaultValue={profile.emergency_contact ?? ""} />
         <Field label="Instagram / social link" name="instagram_url" type="url" placeholder="https://instagram.com/you" defaultValue={profile.instagram_url ?? ""} />
