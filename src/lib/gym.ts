@@ -103,7 +103,10 @@ export const DURATIONS = [
   { days: 365, label: "Yearly", per: "year" },
 ] as const;
 
-export const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** A trainer's own PT fee (set per month on the Team page) for a plan length: monthly × months, 365 days = 12. */
+export const trainerFee = (monthlyPaise: number, days: number) => monthlyPaise * Math.max(1, Math.round(days / 30));
+
+export const DAY_NAMES =["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function planName(p: Pick<Plan, "track" | "duration_days">) {
   const d = DURATIONS.find((x) => x.days === p.duration_days);
@@ -147,6 +150,20 @@ export const gymDateIn = (days: number) => gymDate(new Date(Date.now() + days * 
 /** The last n gym-local dates, oldest first; the last one is today. */
 export const recentGymDates = (n: number, now = Date.now()) =>
   Array.from({ length: n }, (_, i) => gymDate(new Date(now - (n - 1 - i) * 864e5)));
+
+/** Every date of a "YYYY-MM" month, oldest first, stopping at today. */
+export const monthDates = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const today = gymDate();
+  return Array.from({ length: last }, (_, i) => `${ym}-${String(i + 1).padStart(2, "0")}`).filter((d) => d <= today);
+};
+
+/** "YYYY-MM" n months after (negative = before) the given one. */
+export const shiftMonth = (ym: string, n: number) => {
+  const d = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1 + n, 1));
+  return d.toISOString().slice(0, 7);
+};
 
 type Hours = Pick<Branch, "id" | "morning_open" | "morning_close" | "evening_open" | "evening_close" | "closed_days"> &
   Partial<Pick<Branch, "ladies_morning_open" | "ladies_morning_close" | "ladies_evening_open" | "ladies_evening_close" | "grace_minutes">>;
@@ -293,6 +310,7 @@ export type SiteItem = {
   trainer_id: string | null;
   branch_id: string | null; // trainers: their branch, null = both (0014)
   profile_id: string | null; // trainers who also have desk access (0014)
+  pt_fee_paise?: number | null; // trainers: their own PT fee per month, set by the owner; null = the standard PT price
   url: string | null;
   sort: number;
   active: boolean;

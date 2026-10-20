@@ -106,6 +106,14 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
       {trainer && (
         <>
           <Field label="Speciality" name="subtitle" defaultValue={item?.subtitle} placeholder="Head coach · Strength" />
+          <label className="flex flex-col gap-1.5">
+            <span className="label">Personal training fee per month</span>
+            <span className="flex items-center rounded border border-line bg-ink focus-within:border-red">
+              <span className="pl-3 text-ash">₹</span>
+              <input name="pt_fee" type="number" inputMode="decimal" min="0" step="any" defaultValue={item?.pt_fee_paise ? item.pt_fee_paise / 100 : ""} placeholder="Standard PT price" className="min-h-11 w-full min-w-0 bg-transparent px-2 font-bold text-chalk outline-none" />
+            </span>
+            <span className="text-xs text-ash">The desk charges this × months when they&apos;re picked for PT. Blank = the standard price from Pricing.</span>
+          </label>
           <PhotoInput label="Photo" file="photo" url="image_url" current={item?.image_path ?? null} />
           <details className="group rounded-lg border border-line">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 text-sm font-semibold text-ash">

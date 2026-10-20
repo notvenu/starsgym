@@ -5,13 +5,14 @@ import { Sheet } from "@/components/sheet";
 export { Sheet };
 import { useRouter } from "next/navigation";
 import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { Field, MemberDetailsFields } from "@/components/client";
+import { Field, MemberDetailsFields, PhoneField } from "@/components/client";
 import { confirmDialog, ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
 import QRCode from "qrcode";
 import { PhotoCapture } from "@/components/photo";
 import { ProofCheck, ProofInput, ReceiptScan } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
-import { offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
+import type { Trainer } from "./data";
+import { offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
 import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
@@ -137,7 +138,7 @@ const GYM_TRACKS: Track[] = ["strength", "strength_cardio", "couples"];
 const PT_ONLY: [Kind, string, string] = ["pt", "PT only", "Add-on to their plan"];
 
 /** Desk onboarding: details → pass → payment, then straight to the member's ticket. */
-type NewMemberProps = { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise?: number };
+type NewMemberProps = { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; owner: boolean; admissionPaise?: number };
 
 /** "+ New member": the form, then the account-created screen. "Add another" starts a fresh, empty form. */
 export function AddMemberForm(props: NewMemberProps) {
@@ -153,10 +154,12 @@ function NewMemberForm({ branches, plans, offers, trainers, owner, admissionPais
       <ReceiptScan />
       <Step n="01" title="Member details">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* phone first: it's how they sign in, and what the desk asks for first */}
+          <PhoneField />
           <Field label="Full name" name="full_name" required />
           <Field label="Email (optional)" name="email" type="email" inputMode="email" autoComplete="off" placeholder="They can sign in with their phone" />
           <Select label="Branch" name="branch_id" options={branches.map((b) => [b.id, b.name])} />
-          <MemberDetailsFields />
+          <MemberDetailsFields phone={false} />
           <div className="sm:col-span-2">
             <PhotoCapture label="Member photo · staff check it when they scan the pass" required />
           </div>
@@ -247,7 +250,7 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
 }
 
 /** Members list → Renew: sell an existing member their next plan. Starts the day after their current one ends. */
-export function RenewForm({ userId, branchId, plans, offers, trainers, owner, admissionPaise, onDone }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise: number | null; onDone?: () => void }) {
+export function RenewForm({ userId, branchId, plans, offers, trainers, owner, admissionPaise, onDone }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; owner: boolean; admissionPaise: number | null; onDone?: () => void }) {
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await renewMember(prev, form);
     if (r?.ok) {
@@ -267,7 +270,7 @@ export function RenewForm({ userId, branchId, plans, offers, trainers, owner, ad
 
 /** Pass → payment → submit. admissionPaise null = they've had a membership, so no admission field. */
 function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, first, verb, pending, state }: {
-  plans: Plan[]; offers: Offer[]; trainers: [string, string][]; owner: boolean; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result;
+  plans: Plan[]; offers: Offer[]; trainers: Trainer[]; owner: boolean; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result;
 }) {
   const [kind, setKind] = useState<Kind>("membership");
   const [track, setTrack] = useState<Track>("strength");
@@ -277,12 +280,14 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
   const [ptAsking, setPtAsking] = useState(false);
   const [withPt, setWithPt] = useState(false); // membership + personal training add-on
   const [ptDays, setPtDays] = useState(30);
+  const [trainerId, setTrainerId] = useState("");
   const [gymTotal, setGymTotal] = useState(0);
   const [ptTotal, setPtTotal] = useState(0);
   const plan =
     kind === "none" || kind === "pt" ? undefined : plans.find((p) => (kind === "membership" ? p.track === track && p.duration_days === days : p.track === kind));
   const ptPlans = plans.filter((p) => p.track === "personal_training");
   const ptPlan = kind === "pt" || (kind === "membership" && withPt) ? ptPlans.find((p) => p.duration_days === ptDays) : undefined;
+  const fee = trainers.find(([id]) => id === trainerId)?.[2];
   const selling = !!plan || !!ptPlan;
   const anyAsking = (!!plan && asking) || (!!ptPlan && ptAsking);
   // a QR covers one plan: with PT, the money is taken at the desk (a QR picked earlier reads as cash)
@@ -324,9 +329,18 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
           <div className="flex flex-col gap-3 rounded-md border border-redline bg-redwash/40 p-4">
             <p className="label text-chalk">Personal training</p>
             <Segmented label="PT length" options={DURATIONS.filter((d) => ptPlans.some((p) => p.duration_days === d.days)).map((d) => [String(d.days), d.label])} value={String(ptDays)} onChange={(v) => setPtDays(Number(v))} />
-            {trainers.length > 0 && <Select label="Trainer" name="trainer_id" options={[["", "Not assigned yet"], ...trainers]} />}
+            {trainers.length > 0 && (
+              <label className="flex flex-col gap-1.5">
+                <span className="label">Trainer</span>
+                <select name="trainer_id" value={trainerId} onChange={(e) => setTrainerId(e.target.value)} className="field">
+                  <option value="">Not assigned yet</option>
+                  {trainers.map(([id, name, fee]) => <option key={id} value={id}>{fee ? `${name} · ${inr(fee)}/month` : name}</option>)}
+                </select>
+              </label>
+            )}
             {ptPlan ? (
-              <PtFee key={ptPlan.id} standard={discounted(ptPlan.price_paise, bestOffer(offers, ptPlan.track, ptPlan.duration_days), ptPlan.duration_days)} owner={owner} onAsk={setPtAsking} onTotal={setPtTotal} />
+              // a trainer with their own fee (Team page) prices it; otherwise the standard PT price, offer applied
+              <PtFee key={`${ptPlan.id}-${trainerId}`} standard={fee ? trainerFee(fee, ptPlan.duration_days) : discounted(ptPlan.price_paise, bestOffer(offers, ptPlan.track, ptPlan.duration_days), ptPlan.duration_days)} owner={owner} onAsk={setPtAsking} onTotal={setPtTotal} />
             ) : (
               <p className="text-red">No personal training price for that length — set it on the Pricing page.</p>
             )}
@@ -645,7 +659,7 @@ const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
 
 /** Members list: the ⋯ menu on each row. Edit and renew open in a pop-up without leaving the list. */
 export function MemberActions({ member, passId, cancelSubId, waHref, branches, plans, offers, trainers, admissionPaise, owner }: {
-  owner: boolean; member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: [string, string][]; admissionPaise: number | null;
+  owner: boolean; member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; admissionPaise: number | null;
 }) {
   const [sheet, setSheet] = useState<"edit" | "renew" | null>(null);
   const [pending, start] = useTransition();

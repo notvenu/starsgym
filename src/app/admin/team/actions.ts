@@ -35,6 +35,8 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
   if (!profileId && !itemId && access === "none" && !trainer) return { error: "Give them desk access, a trainer card, or both." };
   const url = s(form, "url");
   if (trainer && url && !url.startsWith("https://")) return { error: "The Instagram link must start with https://" };
+  const ptFee = s(form, "pt_fee") === "" ? null : Math.round(Number(s(form, "pt_fee")) * 100);
+  if (ptFee !== null && !(ptFee >= 0)) return { error: "The PT fee must be zero or more." };
 
   // ── desk access. Service key: owner-only path, and roles aren't editable through anyone's own session.
   const admin = adminDb();
@@ -81,10 +83,15 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
       branch_id: all ? null : branch,
       profile_id: profileId,
       active: true,
+      pt_fee_paise: ptFee || null, // 0 or blank: the standard PT price
       ...(photo.path && { image_path: photo.path }),
     };
     const { error } = itemId ? await supabase.from("site_items").update(row).eq("id", itemId) : await supabase.from("site_items").insert(row);
-    if (error) return { error: /branch_id|profile_id/.test(error.message) ? "Run supabase/migrations/0014_team_insights.sql first." : error.message };
+    if (error)
+      return {
+        error: /pt_fee_paise/.test(error.message) ? "Add the PT fee column first: alter table site_items add column pt_fee_paise integer check (pt_fee_paise >= 0);"
+          : /branch_id|profile_id/.test(error.message) ? "Run supabase/migrations/0014_team_insights.sql first." : error.message,
+      };
   } else if (itemId) {
     const { error } = await supabase.from("site_items").update({ active: false }).eq("id", itemId); // hidden, not deleted
     if (error) return { error: error.message };

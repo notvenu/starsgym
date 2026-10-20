@@ -1,12 +1,17 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Check, Field, OpenStatus, WeekHolidays } from "@/components/client";
+import { useRouter } from "next/navigation";
+import { Check, Field, OpenStatus, Price, WeekHolidays } from "@/components/client";
 import type { Profile } from "@/lib/supabase";
-import { GENDERS, ladiesLabel, weekHolidays, type Branch, type Holiday, type Session } from "@/lib/gym";
+import { bestOffer, DURATIONS, GENDERS, inr, ladiesLabel, TRACKS, weekHolidays, type Branch, type Holiday, type Offer, type Plan, type Session, type Track } from "@/lib/gym";
+import { payOnline, RazorpayScript } from "../buy/[planId]/checkout";
+import { startUpi } from "../buy/[planId]/actions";
+import { ProofUpload } from "../pay/[subId]/proof";
 import { PhotoCapture } from "@/components/photo";
 import { Sheet } from "@/components/sheet";
 import { ScanButton } from "@/components/scanner";
+import { ShareStreak } from "@/components/streak-card";
 import { ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
 import { cancelRequest, checkIn, postShowcase, requestChange, saveProfile, type Result } from "./actions";
 
@@ -25,6 +30,8 @@ export function CheckInPanel(props: {
   name: string;
   hasPlan: boolean;
   week: { iso: string; label: string; done: boolean; today: boolean }[];
+  monthVisits: number; // check-ins this calendar month, before today
+  rank: number; // on the Streak Wall, 0 = not on it
 }) {
   const { branches } = props;
   const [branchId, setBranchId] = useState(props.homeBranch ?? branches[0]?.id ?? "");
@@ -90,6 +97,7 @@ export function CheckInPanel(props: {
           <p className="mt-1 text-[13px] text-ash">{goal - streak} to {goal}-day badge</p>
         </div>
       </div>
+      {streak > 0 && <ShareStreak streak={streak} name={props.name} photo={props.photo} monthVisits={props.monthVisits + visits.length} rank={props.rank || undefined} className="btn-ghost -mt-3 min-h-11 self-center px-5 text-xs" />}
 
       <div className="grid grid-cols-7 gap-2">
         {props.week.map((d) => {
@@ -329,5 +337,111 @@ function ContactForm({ profile }: { profile: Profile }) {
         <ResultToast state={state} />
       </div>
     </form>
+  );
+}
+
+const RENEW_TRACKS: Track[] = ["strength", "strength_cardio", "couples"];
+type UpiOrder = { id: string; amount: number; ref: string; link: string; qr: string };
+
+/**
+ * "Renew / upgrade" on the dashboard: pick the plan and pay without leaving the page. UPI: their UPI app (or the QR),
+ * then the screenshot — required, the desk verifies it and the plan starts once they confirm. Or online via Razorpay.
+ */
+export function RenewSheet({ plans, offers, branches, homeBranch, current, online, admissionPaise, label, className = "btn-ghost" }: {
+  plans: Plan[]; offers: Offer[]; branches: Branch[]; homeBranch: string | null; current: { track: Track; days: number } | null; online: boolean; admissionPaise: number; label: string; className?: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [track, setTrack] = useState<Track>(current && RENEW_TRACKS.includes(current.track) ? current.track : "strength");
+  const [days, setDays] = useState(current?.days && current.days > 1 ? current.days : 30);
+  const [branchId, setBranchId] = useState(homeBranch ?? branches[0]?.id ?? "");
+  const [order, setOrder] = useState<UpiOrder>();
+  const [sent, setSent] = useState(false);
+  const [pending, start] = useTransition();
+  const lengths = DURATIONS.filter((d) => plans.some((p) => p.track === track && p.duration_days === d.days));
+  const plan = plans.find((p) => p.track === track && p.duration_days === days);
+  const offer = plan && bestOffer(offers, plan.track, plan.duration_days);
+
+  const close = () => {
+    setOpen(false);
+    if (order) router.refresh(); // an order was made: it shows under "Your plan" (to pay, or waiting for the desk)
+    setOrder(undefined);
+    setSent(false);
+  };
+  const upi = () =>
+    start(async () => {
+      const r = await startUpi(plan!.id, branchId);
+      if ("error" in r) return void toast(r.error!, "error");
+      setOrder(r.order);
+    });
+  const chip = (on: boolean) => `min-h-11 cursor-pointer rounded px-2 font-label text-xs font-bold tracking-[0.08em] uppercase ${on ? "bg-red text-white" : "text-ash hover:text-chalk"}`;
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={className}>{label}</button>
+      <Sheet title={order ? "Pay by UPI" : "Renew or upgrade"} open={open} onClose={close}>
+        {online && <RazorpayScript />}
+        {sent ? (
+          <div className="flex flex-col items-center gap-4 py-4 text-center">
+            <span className="flex size-16 items-center justify-center rounded-full bg-red text-white"><Check className="size-8" /></span>
+            <p className="font-display text-3xl uppercase">Screenshot sent</p>
+            <p className="max-w-sm text-ash">The desk is checking your payment. Your plan starts as soon as they confirm it — it&apos;ll show up here.</p>
+            <button type="button" onClick={close} className="btn-red min-h-12 w-full max-w-xs">Done</button>
+          </div>
+        ) : order ? (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <p className="font-display text-6xl leading-none">{inr(order.amount)}</p>
+            <p className="font-label text-lg font-bold tracking-[0.2em]">REF {order.ref}</p>
+            {/* phones: straight into GPay / PhonePe / Paytm with the amount filled in */}
+            <a href={order.link} className="btn-red min-h-14 w-full max-w-sm text-base">Pay with a UPI app</a>
+            <details className="w-full max-w-sm text-sm text-ash">
+              <summary className="min-h-11 cursor-pointer list-none py-3 font-semibold hover:text-chalk">Paying from another phone? Show the QR</summary>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={order.qr} alt={`UPI QR for ${inr(order.amount)}`} width={240} height={240} className="mx-auto rounded-lg border-8 border-chalk" />
+            </details>
+            <p className="text-sm text-ash">After paying, send the screenshot. It&apos;s needed — the desk matches it with the payment before starting your plan.</p>
+            <ProofUpload subId={order.id} sent={null} onSent={() => setSent(true)} />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <span className="label">Plan</span>
+              <div role="group" aria-label="Plan" className="grid grid-cols-3 gap-1 rounded-md border border-line bg-panel p-1">
+                {RENEW_TRACKS.filter((t) => plans.some((p) => p.track === t)).map((t) => (
+                  <button key={t} type="button" aria-pressed={t === track} onClick={() => { setTrack(t); if (!plans.some((p) => p.track === t && p.duration_days === days)) setDays(30); }} className={chip(t === track)}>{TRACKS[t]}</button>
+                ))}
+              </div>
+              <div role="group" aria-label="Length" className="grid grid-cols-2 gap-1 rounded-md border border-line bg-panel p-1 sm:grid-cols-4">
+                {lengths.map((d) => <button key={d.days} type="button" aria-pressed={d.days === days} onClick={() => setDays(d.days)} className={chip(d.days === days)}>{d.label}</button>)}
+              </div>
+            </div>
+            {plan ? (
+              <div className="flex flex-col gap-1 rounded-md border border-line bg-panel p-4">
+                <Price paise={plan.price_paise} offer={offer} days={plan.duration_days} size="text-5xl" />
+                {offer && <p className="text-sm text-red">{offer.title} applied.</p>}
+                {admissionPaise > 0 && <p className="text-sm text-body">+ {inr(admissionPaise)} one-time admission (first membership only)</p>}
+                <p className="text-sm text-ash">{current ? "Starts the day after your current plan ends — renewing early never wastes days." : "Starts the day it's confirmed."}</p>
+              </div>
+            ) : (
+              <p className="text-red">That plan isn&apos;t available.</p>
+            )}
+            {branches.length > 1 && (
+              <label className="flex flex-col gap-1.5">
+                <span className="label">Branch</span>
+                <select className="field" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </label>
+            )}
+            <button type="button" onClick={upi} disabled={pending || !plan} className="btn-red min-h-14 text-base">{pending ? "Working…" : "Pay by UPI"}</button>
+            {online && (
+              <button type="button" onClick={() => start(() => payOnline(plan!.id, branchId, start))} disabled={pending || !plan} className="btn-ghost min-h-12">
+                Pay online · cards, netbanking
+              </button>
+            )}
+          </div>
+        )}
+      </Sheet>
+    </>
   );
 }

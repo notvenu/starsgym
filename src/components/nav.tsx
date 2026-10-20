@@ -98,7 +98,7 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
               {signedIn ? (
                 <Link href="/dashboard" className="btn min-h-11 rounded-full bg-red px-6 text-white hover:bg-[#ff2a31]">Check in</Link>
               ) : (
-                <Link href="/#plans" className="btn min-h-11 rounded-full bg-red px-6 text-white hover:bg-[#ff2a31]">Join now</Link>
+                <Link href="/login?mode=signup" className="btn min-h-11 rounded-full bg-red px-6 text-white hover:bg-[#ff2a31]">Join now</Link>
               )}
               <button
                 type="button"
@@ -136,7 +136,7 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
             ) : (
               <>
                 <Link href="/login" onClick={() => setOpen(false)} className="btn-ghost min-h-14 rounded-full">Sign in</Link>
-                <Link href="/#plans" onClick={() => setOpen(false)} className="btn-red min-h-14 rounded-full">Join now</Link>
+                <Link href="/login?mode=signup" onClick={() => setOpen(false)} className="btn-red min-h-14 rounded-full">Join now</Link>
               </>
             )}
           </div>

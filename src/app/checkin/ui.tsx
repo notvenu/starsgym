@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, WeekHolidays } from "@/components/client";
 import { toast } from "@/components/feedback";
+import { ShareStreak } from "@/components/streak-card";
 import { prettyDay, type Holiday, type Session } from "@/lib/gym";
 import { doorCheckIn, type DoorResult } from "./actions";
 
@@ -153,7 +154,10 @@ function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: 
 
       <div className="flex w-full flex-col gap-2 sm:flex-row">
         {signedIn ? (
-          <Link href="/dashboard" className="btn-red flex-1">My dashboard</Link>
+          <>
+            {!!r.streak && <ShareStreak streak={r.streak} name={r.name ?? ""} photo={r.photo ?? null} monthVisits={r.monthVisits} className="btn-red flex-1" />}
+            <Link href="/dashboard" className={`${r.streak ? "btn-ghost" : "btn-red"} flex-1`}>My dashboard</Link>
+          </>
         ) : (
           <button onClick={onAgain} className="btn-ghost flex-1">Check in someone else</button>
         )}

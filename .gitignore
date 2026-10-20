@@ -44,3 +44,6 @@ next-env.d.ts
 
 /.claude/
 AGENTS.md
+
+# brag launch videos (brag-output, brag-output-<date>, …)
+/brag*/

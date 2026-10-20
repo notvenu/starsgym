@@ -13,34 +13,39 @@ declare global {
   }
 }
 
+/** Razorpay checkout for a plan: the order, the Razorpay pop-up, then confirming it (lands on the dashboard with the pass).
+ *  Needs the checkout.js script on the page (<RazorpayScript />). */
+export async function payOnline(planId: string, branchId: string, start: (fn: () => Promise<void>) => void) {
+  const res = await startOnline(planId, branchId);
+  if ("error" in res) return void toast(res.error!, "error");
+  const { order } = res;
+  const rzp = new window.Razorpay({
+    key: order.key,
+    order_id: order.orderId,
+    amount: order.amount,
+    currency: "INR",
+    name: "Stars Gym",
+    description: "The Fitness Arena",
+    image: "/logo.png",
+    prefill: { name: order.name, email: order.email, contact: order.phone },
+    theme: { color: "#E3141C" },
+    handler: (r: RazorpayResponse) =>
+      start(async () => {
+        const done = await confirmOnline(r.razorpay_order_id, r.razorpay_payment_id, r.razorpay_signature);
+        toastResult(done);
+      }),
+  });
+  rzp.on("payment.failed", (r) => toast(r.error.description, "error"));
+  rzp.open();
+}
+
+export const RazorpayScript = () => <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />;
+
 export function Checkout({ online: onlineEnabled, planId, branches, homeBranch }: { online: boolean; planId: string; branches: Branch[]; homeBranch: string | null }) {
   const [branchId, setBranchId] = useState(homeBranch ?? branches[0]?.id ?? "");
   const [pending, start] = useTransition();
 
-  const online = () =>
-    start(async () => {
-      const res = await startOnline(planId, branchId);
-      if ("error" in res) return toast(res.error!, "error");
-      const { order } = res;
-      const rzp = new window.Razorpay({
-        key: order.key,
-        order_id: order.orderId,
-        amount: order.amount,
-        currency: "INR",
-        name: "Stars Gym",
-        description: "The Fitness Arena",
-        image: "/logo.png",
-        prefill: { name: order.name, email: order.email, contact: order.phone },
-        theme: { color: "#E3141C" },
-        handler: (r: RazorpayResponse) =>
-          start(async () => {
-            const done = await confirmOnline(r.razorpay_order_id, r.razorpay_payment_id, r.razorpay_signature);
-            toastResult(done);
-          }),
-      });
-      rzp.on("payment.failed", (r) => toast(r.error.description, "error"));
-      rzp.open();
-    });
+  const online = () => start(() => payOnline(planId, branchId, start));
 
   const desk = () =>
     start(async () => {
@@ -50,7 +55,7 @@ export function Checkout({ online: onlineEnabled, planId, branches, homeBranch }
 
   return (
     <div className="card flex flex-col gap-6 self-start p-6 sm:p-8">
-      {onlineEnabled && <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />}
+      {onlineEnabled && <RazorpayScript />}
       {branches.length > 1 && (
         <label className="flex flex-col gap-1.5">
           <span className="label">Branch</span>

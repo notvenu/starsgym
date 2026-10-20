@@ -11,12 +11,14 @@ export function Sheet({ title, open, onClose, children }: { title: string; open:
   }, [open]);
   return (
     <>
+      {/* the dialog sits in the DOM beside the button that opens it, so a button row's child styles (PageHeader's phone
+          `[&>*]:whitespace-nowrap text-xs px-3`) landed on it too: no text wrapped and it ran off the screen. The ! resets win */}
       <dialog
         ref={ref}
         aria-label={title}
         onClose={onClose}
         onClick={(e) => e.target === e.currentTarget && ref.current?.close()} // tap outside to close
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-carbon p-0 text-chalk backdrop:bg-black/75 backdrop:backdrop-blur-sm max-sm:mt-auto max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none sm:m-auto"
+        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-line bg-carbon p-0! text-base! whitespace-normal! text-chalk backdrop:bg-black/75 backdrop:backdrop-blur-sm max-sm:mt-auto max-sm:mb-0 max-sm:max-w-none max-sm:rounded-b-none sm:m-auto"
       >
         <div className="flex max-h-[90dvh] flex-col">
           <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">

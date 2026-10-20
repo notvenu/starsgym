@@ -3,11 +3,15 @@
 import { useActionState } from "react";
 import { keepFields, ResultToast } from "@/components/feedback";
 import { ProofInput } from "@/components/receipt";
-import { sendPaymentProof } from "./actions";
+import { sendPaymentProof, type Result } from "./actions";
 
 /** "Paid by UPI? Send the screenshot": the desk verifies it and activates the plan. Shows the one already sent. */
-export function ProofUpload({ subId, sent }: { subId: string; sent: string | null }) {
-  const [state, action, pending] = useActionState(sendPaymentProof, undefined);
+export function ProofUpload({ subId, sent, onSent }: { subId: string; sent: string | null; onSent?: () => void }) {
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const r = await sendPaymentProof(prev, form);
+    if (r?.ok) onSent?.();
+    return r;
+  }, undefined);
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex w-full max-w-sm flex-col gap-4 rounded-xl border border-line bg-carbon p-5 text-left">
       <input type="hidden" name="id" value={subId} />

@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { adminDb, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, hasProof, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, type Plan, type Track } from "@/lib/gym";
+import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter, ownerIds } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
@@ -273,9 +273,14 @@ async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: st
   if (cash !== null && !(cash > 0)) return { error: "Enter the cash part of the payment." };
   const picked = pickedStart(form);
   if (picked.error) return { error: picked.error };
-  for (const i of items)
-    if (i.trainerId && !(UUID.test(i.trainerId) && (await supabase.from("site_items").select("id").eq("id", i.trainerId).eq("kind", "trainer").maybeSingle()).data))
-      return { error: "Pick a trainer from the list." };
+  const trainerFees = new Map<string, number | null>(); // a trainer's own PT fee per month (Team page), null = standard
+  for (const i of items) {
+    if (!i.trainerId) continue;
+    // * (not pt_fee_paise): still works before that column is added
+    const { data: t } = UUID.test(i.trainerId) ? await supabase.from("site_items").select("*").eq("id", i.trainerId).eq("kind", "trainer").maybeSingle() : { data: null };
+    if (!t) return { error: "Pick a trainer from the list." };
+    trainerFees.set(i.trainerId, (t.pt_fee_paise as number | null) ?? null);
+  }
   const proof = formPhoto(form, "proof");
   if (proof.error) return { error: proof.error };
 
@@ -289,14 +294,16 @@ async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: st
       await dropAll();
       return { error: error.message };
     }
+    const { data: plan } = await supabase.from("plans").select("track,duration_days").eq("id", i.planId).maybeSingle();
     const dbFee = (sub.admission_paise as number | undefined) ?? 0;
     const fee = i.addOn ? 0 : dbFee; // an add-on never carries admission
-    const standard = (sub.amount_paise as number) - (dbFee - fee); // plan at today's offer (+ admission on a first membership)
+    const own = i.addOn && i.trainerId ? trainerFees.get(i.trainerId) : null;
+    // plan at today's offer (+ admission on a first membership); PT with a trainer who has their own fee: that fee
+    const standard = own && plan ? trainerFee(own, plan.duration_days as number) : (sub.amount_paise as number) - (dbFee - fee);
     const planPart = i.price !== null ? Math.round(i.price * 100) : standard - fee;
     const adm = fee > 0 ? (i.admission !== null ? Math.round(i.admission * 100) : fee) : 0;
     const total = planPart + adm;
     const discounted = total !== standard || adm !== fee;
-    const { data: plan } = await supabase.from("plans").select("track,duration_days").eq("id", i.planId).maybeSingle();
     made.push({ id: sub.id as string, item: i, fee, adm, standard, total, discounted, needsApproval: discounted && !isOwner, label: plan ? `${planName(plan as Plan)}${i.addOn ? " (add-on)" : ""}` : "Plan" });
   }
 

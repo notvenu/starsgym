@@ -345,7 +345,8 @@ export function WeekHolidays({ holidays }: { holidays: Holiday[] }) {
 }
 
 /** Gender, phone, date of birth, emergency contact — validated by readMemberDetails(). */
-export function MemberDetailsFields({ d }: { d?: { [K in keyof MemberDetails]?: MemberDetails[K] | null } | null }) {
+/** `phone={false}`: the form puts the phone field somewhere else (the desk's new-member form starts with it). */
+export function MemberDetailsFields({ d, phone = true }: { d?: { [K in keyof MemberDetails]?: MemberDetails[K] | null } | null; phone?: boolean }) {
   return (
     <>
       <fieldset className="flex flex-col gap-1.5">
@@ -359,12 +360,16 @@ export function MemberDetailsFields({ d }: { d?: { [K in keyof MemberDetails]?: 
           ))}
         </div>
       </fieldset>
-      <Field label="Phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={d?.phone ?? ""} required />
+      {phone && <PhoneField defaultValue={d?.phone ?? ""} />}
       <Field label="Date of birth (optional)" name="date_of_birth" type="date" min="1900-01-01" max={gymDate()} defaultValue={d?.date_of_birth ?? ""} />
       <Field label="Emergency contact (optional)" name="emergency_contact" placeholder="Name & phone" maxLength={120} defaultValue={d?.emergency_contact ?? ""} />
     </>
   );
 }
+
+export const PhoneField = ({ defaultValue = "" }: { defaultValue?: string }) => (
+  <Field label="Phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={defaultValue} required />
+);
 
 export function Field({ label, ...props }: { label: string; ref?: React.Ref<HTMLInputElement> } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (

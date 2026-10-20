@@ -29,11 +29,15 @@ export async function getPending(supabase: SupabaseClient, limit = 100, branchId
   return { rows, count: count ?? rows.length };
 }
 
-/** Trainer cards for the PT trainer picker: [id, name], this branch's plus both-branch ones. */
-export async function getTrainers(supabase: SupabaseClient, branchId: string | null = null): Promise<[string, string][]> {
-  const q = supabase.from("site_items").select("id,title").eq("kind", "trainer").order("sort");
+/** [id, name, their PT fee per month in paise — null = the standard PT price] */
+export type Trainer = [id: string, name: string, feePaise: number | null];
+
+/** Trainer cards for the PT trainer picker, this branch's plus both-branch ones. */
+export async function getTrainers(supabase: SupabaseClient, branchId: string | null = null): Promise<Trainer[]> {
+  // ponytail: * so the picker still works before the pt_fee_paise column is added
+  const q = supabase.from("site_items").select("*").eq("kind", "trainer").order("sort");
   const { data } = await (branchId ? q.or(`branch_id.is.null,branch_id.eq.${branchId}`) : q);
-  return (data ?? []).map((t) => [t.id as string, (t.title as string) || "Trainer"]);
+  return (data ?? []).map((t) => [t.id as string, (t.title as string) || "Trainer", (t.pt_fee_paise as number | null) ?? null]);
 }
 
 /** One branch's day. Money fields are for the owner's eyes only (the page hides them from staff). */

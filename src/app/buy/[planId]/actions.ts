@@ -5,7 +5,8 @@ import { adminDb, requireUser } from "@/lib/supabase";
 import { allow, SLOW_DOWN } from "@/lib/rate-limit";
 import { activateByOrder, createOrder, razorpayEnabled, verifyCheckout } from "@/lib/razorpay";
 import { deskIds, notifyAfter } from "@/lib/push";
-import { inr } from "@/lib/gym";
+import QRCode from "qrcode";
+import { branchUpi, inr, upiLink } from "@/lib/gym";
 
 type Pending = { id: string; amount_paise: number };
 
@@ -27,6 +28,26 @@ export async function payAtDesk(planId: string, branchId: string) {
   // so the desk expects them (and has the UPI screenshot to verify when it arrives)
   notifyAfter(() => deskIds(branchId || null), { title: "Order waiting for payment", body: `${res.profile.full_name || "A member"} chose pay at the desk · ${inr(res.sub.amount_paise)}.`, url: "/admin/payments", tag: `order-${res.sub.id}` });
   redirect(`/pay/${res.sub.id}`);
+}
+
+/**
+ * Dashboard renew / upgrade by UPI, without leaving the page: the unpaid order plus what to pay it with — the branch's
+ * UPI link (opens their UPI app on a phone) and its QR. The screenshot then goes to the desk to verify (sendPaymentProof).
+ */
+export async function startUpi(planId: string, branchId: string) {
+  const res = await createPending(planId, branchId, "upi_qr");
+  if ("error" in res) return { error: res.error };
+  const { sub } = res;
+  const { data: branch } = await adminDb().from("branches").select("upi_id").eq("id", branchId || "").maybeSingle();
+  const upi = branchUpi(branch);
+  if (!upi) {
+    await adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", sub.id).eq("status", "pending");
+    return { error: "UPI isn't set up for this branch yet — pay at the desk." };
+  }
+  const ref = sub.id.slice(0, 8).toUpperCase();
+  const link = upiLink(sub.amount_paise, ref, upi);
+  const qr = await QRCode.toDataURL(link, { margin: 1, width: 560, color: { dark: "#0a0a0a", light: "#f4f2ee" } });
+  return { order: { id: sub.id, amount: sub.amount_paise, ref, link, qr } };
 }
 
 export async function startOnline(planId: string, branchId: string) {

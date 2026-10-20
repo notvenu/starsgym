@@ -97,7 +97,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
 
         <div className="flex min-w-0 flex-col gap-6">
           {/* attendance */}
-          <Panel title="Attendance" intro="Last 30 days. Morning and evening visits on the same day both count.">
+          <Panel title="Attendance" intro="Last 30 days.">
             <div className="flex flex-col gap-5">
               <Attendance days={days} visits={v} streak={(streak.data as number) ?? 0} />
               {v.length > 0 && (

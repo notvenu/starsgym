@@ -5,28 +5,34 @@ import { getNotices, getSettings } from "@/lib/data";
 import { requireUser } from "@/lib/supabase";
 import { AccountPrompt } from "@/components/account-prompt";
 import { NotificationToggle } from "@/components/push";
-import { DAY_NAMES, inr, recentGymDates, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
+import { DAY_NAMES, inr, MEMBERSHIP, monthDates, recentGymDates, shiftMonth, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
 import { signOut } from "../login/actions";
 import { getPass } from "../pass/[subId]/data";
 import { Ticket } from "../pass/[subId]/ticket";
 import { PassDialog } from "../pass/[subId]/ui";
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
-import { CheckInPanel, ProfileEditor, ShowcaseForm, type ChangeRequest } from "./ui";
+import { CheckInPanel, ProfileEditor, RenewSheet, ShowcaseForm, type ChangeRequest } from "./ui";
+import { razorpayEnabled } from "@/lib/razorpay";
 
 export const metadata = { title: "Dashboard — Stars Gym" };
 
 type Sub = { id: string; status: string; method: string; starts_on: string | null; ends_on: string | null; amount_paise: number; plans: Plan };
 
 export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
-  const openPass = (await searchParams).pass; // set after a purchase: open that pass straight away
+  const sp = await searchParams;
+  const openPass = sp.pass; // set after a purchase: open that pass straight away
   const { supabase, user, profile } = await requireUser();
   if (profile.role !== "member") redirect("/admin"); // staff and the owner work from the front desk; this page is for members
   const month = recentGymDates(30);
   const dates = month.slice(-7);
   const today = dates[6];
+  // the training log: the last 30 days, or an older month (?log=YYYY-MM, before this one)
+  const thisMonth = today.slice(0, 7);
+  const log = typeof sp.log === "string" && /^\d{4}-\d{2}$/.test(sp.log) && sp.log < thisMonth ? sp.log : null;
+  const logDays = log ? monthDates(log) : month;
 
-  const [branches, subs, streak, week, post, feed, notices, photo, settings, lastRequest] = await Promise.all([
+  const [branches, subs, streak, week, post, feed, notices, photo, settings, lastRequest, older, firstVisit, plans] = await Promise.all([
     supabase.from("branches").select("*").eq("active", true).order("created_at"),
     supabase.from("subscriptions").select("id,status,method,starts_on,ends_on,amount_paise,plans(*)").eq("user_id", user.id).neq("status", "cancelled").order("created_at", { ascending: false }),
     supabase.rpc("current_streak", { uid: user.id }),
@@ -37,7 +43,12 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
     photoUrl(profile.photo_path),
     getSettings(),
     supabase.from("profile_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    log ? supabase.from("checkins").select("day,session").eq("user_id", user.id).gte("day", logDays[0]).lte("day", logDays.at(-1)!) : null,
+    supabase.from("checkins").select("day").eq("user_id", user.id).order("day").limit(1).maybeSingle(), // how far back "Older" goes
+    supabase.from("plans").select("*").eq("active", true),
   ]);
+  const olderMonth = shiftMonth(log ?? thisMonth, -1);
+  const newerMonth = log && shiftMonth(log, 1);
   // their latest name / gender / branch / photo change request (missing table before 0015 → simply none)
   const request = lastRequest.data ? ({ ...lastRequest.data, photoUrl: await photoUrl(lastRequest.data.photo_path), recent: (lastRequest.data.decided_at ?? "").slice(0, 10) >= month.at(-8)! } as ChangeRequest) : null;
   const homeOnly = settings.branch_access === "home" && !!profile.home_branch_id;
@@ -61,6 +72,12 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   }));
   // full ticket data for the pop-ups (current plan + any queued renewals)
   const passes = new Map((await Promise.all([active, ...upcoming].filter((s) => !!s).map((s) => getPass(supabase, s.id)))).filter((p) => !!p).map((p) => [p.id, p]));
+  // renew / upgrade right here; admission only shows (and is charged, by the database) on a first membership
+  const hadMembership = allSubs.some((s) => s.status === "active" && MEMBERSHIP.includes(s.plans.track));
+  const renew = (label: string, className?: string) => (
+    <RenewSheet label={label} className={className} plans={(plans.data ?? []) as Plan[]} offers={notices.offers} branches={checkInBranches} homeBranch={profile.home_branch_id}
+      current={active ? { track: active.plans.track, days: active.plans.duration_days } : null} online={razorpayEnabled} admissionPaise={hadMembership ? 0 : settings.admission_fee_paise ?? 0} />
+  );
   const daysLeft = active ? Math.round((Date.parse(active.ends_on!) - Date.parse(today)) / 864e5) + 1 : 0;
 
   return (
@@ -95,6 +112,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             name={profile.full_name}
             hasPlan={!!active}
             week={last7}
+            monthVisits={(week.data ?? []).filter((c) => (c.day as string).startsWith(thisMonth) && c.day !== today).length}
+            rank={rank}
           />
 
           <div className="flex flex-col gap-5">
@@ -110,14 +129,14 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
                   <p className="text-sm text-ash">{daysLeft} day{daysLeft === 1 ? "" : "s"} left · ends {active.ends_on}</p>
                   <div className="flex flex-wrap gap-2">
                     {passes.has(active.id) && <PassDialog label="Show my pass" className="btn-red" startOpen={openPass === active.id}><Ticket pass={passes.get(active.id)!} /></PassDialog>}
-                    <Link href="/#plans" className="btn-ghost">Renew / upgrade</Link>
+                    {renew("Renew / upgrade")}
                   </div>
                 </>
               ) : (
                 <>
                   <p className="text-xl font-bold">No active plan</p>
                   <p className="text-sm text-ash">You need a plan, trial day or day pass to check in.</p>
-                  <Link href="/#plans" className="btn-red self-start">See plans</Link>
+                  {renew("Choose a plan", "btn-red self-start")}
                 </>
               )}
               {upcoming.map((s) => (
@@ -152,12 +171,19 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
           </div>
         </div>
 
-        <section className="card flex flex-col gap-4 p-6">
-          <div>
-            <p className="label">Your last 30 days</p>
-            <p className="text-sm text-ash">Morning and evening visits on the same day both count. Holidays never break a streak.</p>
+        <section id="log" className="card flex scroll-mt-20 flex-col gap-4 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="label">{log ? new Date(`${log}-01T12:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : "Your last 30 days"}</p>
+              <p className="text-sm text-ash">Holidays never break a streak.</p>
+            </div>
+            {/* older months, back to their first visit; "Newer" past last month goes back to the last 30 days */}
+            <nav aria-label="Older and newer days" className="flex gap-2">
+              {firstVisit.data && olderMonth >= (firstVisit.data.day as string).slice(0, 7) && <Link href={`/dashboard?log=${olderMonth}#log`} scroll={false} className="btn-ghost min-h-10 px-3.5 text-xs">← Older</Link>}
+              {newerMonth && <Link href={newerMonth < thisMonth ? `/dashboard?log=${newerMonth}#log` : "/dashboard#log"} scroll={false} className="btn-ghost min-h-10 px-3.5 text-xs">Newer →</Link>}
+            </nav>
           </div>
-          <Attendance days={month} visits={(week.data ?? []) as { day: string; session: string }[]} streak={(streak.data as number) ?? 0} />
+          <Attendance days={logDays} visits={((log ? older?.data : week.data) ?? []) as { day: string; session: string }[]} streak={(streak.data as number) ?? 0} />
         </section>
 
       </div>
