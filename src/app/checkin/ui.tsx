@@ -5,13 +5,13 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, WeekHolidays } from "@/components/client";
 import { toast } from "@/components/feedback";
 import { ShareStreak } from "@/components/streak-card";
-import { prettyDay, type Holiday, type Session } from "@/lib/gym";
+import { locate, prettyDay, type Holiday, type Session } from "@/lib/gym";
 import { doorCheckIn, type DoorResult } from "./actions";
 
 type By = "phone" | "ref";
 const SESSION: Record<Session, string> = { morning: "Morning", evening: "Evening", ladies: "Ladies' hours" };
 
-export function DoorCheckIn({ autoGo, doorKey, member, memberPhoto, holidays, next }: { autoGo?: boolean; doorKey: string; member: string | null; memberPhoto: string | null; holidays: Holiday[]; next: string }) {
+export function DoorCheckIn({ autoGo, doorKey, member, memberPhoto, holidays, next, needsLocation }: { autoGo?: boolean; doorKey: string; member: string | null; memberPhoto: string | null; holidays: Holiday[]; next: string; needsLocation: boolean }) {
   const [asGuest, setAsGuest] = useState(!member); // signed-in members can still switch to phone / bill
   const [by, setBy] = useState<By>("phone");
   const [value, setValue] = useState("");
@@ -20,7 +20,9 @@ export function DoorCheckIn({ autoGo, doorKey, member, memberPhoto, holidays, ne
 
   const go = (how: "me" | By) =>
     start(async () => {
-      const r = await doorCheckIn(doorKey, how, value);
+      const spot = needsLocation ? await locate() : undefined;
+      if (spot && "error" in spot) return toast(spot.error, "error");
+      const r = await doorCheckIn(doorKey, how, value, spot);
       setRes(r);
       if (r.error) toast(r.error, "error");
       else navigator.vibrate?.(r.already ? 30 : [60, 40, 60]);

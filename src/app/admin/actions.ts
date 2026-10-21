@@ -398,6 +398,17 @@ export async function decideDiscount(subId: string, approve: boolean): Promise<R
   return done(approve ? "Approved — the desk can take the money now" : "Turned down — the order is back at the standard price");
 }
 
+/** A Google Maps place link's pin (`!3d<lat>!4d<lng>`, else `@lat,lng`), following maps.app.goo.gl short links. */
+async function mapsPin(url: string): Promise<{ lat?: number; lng?: number }> {
+  try {
+    const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(5000) });
+    const m = res.url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ?? res.url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    return m ? { lat: Number(m[1]), lng: Number(m[2]) } : {};
+  } catch {
+    return {}; // ponytail: Maps unreachable or not a place link — saved without coordinates, no location check
+  }
+}
+
 export async function saveBranch(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me } = await requireAdmin();
   const num = (k: string) => (s(form, k) === "" ? null : Number(s(form, k)));
@@ -410,7 +421,7 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
     lat: num("lat"),
     lng: num("lng"),
     radius_m: num("radius_m") ?? 150,
-    require_location: num("lat") != null && num("lng") != null, // coordinates set = check-ins need to be within the radius
+    require_location: false, // set below: coordinates set = check-ins need to be within the radius
     morning_open: s(form, "morning_open") || "05:00",
     morning_close: s(form, "morning_close") || "11:00",
     // leave both evening fields blank for a branch with one session
@@ -432,6 +443,11 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
   if (!row.evening_open !== !row.evening_close) return { error: "Set both evening times, or leave both blank." };
   if (!row.ladies_morning_open !== !row.ladies_morning_close || !row.ladies_evening_open !== !row.ladies_evening_close)
     return { error: "Set both times for a ladies' window, or leave both blank." };
+  if ((row.lat == null) !== (row.lng == null)) return { error: "Set both latitude and longitude, or leave both blank." };
+  if (row.lat == null && row.maps_url) Object.assign(row, await mapsPin(row.maps_url)); // blank: read them off the Maps link
+  if (row.lat != null && row.lng != null && !(Math.abs(row.lat) <= 90 && Math.abs(row.lng) <= 180))
+    return { error: "Those coordinates aren't valid — latitude is first and between -90 and 90 (around 16.47 here). Leave both blank to take them from the Maps link." };
+  row.require_location = row.lat != null && row.lng != null;
   const id = s(form, "id");
   const save = (r: Partial<typeof row>) => (id ? supabase.from("branches").update(r).eq("id", id) : supabase.from("branches").insert(r));
   let { error } = await save(row);

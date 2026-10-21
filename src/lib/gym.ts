@@ -33,6 +33,28 @@ export const branchUpi = (b?: { upi_id?: string | null } | null) => b?.upi_id?.t
 export const orderUpi = (b?: { upi_id?: string | null } | null, trainer?: { upi_id?: string | null } | null) => trainer?.upi_id?.trim() || branchUpi(b);
 export const UPI_ID = /^[a-z0-9._-]{2,256}@[a-z][a-z0-9.-]{1,63}$/;
 
+export type Spot = { lat: number; lng: number; accuracy: number };
+
+/** Browser only: this phone's location for a check-in, or the message to show when it can't be had. */
+export function locate(): Promise<Spot | { error: string }> {
+  return new Promise((done) => {
+    if (!navigator.geolocation) return done({ error: "Your browser can't share location." });
+    navigator.geolocation.getCurrentPosition(
+      (p) => done({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+      (e) => done({ error: e.code === e.PERMISSION_DENIED ? "Allow location access to check in — you need to be at the gym." : "Couldn't get your location — step near a window or turn on GPS, then try again." }),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    );
+  });
+}
+
+/** Server: a check-in needs to come from inside the branch's circle whenever the branch has coordinates. */
+export function atBranch(b: Pick<Branch, "lat" | "lng" | "radius_m"> | null, spot?: Partial<Spot> | null): string | null {
+  if (b?.lat == null || b.lng == null) return null;
+  if (!Number.isFinite(spot?.lat) || !Number.isFinite(spot?.lng)) return "Allow location access to check in — you need to be at the gym.";
+  const at = withinBranch(b, spot!.lat!, spot!.lng!, Number(spot!.accuracy) || 0);
+  return at.ok ? null : `You seem to be ${at.dist} m away from the branch — check in when you're there.`;
+}
+
 /** Metres between two points (haversine). */
 export function distanceM(lat1: number, lng1: number, lat2: number, lng2: number) {
   const rad = Math.PI / 180;

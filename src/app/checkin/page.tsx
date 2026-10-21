@@ -12,7 +12,7 @@ export const metadata = { title: "Check in — Stars Gym", robots: { index: fals
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
-/** Opened by scanning the QR at a branch entrance. Scanning proves you're there, so no location permission. */
+/** Opened by scanning the QR at a branch entrance. The link is fixed (a saved copy works anywhere), so a branch with coordinates also checks location. */
 export default async function CheckInPage({ searchParams }: PageProps<"/checkin">) {
   const sp = await searchParams;
   const k = sp.k;
@@ -59,7 +59,7 @@ export default async function CheckInPage({ searchParams }: PageProps<"/checkin"
                 {ladiesLabel(branch) && <> · Ladies {ladiesLabel(branch)}</>}
               </p>
             </div>
-            <DoorCheckIn autoGo={scanned} doorKey={key!} member={uid ? profile?.full_name || "Member" : null} memberPhoto={await photoUrl(profile?.photo_path)} holidays={weekHolidays(notices.holidays, branch.id)} next={`/checkin?k=${key}`} />
+            <DoorCheckIn autoGo={scanned} doorKey={key!} member={uid ? profile?.full_name || "Member" : null} memberPhoto={await photoUrl(profile?.photo_path)} holidays={weekHolidays(notices.holidays, branch.id)} next={`/checkin?k=${key}`} needsLocation={branch.lat != null && branch.lng != null} />
           </>
         ) : (
           <div className="flex max-w-sm flex-col items-center gap-4 text-center">

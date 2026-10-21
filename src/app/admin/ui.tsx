@@ -1175,7 +1175,7 @@ function BranchForm({ branch: b, onDone }: { branch?: Branch; onDone: () => void
           <Field label="Latitude" name="lat" type="number" step="any" defaultValue={b?.lat ?? ""} />
           <Field label="Longitude" name="lng" type="number" step="any" defaultValue={b?.lng ?? ""} />
           <Field label="Check-in radius (m)" name="radius_m" type="number" min="20" defaultValue={b?.radius_m ?? 150} />
-          <p className="self-end text-xs text-ash sm:col-span-2">With coordinates set, members checking in from their dashboard must be within the radius. Leave them blank to skip the location check. The entrance QR always works.</p>
+          <p className="self-end text-xs text-ash sm:col-span-2">With coordinates set, members checking in from their dashboard must be within the radius. Leave them blank and they&apos;re read off the Google Maps link when you save (no link = no location check). The same check applies to the entrance QR.</p>
         </div>
       </details>
 

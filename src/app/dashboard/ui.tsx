@@ -4,7 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Field, OpenStatus, Price, WeekHolidays } from "@/components/client";
 import type { Profile } from "@/lib/supabase";
-import { bestOffer, DURATIONS, GENDERS, inr, ladiesLabel, TRACKS, weekHolidays, type Branch, type Holiday, type Offer, type Plan, type Session, type Track } from "@/lib/gym";
+import { bestOffer, DURATIONS, GENDERS, inr, ladiesLabel, locate, TRACKS, weekHolidays, type Branch, type Holiday, type Offer, type Plan, type Session, type Track } from "@/lib/gym";
 import { payOnline, RazorpayScript } from "../buy/[planId]/checkout";
 import { startUpi } from "../buy/[planId]/actions";
 import { ProofUpload } from "../pay/[subId]/proof";
@@ -46,22 +46,15 @@ export function CheckInPanel(props: {
   const mustLocate = branch?.lat != null && branch?.lng != null; // the server checks the radius whenever the branch has coordinates
 
   function submit() {
-    const send = (lat?: number, lng?: number, accuracy?: number) =>
-      start(async () => {
-        const res = await checkIn(branchId, lat, lng, accuracy);
-        if (res.error) return toast(res.error, "error");
-        setStreak(res.streak ?? streak + 1);
-        if (sess && sess !== "ladies_only") setVisits((v) => [...v, sess]);
-        navigator.vibrate?.(60);
-      });
-
-    if (!mustLocate) return send();
-    if (!navigator.geolocation) return toast("Your browser can't share location.", "error");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => send(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
-      (err) => toast(err.code === err.PERMISSION_DENIED ? "Allow location access to check in at this branch." : "Couldn't get your location — step near a window or turn on GPS, then try again.", "error"),
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
-    );
+    start(async () => {
+      const spot = mustLocate ? await locate() : undefined;
+      if (spot && "error" in spot) return toast(spot.error, "error");
+      const res = await checkIn(branchId, spot);
+      if (res.error) return toast(res.error, "error");
+      setStreak(res.streak ?? streak + 1);
+      if (sess && sess !== "ladies_only") setVisits((v) => [...v, sess]);
+      navigator.vibrate?.(60);
+    });
   }
 
   return (

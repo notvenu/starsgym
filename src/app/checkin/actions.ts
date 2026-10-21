@@ -3,7 +3,7 @@
 import { adminDb, currentUserId, db } from "@/lib/supabase";
 import { allow, clientIp, SLOW_DOWN } from "@/lib/rate-limit";
 import { photoUrl } from "@/lib/photo";
-import { planName, type Session, type Track } from "@/lib/gym";
+import { atBranch, planName, type Branch, type Session, type Spot, type Track } from "@/lib/gym";
 
 export type DoorResult = {
   error?: string;
@@ -21,10 +21,14 @@ export type DoorResult = {
 };
 
 /** Entrance-QR check-in. `by` = how the member identifies themselves; "me" uses the signed-in session. */
-export async function doorCheckIn(key: string, by: "me" | "phone" | "ref", value = ""): Promise<DoorResult> {
+export async function doorCheckIn(key: string, by: "me" | "phone" | "ref", value = "", spot?: Spot): Promise<DoorResult> {
   const supabase = await db();
   // phone / bill number: anyone at the door can type one, so it's rate-limited and only the server may run it (0017)
   if (by !== "me" && !(await allow([`door:ip:${await clientIp()}`], 40, 600))) return { error: SLOW_DOWN };
+  // the entrance link is a fixed URL — a saved copy works from anywhere — so the phone doing the check-in must be at the branch
+  const { data: door } = await adminDb().from("branch_door_keys").select("branches(lat,lng,radius_m)").eq("key", key).maybeSingle();
+  const away = atBranch(door?.branches as unknown as Pick<Branch, "lat" | "lng" | "radius_m"> | null, spot);
+  if (away) return { error: away };
   const { data, error } = await (by === "me" ? supabase : adminDb()).rpc("check_in_at_door", {
     p_key: key,
     p_phone: by === "phone" ? value : null,
