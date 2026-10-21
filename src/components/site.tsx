@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { getNotices, getSettings } from "@/lib/data";
+import { getBranches, getNotices, getSettings } from "@/lib/data";
+import { BranchTicker } from "@/components/client";
 import { gymDate, OFFER_LENGTHS, prettyDay, TRACKS, waLink, type Branch, type Holiday, type Offer, type Settings } from "@/lib/gym";
 
 export function Logo({ size = 72 }: { size?: number }) {
@@ -39,12 +40,18 @@ export function PageHero({ eyebrow, title, accent, intro, image }: { eyebrow: st
   );
 }
 
+/** The site header with the announcement bar above it: each branch's live status, upcoming holidays and running
+ *  offers, rotating (the homepage passes its own, already-loaded copy). Every public page; not the dashboard or admin. */
+export async function SiteNav({ children }: { children?: ReactNode }) {
+  const [branches, { offers, holidays }] = await Promise.all([getBranches(), getNotices()]);
+  return <Nav status={<BranchTicker branches={branches} holidays={holidays} offers={offers} />}>{children}</Nav>;
+}
+
 /** Nav + page + footer for the marketing pages. */
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <main>
-      <OfferBar />
-      <Nav />
+      <SiteNav />
       {children}
       <Footer />
     </main>
@@ -184,23 +191,6 @@ const daysLeft = (o: Offer) => Math.round((Date.parse(o.ends_on) - Date.parse(gy
 const ends = (o: Offer) => (daysLeft(o) <= 0 ? "Ends today" : daysLeft(o) === 1 ? "Ends tomorrow" : `Ends ${prettyDay(o.ends_on)}`);
 /** "25% off", or "Up to 25% off" when the discount differs by plan length. */
 export const offerHeadline = (o: Offer) => `${o.percent_by_days ? "Up to " : ""}${o.percent_off}% off`;
-
-/** Thin strip above the header on inner pages while an offer is running (the homepage has its own banner). */
-export async function OfferBar() {
-  const { offers } = await getNotices();
-  const o = offers[0]; // biggest discount first
-  if (!o) return null;
-  return (
-    <Link href="/#plans" className="block bg-red text-white transition-colors hover:bg-[#ff2a31]">
-      <span className="wrap flex items-center justify-center gap-x-3 py-2 text-center font-label text-xs font-bold tracking-[0.12em] uppercase sm:text-sm">
-        <span className="truncate">{o.title} · {offerHeadline(o)}</span>
-        <span className="shrink-0 opacity-80 max-sm:hidden">{ends(o)}</span>
-        <span aria-hidden="true" className="shrink-0">→</span>
-        {offers.length > 1 && <span className="shrink-0 opacity-80 max-sm:hidden">+{offers.length - 1} more</span>}
-      </span>
-    </Link>
-  );
-}
 
 /**
  * Homepage banner for every running offer. The reason (Dussehra offer…) is the headline; then the discount — one

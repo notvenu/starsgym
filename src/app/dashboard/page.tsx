@@ -1,12 +1,9 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { Flame, Nav, Notices } from "@/components/site";
+import { Flame, Notices } from "@/components/site";
 import { getNotices, getSettings } from "@/lib/data";
 import { requireUser } from "@/lib/supabase";
-import { AccountPrompt } from "@/components/account-prompt";
 import { NotificationToggle } from "@/components/push";
 import { DAY_NAMES, inr, MEMBERSHIP, monthDates, recentGymDates, shiftMonth, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
-import { signOut } from "../login/actions";
 import { getPass } from "../pass/[subId]/data";
 import { Ticket } from "../pass/[subId]/ticket";
 import { PassDialog } from "../pass/[subId]/ui";
@@ -14,6 +11,7 @@ import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
 import { CheckInPanel, ProfileEditor, RenewSheet, ShowcaseForm, type ChangeRequest } from "./ui";
 import { razorpayEnabled } from "@/lib/razorpay";
+import { loadWorkouts } from "./workouts/section";
 
 export const metadata = { title: "Dashboard — Stars Gym" };
 
@@ -22,8 +20,7 @@ type Sub = { id: string; status: string; method: string; starts_on: string | nul
 export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
   const sp = await searchParams;
   const openPass = sp.pass; // set after a purchase: open that pass straight away
-  const { supabase, user, profile } = await requireUser();
-  if (profile.role !== "member") redirect("/admin"); // staff and the owner work from the front desk; this page is for members
+  const { supabase, user, profile } = await requireUser(); // members only: the layout sends staff to the desk
   const month = recentGymDates(30);
   const dates = month.slice(-7);
   const today = dates[6];
@@ -32,7 +29,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const log = typeof sp.log === "string" && /^\d{4}-\d{2}$/.test(sp.log) && sp.log < thisMonth ? sp.log : null;
   const logDays = log ? monthDates(log) : month;
 
-  const [branches, subs, streak, week, post, feed, notices, photo, settings, lastRequest, older, firstVisit, plans] = await Promise.all([
+  const [branches, subs, streak, week, post, feed, notices, photo, settings, lastRequest, older, firstVisit, plans, workouts] = await Promise.all([
     supabase.from("branches").select("*").eq("active", true).order("created_at"),
     supabase.from("subscriptions").select("id,status,method,starts_on,ends_on,amount_paise,plans(*)").eq("user_id", user.id).neq("status", "cancelled").order("created_at", { ascending: false }),
     supabase.rpc("current_streak", { uid: user.id }),
@@ -46,6 +43,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
     log ? supabase.from("checkins").select("day,session").eq("user_id", user.id).gte("day", logDays[0]).lte("day", logDays.at(-1)!) : null,
     supabase.from("checkins").select("day").eq("user_id", user.id).order("day").limit(1).maybeSingle(), // how far back "Older" goes
     supabase.from("plans").select("*").eq("active", true),
+    loadWorkouts(supabase), // for logging right in the check-in card
   ]);
   const olderMonth = shiftMonth(log ?? thisMonth, -1);
   const newerMonth = log && shiftMonth(log, 1);
@@ -81,15 +79,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const daysLeft = active ? Math.round((Date.parse(active.ends_on!) - Date.parse(today)) / 864e5) + 1 : 0;
 
   return (
-    <main className="min-h-dvh pb-20">
-      <AccountPrompt />
+    <>
       <Notices holidays={notices.holidays} offers={notices.offers} branches={(branches.data ?? []) as Branch[]} />
-      <Nav>
-        <div className="flex items-center gap-2.5">
-          {profile.role !== "member" && <Link href="/admin" className="btn-ghost">{profile.role === "admin" ? "Admin" : "Front desk"}</Link>}
-          <form action={signOut}><button className="btn-ghost">Sign out</button></form>
-        </div>
-      </Nav>
 
       <div className="wrap flex flex-col gap-10 pt-6">
         <div>
@@ -100,21 +91,22 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
           </div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
-          <CheckInPanel
-            branches={checkInBranches}
-            homeBranch={profile.home_branch_id}
-            holidays={notices.holidays}
-            streak={(streak.data as number) ?? 0}
-            todaySessions={todaySessions}
-            nowSession={nowSession}
-            photo={photo}
-            name={profile.full_name}
-            hasPlan={!!active}
-            week={last7}
-            monthVisits={(week.data ?? []).filter((c) => (c.day as string).startsWith(thisMonth) && c.day !== today).length}
-            rank={rank}
-          />
+        <div className="grid items-start gap-5 lg:grid-cols-[1.2fr_1fr]">
+            <CheckInPanel
+              branches={checkInBranches}
+              homeBranch={profile.home_branch_id}
+              holidays={notices.holidays}
+              streak={(streak.data as number) ?? 0}
+              todaySessions={todaySessions}
+              nowSession={nowSession}
+              photo={photo}
+              name={profile.full_name}
+              hasPlan={!!active}
+              week={last7}
+              monthVisits={(week.data ?? []).filter((c) => (c.day as string).startsWith(thisMonth) && c.day !== today).length}
+              rank={rank}
+              workout={workouts && { ...workouts, level: profile.experience ?? null }}
+            />
 
           <div className="flex flex-col gap-5">
             <NotificationToggle />
@@ -187,6 +179,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
         </section>
 
       </div>
-    </main>
+    </>
   );
 }
+

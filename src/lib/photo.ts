@@ -1,7 +1,7 @@
 import "server-only";
 import { adminDb, type db } from "@/lib/supabase";
 
-// Member photos live in the private "faces" bucket. Only the server touches it (service key), and the
+// Member photos live in the private "faces" bucket (progress pictures in the private "progress" one, same rules). Only the server touches it (service key), and the
 // browser only ever gets short-lived signed URLs — never a public link to someone's face.
 const TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/webp": "webp", "image/png": "png" };
 const MAX = 2 * 1024 * 1024;
@@ -15,16 +15,16 @@ export function formPhoto(form: FormData, field = "photo"): { file: File | null;
   return { file: f };
 }
 
-/** Uploads to faces/<userId>/<random>; returns the storage path. */
-export async function uploadPhoto(userId: string, file: File) {
+/** Uploads to <bucket>/<userId>/<random>; returns the storage path. */
+export async function uploadPhoto(userId: string, file: File, bucket = "faces") {
   const path = `${userId}/${crypto.randomUUID()}.${TYPES[file.type]}`;
-  const { error } = await adminDb().storage.from("faces").upload(path, file, { contentType: file.type });
+  const { error } = await adminDb().storage.from(bucket).upload(path, file, { contentType: file.type });
   if (error) throw new Error(error.message);
   return path;
 }
 
-export const removePhoto = async (path: string | null | undefined) => {
-  if (path) await adminDb().storage.from("faces").remove([path]);
+export const removePhoto = async (path: string | null | undefined, bucket = "faces") => {
+  if (path) await adminDb().storage.from(bucket).remove([path]);
 };
 
 /** A signed URL that expires in 10 minutes (enough to view the page). */
@@ -70,9 +70,9 @@ export async function proofUrls(subIds: string[]) {
 }
 
 /** Signed URLs for many photos in one request: path → url. */
-export async function photoUrls(paths: (string | null | undefined)[]) {
+export async function photoUrls(paths: (string | null | undefined)[], bucket = "faces") {
   const list = [...new Set(paths.filter((p): p is string => !!p))];
   if (!list.length) return new Map<string, string>();
-  const { data } = await adminDb().storage.from("faces").createSignedUrls(list, 600);
+  const { data } = await adminDb().storage.from(bucket).createSignedUrls(list, 600);
   return new Map((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl]));
 }

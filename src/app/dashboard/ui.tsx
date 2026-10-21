@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Field, OpenStatus, Price, WeekHolidays } from "@/components/client";
 import type { Profile } from "@/lib/supabase";
@@ -14,6 +15,8 @@ import { ScanButton } from "@/components/scanner";
 import { ShareStreak } from "@/components/streak-card";
 import { ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
 import { cancelRequest, checkIn, postShowcase, requestChange, saveProfile, type Result } from "./actions";
+import { TodayLog } from "./workouts/ui";
+import type { Level, Log, Plan as WorkoutPlan } from "@/lib/workouts";
 
 const MILESTONES = [7, 30, 60, 100, 200, 365];
 const R = 88;
@@ -32,6 +35,7 @@ export function CheckInPanel(props: {
   week: { iso: string; label: string; done: boolean; today: boolean }[];
   monthVisits: number; // check-ins this calendar month, before today
   rank: number; // on the Streak Wall, 0 = not on it
+  workout: { plan: WorkoutPlan | null; logs: Log[]; level: Level | null } | null; // null before the workouts migration
 }) {
   const { branches } = props;
   const [branchId, setBranchId] = useState(props.homeBranch ?? branches[0]?.id ?? "");
@@ -41,6 +45,12 @@ export function CheckInPanel(props: {
   const [visits, setVisits] = useState(props.todaySessions);
   const sess = props.nowSession[branchId];
   const done = !!sess && sess !== "ladies_only" && visits.includes(sess); // already in for this session (morning and evening count separately)
+
+  // once they're in, the card turns into today's workout log (until it's saved, or they skip it)
+  const today = props.week.find((d) => d.today)!.iso;
+  const logged = props.workout?.logs.find((l) => l.day === today);
+  const [skipped, setSkipped] = useState(false);
+  const logging = !!props.workout && visits.length > 0 && !logged && !skipped;
 
   const goal = MILESTONES.find((m) => m > streak) ?? streak + 100;
   const mustLocate = branch?.lat != null && branch?.lng != null; // the server checks the radius whenever the branch has coordinates
@@ -55,6 +65,18 @@ export function CheckInPanel(props: {
       if (sess && sess !== "ladies_only") setVisits((v) => [...v, sess]);
       navigator.vibrate?.(60);
     });
+  }
+
+  if (logging) {
+    return (
+      <section className="flex flex-col gap-5 rounded-lg border border-line bg-panel p-6 sm:p-9">
+        <div className="flex items-center justify-between gap-3">
+          <p className="flex items-center gap-2 font-label text-sm font-bold tracking-widest text-ash uppercase"><Check /> Checked in</p>
+          <p className="font-label text-sm font-bold tracking-widest text-red uppercase">{streak}-day streak</p>
+        </div>
+        <TodayLog plan={props.workout!.plan} logs={props.workout!.logs} today={today} level={props.workout!.level} onSkip={() => setSkipped(true)} />
+      </section>
+    );
   }
 
   return (
@@ -143,6 +165,14 @@ export function CheckInPanel(props: {
           {pending ? "Checking in…" : props.hasPlan ? "Check in now" : "Buy a plan to check in"}
         </button>
       )}
+      {/* after check-in: today's workout, logged or still to do */}
+      {props.workout && visits.length > 0 && (logged ? (
+        <Link href="/dashboard/workouts" className="-mt-3 flex items-center justify-center gap-2 text-sm text-ash hover:text-chalk">
+          <Check /> {logged.title.split(" · ").at(-1)} logged · <span className="font-bold">Workouts →</span>
+        </Link>
+      ) : (
+        <button type="button" className="btn-ghost -mt-3 min-h-12" onClick={() => setSkipped(false)}>Log today&apos;s workout</button>
+      ))}
 
       {/* at the gym: scan the poster by the door instead (proves you're there, no location needed) */}
       {props.hasPlan && !done && (

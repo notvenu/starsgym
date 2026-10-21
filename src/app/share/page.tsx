@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Nav } from "@/components/site";
+import { SiteNav } from "@/components/site";
 import { requireUser } from "@/lib/supabase";
 import { inr, planName, type Plan } from "@/lib/gym";
 import { SharedProof } from "./ui";
@@ -28,7 +28,7 @@ export default async function SharePage() {
 
   return (
     <main className="min-h-dvh pb-20">
-      <Nav />
+      <SiteNav />
       <div className="wrap flex max-w-lg flex-col gap-6 pt-6">
         <div>
           <p className="eyebrow">Payment screenshot</p>

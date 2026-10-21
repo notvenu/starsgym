@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Nav } from "@/components/site";
+import { SiteNav } from "@/components/site";
 import { requireUser } from "@/lib/supabase";
 
 export const metadata = { title: "Staff only — Stars Gym" };
@@ -9,9 +9,9 @@ export default async function StaffOnly() {
   const { profile } = await requireUser("/admin");
   return (
     <main className="min-h-dvh">
-      <Nav>
+      <SiteNav>
         <Link href="/dashboard" className="btn-ghost">My dashboard</Link>
-      </Nav>
+      </SiteNav>
       <div className="wrap flex max-w-3xl flex-col gap-5 pt-10">
         <h1 className="h-section">Staff only.</h1>
         {profile.role === "staff" ? (

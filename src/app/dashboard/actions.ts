@@ -5,6 +5,7 @@ import { adminDb, requireUser, UUID } from "@/lib/supabase";
 import { GENDERS, LOGIN_EMAIL_DOMAIN, phoneKey, readPersonalDetails, atBranch, type Spot } from "@/lib/gym";
 import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
 import { deskIds, notifyAfter } from "@/lib/push";
+import { toWall } from "@/lib/wall";
 
 export type Result = { error?: string; ok?: string } | undefined;
 
@@ -106,13 +107,6 @@ export async function postShowcase(_: Result, form: FormData): Promise<Result> {
   if (file.size > MAX_BYTES) return { error: "Photo must be under 5 MB." };
   const link = String(form.get("link_url") ?? "").trim() || profile.instagram_url;
   if (link && !link.startsWith("https://")) return { error: "Link must start with https://" };
-
-  const path = `${user.id}/${crypto.randomUUID()}.${TYPES[file.type]}`;
-  const up = await supabase.storage.from("showcase").upload(path, file, { contentType: file.type });
-  if (up.error) return { error: up.error.message };
-  const { error } = await supabase.from("showcase_posts").insert({ user_id: user.id, image_path: path, link_url: link || null });
-  if (error) return { error: error.message };
-  revalidatePath("/dashboard");
-  revalidatePath("/");
-  return { ok: "Posted — you're on the Streak Wall for 7 days." };
+  return toWall(supabase, user.id, file, link);
 }
+

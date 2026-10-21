@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
-import { Nav } from "@/components/site";
+import { SiteNav } from "@/components/site";
 import { adminDb, requireUser } from "@/lib/supabase";
 import { discountOf, orderUpi, inr, planName, upiLink, type Plan } from "@/lib/gym";
 import { getPass } from "../../pass/[subId]/data";
@@ -36,7 +36,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
 
   return (
     <main className="min-h-dvh pb-20">
-      <Nav />
+      <SiteNav />
       <div className="wrap flex flex-col items-center gap-6 pt-6 text-center">
         <p className="eyebrow">{sub.status === "active" ? "Paid" : "Pay at the desk"}</p>
         <h1 className="font-display text-[clamp(44px,6vw,72px)] leading-none uppercase">{planName(plan)}</h1>

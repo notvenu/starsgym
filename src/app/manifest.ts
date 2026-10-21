@@ -12,7 +12,7 @@ export default function manifest(): MetadataRoute.Manifest & { edge_side_panel: 
     id: "/app",
     name: "Stars Gym",
     short_name: "Stars Gym",
-    description: "Your pass, check-ins and plan — and the front desk for staff.",
+    description: "Check in, log workouts, track your body and progress photos — and the front desk for staff.",
     lang: "en-IN",
     dir: "ltr",
     start_url: "/app",
@@ -51,7 +51,9 @@ export default function manifest(): MetadataRoute.Manifest & { edge_side_panel: 
     // Microsoft Edge: pin the app in the sidebar next to any site
     edge_side_panel: { preferred_width: 420 },
     shortcuts: [
-      { name: "My pass", url: "/dashboard", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "Check in & log workout", short_name: "Check in", url: "/dashboard", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "Progress photo", short_name: "Photo", url: "/dashboard/photos", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "Log weight", short_name: "Weight", url: "/dashboard/body", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
       { name: "Front desk", url: "/admin", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
     ],
   };

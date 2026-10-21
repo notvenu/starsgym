@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { Nav } from "@/components/site";
+import { SiteNav } from "@/components/site";
 import { requireUser } from "@/lib/supabase";
 import { Price } from "@/components/client";
 import { getNotices, getSettings } from "@/lib/data";
@@ -33,7 +33,7 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
 
   return (
     <main className="min-h-dvh pb-20">
-      <Nav />
+      <SiteNav />
       <div className="wrap grid gap-10 pt-8 lg:grid-cols-2">
         <div className="flex flex-col gap-5">
           <p className="eyebrow">Checkout</p>

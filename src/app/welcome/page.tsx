@@ -15,7 +15,7 @@ export default async function WelcomePage({ searchParams }: PageProps<"/welcome"
   const uid = await currentUserId();
   if (!uid) redirect(`/login?next=${encodeURIComponent(next)}`);
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", uid).single<Profile>();
-  if (profile?.gender && profile.photo_path) redirect(next);
+  if (profile?.gender && profile.photo_path && profile.experience !== null) redirect(next);
 
   return (
     <main className="flex min-h-dvh flex-col items-center gap-8 px-4 py-10">

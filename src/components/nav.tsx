@@ -12,6 +12,7 @@ const noop = () => () => {};
 const useSignedIn = () => useSyncExternalStore(noop, () => /(^|; )sb-[^=]+-auth-token/.test(document.cookie), () => false);
 
 export const PAGES = [
+  ["Home", "/"],
   ["Trainers", "/trainers"],
   ["Personal Training", "/personal-training"],
   ["Gallery", "/gallery"],
@@ -73,7 +74,8 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
 
         {children ?? (
           <>
-            <ul className="flex items-center gap-1 max-lg:hidden">
+            {/* the same segmented control as the member app's tabs; see-through so it sits on the homepage hero too */}
+            <ul className="flex items-center gap-1 rounded-full border border-line bg-carbon/70 p-1 backdrop-blur-md max-lg:hidden">
               {PAGES.map(([label, href]) => {
                 const active = pathname === href;
                 return (
@@ -81,7 +83,7 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
                     <Link
                       href={href}
                       aria-current={active ? "page" : undefined}
-                      className={`block rounded-full px-5 py-2 text-[15px] font-semibold transition-colors duration-200 ${active ? "bg-red text-white" : "text-body hover:bg-chalk/10 hover:text-chalk"}`}
+                      className={`flex min-h-10 items-center rounded-full px-4 text-[15px] font-semibold transition-colors duration-200 ${active ? "bg-steel text-chalk shadow-[inset_0_0_0_1px_var(--color-strong)]" : "text-ash hover:text-chalk"}`}
                     >
                       {label}
                     </Link>

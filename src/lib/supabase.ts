@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { LOGIN_EMAIL_DOMAIN, type Gender } from "@/lib/gym";
+import type { Level } from "@/lib/workouts";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
@@ -50,6 +51,7 @@ export type Profile = {
   photo_changes: number; // self-service changes used (max 2 after the first photo)
   role: Role;
   all_branches: boolean; // staff covering every branch (0012)
+  experience?: Level | null; // gym experience (workouts migration; missing before it runs)
 };
 
 /** member · staff (front desk at their home branch) · admin (owner: every branch, settings, staff). */
@@ -96,8 +98,9 @@ export async function requireUser(next?: string) {
   if (!ctx) redirect(login);
   const { supabase, user, profile } = ctx;
   // collect gender / phone (Google sign-ups don't give them) and a photo before anything else:
-  // gender gates ladies' hours, the photo is what staff check when they scan a pass
-  if ((!profile.gender || !profile.photo_path) && profile.role === "member") redirect(next ? `/welcome?next=${encodeURIComponent(next)}` : "/welcome");
+  // gender gates ladies' hours, the photo is what staff check when they scan a pass, experience picks their split
+  // (=== null: the column exists but they haven't answered; undefined before the workouts migration, so no loop)
+  if ((!profile.gender || !profile.photo_path || profile.experience === null) && profile.role === "member") redirect(next ? `/welcome?next=${encodeURIComponent(next)}` : "/welcome");
   return { supabase, user, profile };
 }
 
