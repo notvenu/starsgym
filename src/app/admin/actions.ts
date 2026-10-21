@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { adminDb, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, hasProof, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, type Plan, type Track } from "@/lib/gym";
+import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter, ownerIds } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
@@ -410,7 +410,7 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
     lat: num("lat"),
     lng: num("lng"),
     radius_m: num("radius_m") ?? 150,
-    require_location: form.get("require_location") === "on",
+    require_location: num("lat") != null && num("lng") != null, // coordinates set = check-ins need to be within the radius
     morning_open: s(form, "morning_open") || "05:00",
     morning_close: s(form, "morning_close") || "11:00",
     // leave both evening fields blank for a branch with one session
@@ -426,7 +426,7 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
     ladies_evening_close: s(form, "ladies_evening_close") || null,
     upi_id: s(form, "upi_id").toLowerCase() || null, // this branch's own UPI ID (blank = the gym-wide one)
   };
-  if (row.upi_id && !/^[a-z0-9._-]{2,256}@[a-z][a-z0-9.-]{1,63}$/.test(row.upi_id)) return { error: "That UPI ID doesn't look right — like stargym@okaxis." };
+  if (row.upi_id && !UPI_ID.test(row.upi_id)) return { error: "That UPI ID doesn't look right — like stargym@okaxis." };
   if (!row.name) return { error: "Branch name is required." };
   if (![row.maps_url, row.image_url].every((u) => !u || u.startsWith("https://"))) return { error: "Links must start with https://" };
   if (!row.evening_open !== !row.evening_close) return { error: "Set both evening times, or leave both blank." };

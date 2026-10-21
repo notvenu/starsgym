@@ -1175,7 +1175,7 @@ function BranchForm({ branch: b, onDone }: { branch?: Branch; onDone: () => void
           <Field label="Latitude" name="lat" type="number" step="any" defaultValue={b?.lat ?? ""} />
           <Field label="Longitude" name="lng" type="number" step="any" defaultValue={b?.lng ?? ""} />
           <Field label="Check-in radius (m)" name="radius_m" type="number" min="20" defaultValue={b?.radius_m ?? 150} />
-          <label className="flex min-h-11 items-center gap-2 self-end"><input type="checkbox" name="require_location" defaultChecked={b?.require_location} className="size-5 accent-red" /> Require location to check in</label>
+          <p className="self-end text-xs text-ash sm:col-span-2">With coordinates set, members checking in from their dashboard must be within the radius. Leave them blank to skip the location check. The entrance QR always works.</p>
         </div>
       </details>
 

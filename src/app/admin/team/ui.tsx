@@ -114,6 +114,11 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
             </span>
             <span className="text-xs text-ash">The desk charges this × months when they&apos;re picked for PT. Blank = the standard price from Pricing.</span>
           </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="label">Their UPI ID (optional)</span>
+            <input name="upi_id" defaultValue={item?.upi_id ?? ""} placeholder="name@okaxis" autoComplete="off" spellCheck={false} className="field" />
+            <span className="text-xs text-ash">PT orders with them as trainer show a QR for this ID, so the PT fee goes straight to them. Blank = the branch&apos;s UPI.</span>
+          </label>
           <PhotoInput label="Photo" file="photo" url="image_url" current={item?.image_path ?? null} />
           <details className="group rounded-lg border border-line">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 text-sm font-semibold text-ash">

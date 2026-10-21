@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { adminDb, requireAdmin } from "@/lib/supabase";
 import { sitePhoto } from "../content/upload";
 import { logAction } from "@/lib/log";
+import { UPI_ID } from "@/lib/gym";
 
 export type Result = { error?: string; ok?: string; password?: string } | undefined;
 /** A one-time password for a desk account, shown to the owner once; they're asked to change it at first sign-in. */
@@ -37,6 +38,8 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
   if (trainer && url && !url.startsWith("https://")) return { error: "The Instagram link must start with https://" };
   const ptFee = s(form, "pt_fee") === "" ? null : Math.round(Number(s(form, "pt_fee")) * 100);
   if (ptFee !== null && !(ptFee >= 0)) return { error: "The PT fee must be zero or more." };
+  const upi = s(form, "upi_id").toLowerCase();
+  if (trainer && upi && !UPI_ID.test(upi)) return { error: "That UPI ID doesn't look right — like name@okaxis." };
 
   // ── desk access. Service key: owner-only path, and roles aren't editable through anyone's own session.
   const admin = adminDb();
@@ -84,12 +87,14 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
       profile_id: profileId,
       active: true,
       pt_fee_paise: ptFee || null, // 0 or blank: the standard PT price
+      upi_id: upi || null, // blank: PT orders are paid to the branch
       ...(photo.path && { image_path: photo.path }),
     };
     const { error } = itemId ? await supabase.from("site_items").update(row).eq("id", itemId) : await supabase.from("site_items").insert(row);
     if (error)
       return {
         error: /pt_fee_paise/.test(error.message) ? "Add the PT fee column first: alter table site_items add column pt_fee_paise integer check (pt_fee_paise >= 0);"
+          : /upi_id/.test(error.message) ? "Add the trainer UPI column first: alter table site_items add column upi_id text;"
           : /branch_id|profile_id/.test(error.message) ? "Run supabase/migrations/0014_team_insights.sql first." : error.message,
       };
   } else if (itemId) {

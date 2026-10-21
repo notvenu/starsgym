@@ -1,27 +1,31 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminDb } from "@/lib/supabase";
-import { branchUpi, inr, planName, type Plan } from "@/lib/gym";
+import { inr, orderUpi, planName, type Plan } from "@/lib/gym";
 
-type PendingSub = { branches: { upi_id?: string | null } | null; id: string; amount_paise: number; method: string; created_at: string; approval: string | null; standard_paise: number | null; plans: Plan; profiles: { full_name: string; email: string | null }; requester: { full_name: string } | null };
+type PendingSub = { branches: { upi_id?: string | null } | null; trainer_id: string | null; id: string; amount_paise: number; method: string; created_at: string; approval: string | null; standard_paise: number | null; plans: Plan; profiles: { full_name: string; email: string | null }; requester: { full_name: string } | null };
 
 /** Orders waiting for payment (or, with onlyApprovals, for the owner to approve a staff discount), shaped for <PendingRow>. */
 export async function getPending(supabase: SupabaseClient, limit = 100, branchId: string | null = null, onlyApprovals = false) {
   const q = supabase
     .from("subscriptions")
-    .select("id,amount_paise,method,created_at,approval,standard_paise,plans(*),profiles!subscriptions_user_id_fkey(full_name,email),requester:profiles!subscriptions_requested_by_fkey(full_name),branches(*)", { count: "exact" })
+    .select("id,amount_paise,method,created_at,approval,standard_paise,trainer_id,plans(*),profiles!subscriptions_user_id_fkey(full_name,email),requester:profiles!subscriptions_requested_by_fkey(full_name),branches(*)", { count: "exact" })
     .eq("status", "pending")
     .order("created_at", { ascending: false })
     .limit(limit);
   const scoped = onlyApprovals ? q.eq("approval", "pending") : q;
   const { data, count } = await (branchId ? scoped.eq("branch_id", branchId) : scoped);
+  // PT orders are paid to the trainer's own UPI when they have one — the screenshot check matches against that
+  const trainerIds = [...new Set(((data ?? []) as unknown as PendingSub[]).map((s) => s.trainer_id).filter(Boolean))] as string[];
+  const { data: trainers } = trainerIds.length ? await supabase.from("site_items").select("*").in("id", trainerIds) : { data: [] };
+  const trainerOf = new Map((trainers ?? []).map((t) => [t.id as string, t as { upi_id?: string | null }]));
   const rows = ((data ?? []) as unknown as PendingSub[]).map((s) => ({
     id: s.id,
     title: `${s.profiles.full_name || s.profiles.email} · ${planName(s.plans)}`,
     approval: s.approval,
     method: s.method,
     amountPaise: s.amount_paise,
-    upiId: branchUpi(s.branches),
+    upiId: orderUpi(s.branches, s.trainer_id ? trainerOf.get(s.trainer_id) : null),
     createdAt: s.created_at,
     ask: s.approval === "pending" ? `${s.requester?.full_name || "Staff"} asked for ${inr(s.amount_paise)} · standard ${inr(s.standard_paise ?? s.amount_paise)}` : null,
     meta: `${inr(s.amount_paise)} · ${s.method === "razorpay" ? "online (unconfirmed)" : s.method === "upi_qr" ? "UPI at desk" : s.method} · REF ${s.id.slice(0, 8).toUpperCase()} · ${new Date(s.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`,

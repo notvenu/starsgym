@@ -2,14 +2,24 @@
 
 import { revalidatePath } from "next/cache";
 import { adminDb, requireUser, UUID } from "@/lib/supabase";
-import { GENDERS, LOGIN_EMAIL_DOMAIN, phoneKey, readPersonalDetails } from "@/lib/gym";
+import { GENDERS, LOGIN_EMAIL_DOMAIN, phoneKey, readPersonalDetails, withinBranch } from "@/lib/gym";
 import { formPhoto, removePhoto, uploadPhoto } from "@/lib/photo";
 import { deskIds, notifyAfter } from "@/lib/push";
 
 export type Result = { error?: string; ok?: string } | undefined;
 
-export async function checkIn(branchId: string, lat?: number, lng?: number): Promise<Result & { streak?: number }> {
+export async function checkIn(branchId: string, lat?: number, lng?: number, accuracy?: number): Promise<Result & { streak?: number }> {
   const { supabase } = await requireUser();
+  if (!UUID.test(branchId)) return { error: "Pick a branch." };
+  const { data: b } = await supabase.from("branches").select("lat,lng,radius_m").eq("id", branchId).maybeSingle();
+  if (b?.lat != null && b.lng != null) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { error: "Allow location access to check in — you need to be at the gym." };
+    const at = withinBranch(b, lat!, lng!, Number(accuracy) || 0);
+    if (!at.ok) return { error: `You seem to be ${at.dist} m away from the branch — check in when you're there.` };
+    // ponytail: verified here (with the GPS error allowed for); the database's own check has no tolerance, so it gets the branch's point
+    lat = b.lat;
+    lng = b.lng;
+  }
   const { data, error } = await supabase.rpc("check_in", { p_branch: branchId, p_lat: lat ?? null, p_lng: lng ?? null });
   if (error) return { error: error.message };
   revalidatePath("/dashboard");

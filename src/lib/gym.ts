@@ -29,6 +29,27 @@ export type Branch = {
 
 /** The UPI ID payments for this branch go to: its own, or the gym-wide one. */
 export const branchUpi = (b?: { upi_id?: string | null } | null) => b?.upi_id?.trim() || process.env.NEXT_PUBLIC_UPI_ID || "";
+/** Who an order is paid to: a PT order's trainer when they've set a UPI ID, else the branch (then the gym-wide one). */
+export const orderUpi = (b?: { upi_id?: string | null } | null, trainer?: { upi_id?: string | null } | null) => trainer?.upi_id?.trim() || branchUpi(b);
+export const UPI_ID = /^[a-z0-9._-]{2,256}@[a-z][a-z0-9.-]{1,63}$/;
+
+/** Metres between two points (haversine). */
+export function distanceM(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const rad = Math.PI / 180;
+  const a = Math.sin(((lat2 - lat1) * rad) / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(((lng2 - lng1) * rad) / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(a));
+}
+
+/**
+ * Inside the branch's check-in circle? Phones indoors often report a fix tens of metres off (and say so in `accuracy`),
+ * so the reported error counts in the member's favour — capped at the radius, so a city-wide guess never passes.
+ */
+export function withinBranch(b: Pick<Branch, "lat" | "lng" | "radius_m">, lat: number, lng: number, accuracy = 0) {
+  if (b.lat == null || b.lng == null) return { ok: true, dist: 0 };
+  const radius = b.radius_m || 150;
+  const dist = distanceM(b.lat, b.lng, lat, lng);
+  return { ok: dist <= radius + Math.min(Math.max(accuracy, 0), radius), dist: Math.round(dist) };
+}
 
 export type Gender = "female" | "male" | "other";
 export const GENDERS: [Gender, string][] = [["female", "Female"], ["male", "Male"], ["other", "Other"]];
@@ -311,6 +332,7 @@ export type SiteItem = {
   branch_id: string | null; // trainers: their branch, null = both (0014)
   profile_id: string | null; // trainers who also have desk access (0014)
   pt_fee_paise?: number | null; // trainers: their own PT fee per month, set by the owner; null = the standard PT price
+  upi_id?: string | null; // trainers: PT orders they're picked for are paid here; null = the branch's UPI
   url: string | null;
   sort: number;
   active: boolean;

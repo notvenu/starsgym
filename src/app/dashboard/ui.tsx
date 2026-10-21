@@ -36,7 +36,6 @@ export function CheckInPanel(props: {
   const { branches } = props;
   const [branchId, setBranchId] = useState(props.homeBranch ?? branches[0]?.id ?? "");
   const branch = branches.find((b) => b.id === branchId);
-  const [useLocation, setUseLocation] = useState(true);
   const [pending, start] = useTransition();
   const [streak, setStreak] = useState(props.streak);
   const [visits, setVisits] = useState(props.todaySessions);
@@ -44,24 +43,24 @@ export function CheckInPanel(props: {
   const done = !!sess && sess !== "ladies_only" && visits.includes(sess); // already in for this session (morning and evening count separately)
 
   const goal = MILESTONES.find((m) => m > streak) ?? streak + 100;
-  const mustLocate = !!branch?.require_location;
+  const mustLocate = branch?.lat != null && branch?.lng != null; // the server checks the radius whenever the branch has coordinates
 
   function submit() {
-    const send = (lat?: number, lng?: number) =>
+    const send = (lat?: number, lng?: number, accuracy?: number) =>
       start(async () => {
-        const res = await checkIn(branchId, lat, lng);
+        const res = await checkIn(branchId, lat, lng, accuracy);
         if (res.error) return toast(res.error, "error");
         setStreak(res.streak ?? streak + 1);
         if (sess && sess !== "ladies_only") setVisits((v) => [...v, sess]);
         navigator.vibrate?.(60);
       });
 
-    if (!(useLocation || mustLocate)) return send();
-    if (!navigator.geolocation) return mustLocate ? toast("Your browser can't share location.", "error") : send();
+    if (!mustLocate) return send();
+    if (!navigator.geolocation) return toast("Your browser can't share location.", "error");
     navigator.geolocation.getCurrentPosition(
-      (pos) => send(pos.coords.latitude, pos.coords.longitude),
-      () => (mustLocate ? toast("Allow location access to check in at this branch.", "error") : send()),
-      { enableHighAccuracy: true, timeout: 10_000 },
+      (pos) => send(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+      (err) => toast(err.code === err.PERMISSION_DENIED ? "Allow location access to check in at this branch." : "Couldn't get your location — step near a window or turn on GPS, then try again.", "error"),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
     );
   }
 
@@ -122,10 +121,7 @@ export function CheckInPanel(props: {
         </label>
       )}
 
-      <label className="flex min-h-11 items-center gap-3 text-sm text-ash">
-        <input type="checkbox" className="size-5 accent-red" checked={useLocation || mustLocate} disabled={mustLocate} onChange={(e) => setUseLocation(e.target.checked)} />
-        Verify with my location {mustLocate && "(required at this branch)"}
-      </label>
+      {mustLocate && <p className="text-sm text-ash">Checks your location — you need to be at the gym.</p>}
 
       <WeekHolidays holidays={weekHolidays(props.holidays, branchId)} />
 
