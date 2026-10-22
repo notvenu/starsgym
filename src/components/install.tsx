@@ -46,7 +46,7 @@ export function InstallApp() {
             {help === "ios" ? (
               <>
                 <li>In <b className="text-chalk">Safari</b>, tap the <b className="text-chalk">Share</b> button (the square with an arrow ↑) at the bottom.</li>
-                <li>Scroll down and tap <b className="text-chalk">Add to Home Screen</b>, then <b className="text-chalk">Add</b>.</li>
+                <li>Scroll down and tap <b className="text-chalk">Add to Home Screen</b>. If you see <b className="text-chalk">Open as Web App</b>, keep it switched on. Tap <b className="text-chalk">Add</b>.</li>
                 <li>Open Stars Gym from the new icon on your home screen.</li>
               </>
             ) : (

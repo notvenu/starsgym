@@ -15,6 +15,8 @@ export const metadata: Metadata = {
   icons: { apple: "/apple-icon.png" }, // favicon: app/favicon.ico (the 161 KB logo was being fetched as one)
   appleWebApp: { capable: true, title: "Stars Gym", statusBarStyle: "black" },
   applicationName: "Stars Gym",
+  // Next only writes the newer mobile-web-app-capable; iPhones before iOS 17.4 need Apple's own tag, or the home-screen icon is just a bookmark
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 // viewport-fit=cover so the admin tab bar can pad itself above the phone's home indicator
