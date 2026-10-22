@@ -4,22 +4,23 @@ import Link from "next/link";
 import { Sheet } from "@/components/sheet";
 export { Sheet };
 import { useRouter } from "next/navigation";
-import { createContext, useActionState, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
+import { createContext, useActionState, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { Field, MemberDetailsFields, PhoneField } from "@/components/client";
-import { confirmDialog, ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
+import { confirmDialog, ResultToast, toast, toastResult, keepFields, withUndo } from "@/components/feedback";
 import QRCode from "qrcode";
 import { PhotoCapture } from "@/components/photo";
 import { ProofCheck, ProofInput, ReceiptScan } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
 import type { Trainer } from "./data";
-import { offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track } from "@/lib/gym";
+import { waNumber } from "./kit";
+import { ageOf, GENDERS, LOGIN_EMAIL_DOMAIN, offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track, waLink } from "@/lib/gym";
 import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
 
 /** A button that opens its content in a pop-up (a sheet from the bottom on phones). `startOpen` for deep links like ?new=1. */
-export function AdminModal({ label, title, className = "btn-red", startOpen, children }: { label: React.ReactNode; title: string; className?: string; startOpen?: boolean; children: React.ReactNode }) {
-  const [open, setOpen] = useState(!!startOpen);
+export function AdminModal({ label, title, className = "btn-red", children }: { label: React.ReactNode; title: string; className?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={className}>{label}</button>
@@ -643,120 +644,153 @@ export function MemberEditForm({ member, branches }: { member: Profile; branches
   );
 }
 
-/** An icon button that opens a small panel in the top layer (never clipped by the list), pinned under the button —
- *  or above it near the bottom of the screen. Escape and tapping outside close it (native popover). */
-function Pop({ id, label, icon, active, badge, disabled, width = "w-52", children }: {
-  id: string; label: string; icon: React.ReactNode; active?: boolean; badge?: number; disabled?: boolean; width?: string;
-  children: (close: () => void) => React.ReactNode;
-}) {
-  const button = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  const below = useRef(true); // decided on open, so the panel doesn't flip sides mid-scroll
-  // one stable function: a fresh one each render never matched removeEventListener, so every menu ever opened kept
-  // a scroll listener that crashed once its row was gone
-  const place = useCallback(() => {
-    if (!button.current || !panel.current) return;
-    const r = button.current.getBoundingClientRect();
-    const s = panel.current.style;
-    s.right = `${Math.max(8, innerWidth - r.right)}px`;
-    s.top = below.current ? `${r.bottom + 6}px` : "auto";
-    s.bottom = below.current ? "auto" : `${innerHeight - r.top + 6}px`;
-  }, []);
-  const unfollow = useCallback(() => {
-    removeEventListener("scroll", place, { capture: true });
-    removeEventListener("resize", place);
-  }, [place]);
-  useEffect(() => unfollow, [unfollow]); // unmounted while open
-  // fixed-position panel: follow the button while the page scrolls or resizes
-  const onToggle = (e: React.ToggleEvent<HTMLDivElement>) => {
-    if (e.newState === "open") {
-      fit(panel.current?.offsetHeight ?? 340); // now it's visible, with its real height
-      addEventListener("scroll", place, { capture: true, passive: true });
-      addEventListener("resize", place);
-    } else unfollow();
-  };
-  const fit = (height: number) => {
-    if (!button.current) return;
-    below.current = innerHeight - button.current.getBoundingClientRect().bottom > height + 16;
-    place();
-  };
-  const open = () => fit(340); // a first guess before it opens (hidden panels measure 0)
-  return (
-    <>
-      <button ref={button} type="button" popoverTarget={id} onClick={open} disabled={disabled} aria-label={label} title={label}
-        className={`relative flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors disabled:opacity-40 ${active ? "border-red bg-redwash text-chalk" : "border-line text-ash hover:border-red hover:text-chalk"}`}>
-        {icon}
-        {!!badge && <span className="absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-red text-[11px] font-bold text-white tabular-nums">{badge}</span>}
-      </button>
-      <div ref={panel} id={id} popover="auto" onToggle={onToggle} className={`fixed inset-auto m-0 ${width} max-w-[calc(100vw-1rem)] rounded-lg border border-line bg-carbon p-1.5 text-chalk shadow-2xl shadow-black/60`}>
-        {children(() => document.getElementById(id)?.hidePopover())}
-      </div>
-    </>
-  );
-}
-
-const MENU_ITEM = "flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 rounded px-3 text-left text-sm font-semibold hover:bg-steel";
 const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
 );
+const CHIP = "inline-flex min-h-9 cursor-pointer items-center justify-center rounded-full border border-line px-3 text-xs font-semibold hover:border-red hover:text-chalk sm:min-h-10 sm:px-4 sm:text-sm";
+// phones: these are a round icon, the word only from sm up (aria-label keeps the name for screen readers)
+const ICON_CHIP = `${CHIP} max-sm:size-9 max-sm:px-0`;
+const chipLabel = (icon: string, label: string) => (
+  <>
+    <span className="sm:hidden"><Icon d={icon} size={16} /></span>
+    <span className="max-sm:hidden">{label}</span>
+  </>
+);
 
-/** A member row's actions: Renew / Sell right on the row, everything else under ⋯. Both open in a pop-up without leaving
- *  the list. Needs a <Desk> around the list. */
-export function MemberActions({ member, passId, cancelSubId, waHref, admissionPaise, lastPlanId, currentEnd }: {
-  member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; admissionPaise: number | null; lastPlanId?: string | null; currentEnd?: string | null;
+/** A member row's actions: Renew / Sell right on the row; the arrow opens the row below it with their details and every
+ *  other action. Needs a <Desk> around the list, and a row that wraps (flex-wrap) so the details get a line of their own. */
+export function MemberActions({ member, passId, cancelSubId, admissionPaise, lastPlanId, currentEnd }: {
+  member: Profile; passId: string | null; cancelSubId?: string | null; admissionPaise: number | null; lastPlanId?: string | null; currentEnd?: string | null;
 }) {
-  const { owner, branches } = useContext(DeskContext);
-  const [sheet, setSheet] = useState<"edit" | null>(null);
-  const [pending, start] = useTransition();
-  const remove = async () => {
-    const ok = await confirmDialog({
-      title: `Delete ${member.full_name}?`,
-      body: "Their account, plans, payments, visit history and photo are deleted. This can't be undone.",
-      confirm: "Delete member",
-      danger: true,
-    });
-    if (ok) start(async () => toastResult(await deleteMember(member.id))); // direct: the row is gone before an effect could run
-  };
+  const { branches } = useContext(DeskContext);
+  const [open, setOpen] = useState(false);
+  const age = ageOf(member);
+  const details: [string, string | null | undefined][] = [
+    // the phone is already on the row
+    ["Plan", currentEnd ? `${currentEnd < gymDate() ? "ended" : "ends"} ${prettyDay(currentEnd)}` : null],
+    ["", [GENDERS.find(([g]) => g === member.gender)?.[1], age != null && `${age} yrs`].filter(Boolean).join(", ")],
+    ["Branch", branches.find((b) => b.id === member.home_branch_id)?.name],
+    ["Emergency", member.emergency_contact],
+    ["", member.email?.endsWith(`@${LOGIN_EMAIL_DOMAIN}`) ? null : member.email], // the hidden sign-in address isn't theirs
+  ];
 
   return (
     <>
       <RenewButton member={member} renew={!!passId || lastPlanId != null} lastPlanId={lastPlanId} currentEnd={currentEnd} admissionPaise={admissionPaise} />
-      <Pop id={`actions-${member.id}`} label={`Actions for ${member.full_name}`} disabled={pending}
-        icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>}>
-        {(close) => (
-          <>
-            <Link href={`/admin/members/${member.id}`} className={MENU_ITEM}>View profile</Link>
-            <button type="button" onClick={() => (close(), setSheet("edit"))} className={MENU_ITEM}>Edit details</button>
-            {passId && <Link href={`/pass/${passId}`} className={MENU_ITEM}>Show pass</Link>}
-            {waHref && <a href={waHref} target="_blank" rel="noreferrer" className={MENU_ITEM}>WhatsApp</a>}
-            {member.phone && <a href={`tel:${member.phone}`} className={MENU_ITEM}>Call</a>}
-            {owner && member.role === "member" && (
-              <button type="button" className={MENU_ITEM}
-                onClick={async () => (close(), (await confirmDialog({ title: `Reset ${member.full_name}'s password?`, body: "It goes back to the starting password (first 4 letters of their name, without initials, + last 4 phone digits). You'll see it next. They'll be asked to change it.", confirm: "Reset password" })) && start(async () => toastResult(await resetPassword(member.id))))}>
-                Reset password
-              </button>
-            )}
-            {owner && cancelSubId && (
-              <button type="button" className={`${MENU_ITEM} text-red`}
-                onClick={async () => (close(), (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops now. Payment records stay.", confirm: "Cancel plan", danger: true })) && start(async () => toastResult(await cancelPlan(cancelSubId))))}>
-                Cancel plan
-              </button>
-            )}
-            {owner && member.role === "member" && (
-              <>
-                <hr className="my-1 border-line" />
-                <button type="button" onClick={() => (close(), remove())} className={`${MENU_ITEM} text-red`}>Delete member</button>
-              </>
-            )}
-          </>
-        )}
-      </Pop>
-      {sheet && (
-        <Sheet title={member.full_name || "Edit member"} open onClose={() => setSheet(null)}>
-          <MemberEditForm member={member} branches={branches} />
-        </Sheet>
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} details for ${member.full_name}`}
+        className={`flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors ${open ? "border-red text-chalk" : "border-line text-ash hover:border-red hover:text-chalk"}`}>
+        <span className={`transition-transform duration-300 ease-lift ${open ? "rotate-180" : ""}`}><Icon d="M6 9l6 6 6-6" /></span>
+      </button>
+      {open && (
+        // one compact block under the name (lined up with it from sm up): a line of details, then the buttons
+        <div className="basis-full pb-3 pl-3 sm:pl-[4.5rem] [animation:stagger-in_0.3s_var(--ease-lift)_both]">
+          <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm">
+            {details.filter(([, v]) => v).map(([label, value], i) => (
+              <span key={i} className="min-w-0 truncate">{label && <span className="text-ash">{label} </span>}<span className="font-semibold">{value}</span></span>
+            ))}
+          </p>
+          <MemberTools member={member} passId={passId} cancelSubId={cancelSubId} className="mt-2" />
+        </div>
       )}
     </>
+  );
+}
+
+/** Everything the desk does to one member besides selling and WhatsApp (the green button): edit, pass, call, and (owner) reset password,
+ *  cancel plan, delete — each risky one confirmed first, cancel and delete with 10 s to undo. Icons on phones, words
+ *  from sm up. Used under a member row and on their profile; `editExtra` adds to the edit pop-up (the profile's photo). */
+export function MemberTools({ member, passId, cancelSubId, editExtra, className = "" }: {
+  member: Profile; passId: string | null; cancelSubId?: string | null; editExtra?: React.ReactNode; className?: string;
+}) {
+  const { owner, branches } = useContext(DeskContext);
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [pending, start] = useTransition();
+  const remove = async () => {
+    const ok = await confirmDialog({
+      title: `Delete ${member.full_name}?`,
+      body: "Their account, plans, payments, visit history and photo are deleted. You'll have 10 seconds to undo.",
+      confirm: "Delete member",
+      danger: true,
+    });
+    if (!ok) return;
+    withUndo(`Deleting ${member.full_name}…`, () => start(async () => {
+      const r = await deleteMember(member.id);
+      toastResult(r);
+      if (!r?.error && location.pathname === `/admin/members/${member.id}`) router.push("/admin/members"); // their profile is gone
+    }));
+  };
+
+  return (
+    <div className={`flex flex-wrap gap-1.5 sm:gap-2 ${pending ? "opacity-50" : ""} ${className}`}>
+      <button type="button" onClick={() => setEditing(true)} aria-label="Edit details" className={ICON_CHIP}>{chipLabel("M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z", "Edit")}</button>
+      {passId && <Link href={`/pass/${passId}`} aria-label="Show pass" className={ICON_CHIP}>{chipLabel("M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3", "Show pass")}</Link>}
+      {member.phone && <a href={`tel:${member.phone}`} aria-label="Call" className={ICON_CHIP}>{chipLabel("M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2", "Call")}</a>}
+      {owner && member.role === "member" && (
+        <button type="button" disabled={pending} aria-label="Reset password" className={ICON_CHIP}
+          onClick={async () => (await confirmDialog({ title: `Reset ${member.full_name}'s password?`, body: "It goes back to the starting password (first 4 letters of their name, without initials, + last 4 phone digits). You'll see it next. They'll be asked to change it.", confirm: "Reset password" })) && start(async () => toastResult(await resetPassword(member.id)))}>
+          {chipLabel("M7 15a4 4 0 1 1 3.9-5H21v3h-3v3h-3v-3h-4.1A4 4 0 0 1 7 15z", "Reset password")}
+        </button>
+      )}
+      {owner && cancelSubId && (
+        <button type="button" disabled={pending} aria-label="Cancel plan" className={`${ICON_CHIP} text-red`}
+          onClick={async () => (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops. Payment records stay. You'll have 10 seconds to undo.", confirm: "Cancel plan", danger: true })) && withUndo("Cancelling the plan…", () => start(async () => toastResult(await cancelPlan(cancelSubId))))}>
+          {chipLabel("M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8", "Cancel plan")}
+        </button>
+      )}
+      {owner && member.role === "member" && <button type="button" disabled={pending} onClick={remove} aria-label="Delete member" className={`${ICON_CHIP} text-red`}>{chipLabel("M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6", "Delete")}</button>}
+      {editing && (
+        <Sheet title={member.full_name || "Edit member"} open onClose={() => setEditing(false)}>
+          <div className="flex flex-col gap-6">
+            <MemberEditForm member={member} branches={branches} />
+            {editExtra && <div className="border-t border-line pt-5">{editExtra}</div>}
+          </div>
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
+/** The green button on a member row and their profile: opens WhatsApp with a message ready — a renewal reminder when
+ *  their plan ends within a week or has ended, else a hello. `endsOn`: their plan's (last) end date. */
+export function WhatsAppButton({ member, endsOn, expired }: { member: Profile; endsOn: string | null; expired: boolean }) {
+  if (!member.phone) return null;
+  const first = member.full_name.split(" ")[0] || "there";
+  const text = endsOn && expired
+    ? `Hi ${first}! We miss you at Stars Gym. Your plan ended on ${prettyDay(endsOn)} — renew and pick up where you left off.`
+    : endsOn && endsOn <= gymDateIn(7)
+      ? `Hi ${first}! Your Stars Gym plan ends on ${prettyDay(endsOn)}. Renew to keep your streak going.`
+      : `Hi ${first}!`;
+  return (
+    <a href={waLink(waNumber(member.phone), text)} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${member.full_name}`} title="WhatsApp"
+      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-ink transition-transform hover:scale-105">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.4z" /><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8a5 5 0 0 1-2.8-2.8l.8-1-1-2z" /></svg>
+    </a>
+  );
+}
+
+/** Members list: the sort order. Changing it reloads the list from page 1; the first option is the default. */
+export function SortSelect({ value, options }: { value: string; options: readonly (readonly [string, string])[] }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const pick = (v: string) => {
+    const p = new URLSearchParams(location.search);
+    p.delete("page");
+    if (v === options[0][0]) p.delete("sort");
+    else p.set("sort", v);
+    start(() => router.push(`/admin/members${p.size ? `?${p}` : ""}`, { scroll: false }));
+  };
+  // phones: a round sort icon; the real select sits invisibly on top of it, so a tap opens the native picker
+  return (
+    <label className={`relative flex shrink-0 ${pending ? "opacity-50" : ""}`}>
+      <span aria-hidden="true" className={`flex size-10 items-center justify-center rounded-full border sm:hidden ${value === options[0][0] ? "border-line text-ash" : "border-red bg-redwash text-chalk"}`}>
+        <Icon d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3" />
+      </span>
+      <select key={value} aria-label="Sort members" defaultValue={value} disabled={pending} onChange={(e) => pick(e.target.value)}
+        className="field min-h-9 w-auto cursor-pointer py-1 text-sm max-sm:absolute max-sm:inset-0 max-sm:size-full max-sm:opacity-0">
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </label>
   );
 }
 
@@ -826,12 +860,16 @@ export function RequestRow({ id, name, href, photo, newPhoto, changes, note }: {
 }
 
 /** Members list search: results update as you type (a short pause, then the list reloads), and the server matches
- *  fuzzily — typos, initials, part of a phone number. Keeps the current tab, sort and filters; back to page 1. */
+ *  fuzzily — typos, initials, part of a phone number. Keeps the current tab; back to page 1. */
 export function MemberSearch({ initial }: { initial: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [value, setValue] = useState(initial);
   const timer = useRef(0);
+  // remember the list as it's set up (tab, search, page) so "← Members" on a profile comes back to it
+  useEffect(() => {
+    document.cookie = `members_view=${location.search}; path=/admin; max-age=43200; samesite=lax`; // query strings are already cookie-safe
+  });
   const go = (q: string) => {
     const p = new URLSearchParams(location.search);
     if (q.trim()) p.set("q", q.trim());
@@ -859,73 +897,6 @@ export function MemberSearch({ initial }: { initial: string }) {
       />
       {pending && <span aria-hidden="true" className="absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin rounded-full border-2 border-ash border-t-transparent" />}
     </form>
-  );
-}
-
-/** Members list: sort and filter icon buttons, each opening its own panel. Choices apply at once and reset the page. */
-export function MemberFilters({ query, sorts, branches, defaultSort }: { defaultSort: string; query: Record<string, string>; sorts: readonly (readonly [string, string])[]; branches: [string, string][] }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const go = (over: Record<string, string>) => {
-    const p = new URLSearchParams(Object.entries({ ...query, ...over, page: "" }).filter(([k, v]) => v && !(k === "sort" && v === defaultSort) && !(k === "show" && v === "all")));
-    start(() => router.push(`/admin/members${p.size ? `?${p}` : ""}`, { scroll: false }));
-  };
-  const sort = query.sort || defaultSort;
-  const narrowed = [query.gender, query.branch, query.photo].filter(Boolean).length;
-  // remember the list as it's set up (tab, search, sort, filters, page) so "← Members" on a profile comes back to it
-  useEffect(() => {
-    document.cookie = `members_view=${location.search}; path=/admin; max-age=43200; samesite=lax`; // query strings are already cookie-safe
-  });
-  const group = (label: string, k: string, options: [string, string][]) => (
-    <div role="group" aria-label={label} className="flex flex-col gap-1.5 px-3 py-2">
-      <span className="label">{label}</span>
-      <div className="grid gap-1 rounded-md border border-line bg-panel p-1" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
-        {options.map(([v, l]) => {
-          const on = (query[k] || "") === v;
-          return (
-            <button key={v} type="button" aria-pressed={on} onClick={() => go({ [k]: v })}
-              className={`min-h-9 cursor-pointer truncate rounded px-2 text-sm font-semibold transition-colors ${on ? "bg-red text-white" : "text-ash hover:text-chalk"}`}>
-              {l}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className={`flex shrink-0 items-center gap-1.5 transition-opacity ${pending ? "opacity-50" : ""}`} aria-busy={pending}>
-      <Pop id="member-sort" label={`Sort: ${sorts.find(([v]) => v === sort)?.[1]}`} active={sort !== defaultSort}
-        icon={<Icon d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3" />}>
-        {(close) => (
-          <>
-            <p className="px-3 pt-2 pb-1 font-display text-xl uppercase">Sort by</p>
-            {sorts.map(([v, l]) => (
-              <button key={v} type="button" aria-pressed={sort === v} onClick={() => (close(), go({ sort: v }))} className={`${MENU_ITEM} ${sort === v ? "text-chalk" : "text-ash"}`}>
-                {l}
-                {sort === v && <span className="text-red"><Icon d="m5 12 5 5 9-10" size={16} /></span>}
-              </button>
-            ))}
-          </>
-        )}
-      </Pop>
-      <Pop id="member-filter" label={narrowed ? `Filters (${narrowed} on)` : "Filter"} active={narrowed > 0} badge={narrowed} width="w-80"
-        icon={<Icon d="M3 5h18l-7 8.5V19l-4 2v-7.5z" />}>
-        {() => (
-          <>
-            <p className="px-3 pt-2 pb-1 font-display text-xl uppercase">Filter members</p>
-            {group("Gender", "gender", [["", "All"], ["male", "Men"], ["female", "Women"]])}
-            {branches.length > 1 && group("Home branch", "branch", [["", "All"], ...branches])}
-            {group("Photo", "photo", [["", "Any"], ["none", "Missing"]])}
-            {narrowed > 0 && (
-              <button type="button" onClick={() => go({ gender: "", branch: "", photo: "" })} className={`${MENU_ITEM} mt-1 justify-center border-t border-line text-red`}>
-                Clear filters
-              </button>
-            )}
-          </>
-        )}
-      </Pop>
-    </div>
   );
 }
 

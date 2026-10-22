@@ -46,6 +46,24 @@ export function Stat({ label, value, href, tone }: { label: string; value: strin
   return href ? <Link href={href} className={`${cls} transition-colors hover:border-red`}>{body}</Link> : <div className={cls}>{body}</div>;
 }
 
+/** Sibling pages under one menu item (Reports, Website, Pricing & offers): a row of pills, `current` lit. */
+export function Tabs({ tabs, current }: { tabs: [href: string, label: string][]; current: string }) {
+  return (
+    <nav aria-label="Section" className="-mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
+      {tabs.map(([href, label]) => (
+        <Link key={href} href={href} aria-current={href === current ? "page" : undefined}
+          className={`min-h-9 shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-semibold ${href === current ? "border-red bg-redwash text-chalk" : "border-line text-ash hover:text-chalk"}`}>
+          {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+export const REPORT_TABS: [string, string][] = [["/admin/analytics", "Analytics"], ["/admin/log", "Staff log"]];
+export const WEBSITE_TABS: [string, string][] = [["/admin/content/client", "Transformations"], ["/admin/content/gallery", "Gallery"], ["/admin/content/reel", "Reels"], ["/admin/settings", "Socials & contact"]];
+export const PRICING_TABS: [string, string][] = [["/admin/pricing", "Pricing"], ["/admin/offers", "Offers"]];
+
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="px-5 py-8 text-center text-ash">{children}</p>;
 }

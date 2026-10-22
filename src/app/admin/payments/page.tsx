@@ -30,15 +30,15 @@ export default async function PaymentsPage() {
 
   return (
     <>
-      <PageHeader title="Payments" intro="Confirm desk payments, and see what came in recently." />
+      <PageHeader title="Payments" />
 
       {asks && asks.count > 0 && (
-        <Panel title={`Discount requests · ${asks.count}`} intro="Staff asked to sell below the standard price. Approve it, or turn it down to put the order back at the standard price." flush>
+        <Panel title={`Discount requests · ${asks.count}`} intro="Staff want to sell below the standard price." flush>
           <div className="divide-y divide-line">{asks.rows.map((r) => <PendingRow key={r.id} {...r} proof={proofs.get(r.id) ?? null} owner />)}</div>
         </Panel>
       )}
 
-      <Panel title={`Awaiting payment · ${pending.count}`} intro="Take the money, or check the member's UPI screenshot against your UPI app (amount and UTR), then mark it paid." flush>
+      <Panel title={`Awaiting payment · ${pending.count}`} intro="Check the money (or the UPI screenshot against your UPI app), then mark it paid." flush>
         {pending.rows.length ? <div className="divide-y divide-line">{pending.rows.map((r) => <PendingRow key={r.id} {...r} proof={proofs.get(r.id) ?? null} owner={isOwner} />)}</div> : <Empty>Nothing to confirm right now.</Empty>}
       </Panel>
 

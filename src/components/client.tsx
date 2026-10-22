@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import Lenis from "lenis";
 import { bestOffer, discounted, savings, DURATIONS, GENDERS, gymDate, inr, itemImage, offerPercent, openState, prettyDay, TRACKS, videoEmbed, type Branch, type Holiday, type MemberDetails, type Offer, type Plan, type SiteItem, type Track } from "@/lib/gym";
 import { siteImg } from "@/lib/img";
@@ -56,6 +56,13 @@ export function SmoothScroll() {
   }, [pathname]);
 
   return null;
+}
+
+/** Inside a <Link>: a span that pulses while that navigation is still on its way (a page not prefetched yet), so a tap
+ *  answers at once instead of looking ignored. */
+export function LinkPending({ className, children }: { className?: string; children: ReactNode }) {
+  const { pending } = useLinkStatus();
+  return <span className={`${className ?? ""} ${pending ? "animate-pulse" : ""}`}>{children}</span>;
 }
 
 /** Registers /sw.js — what makes "Install app" show on older Android browsers too, and the offline page. Production

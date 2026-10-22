@@ -2,11 +2,11 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireStaff, type Profile } from "@/lib/supabase";
-import { ageOf, GENDERS, inr, payMethod, planName, prettyDay, recentGymDates, waLink, type Plan } from "@/lib/gym";
+import { ageOf, GENDERS, inr, LOGIN_EMAIL_DOMAIN, payMethod, planName, prettyDay, recentGymDates, type Plan } from "@/lib/gym";
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
-import { Avatar, Empty, Panel, waNumber } from "../../kit";
-import { AdminModal, Desk, MemberEditForm, MemberPhotoForm, RenewButton } from "../../ui";
+import { Avatar, Empty, Panel } from "../../kit";
+import { Desk, MemberPhotoForm, MemberTools, RenewButton, WhatsAppButton } from "../../ui";
 import { deskRef, trainersFor } from "../../data";
 
 export const metadata = { title: "Member — Stars Gym admin" };
@@ -42,7 +42,6 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const lastEnd = paid.reduce<string | null>((max, p) => (!max || p.ends_on! > max ? p.ends_on! : max), null);
   const daysLeft = current && lastEnd ? Math.round((Date.parse(lastEnd) - Date.parse(today)) / 864e5) + 1 : 0;
   const lastGym = paid.find((p) => p.plans.track !== "personal_training" && p.plans.duration_days > 1);
-  const first = member.full_name.split(" ")[0] || "there";
   const age = ageOf(member);
   const facts = [b.find((x) => x.id === member.home_branch_id)?.name, GENDERS.find(([g]) => g === member.gender)?.[1], age != null && `${age} yrs`].filter(Boolean).join(" · ");
   const status = current
@@ -50,33 +49,47 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
     : lastEnd
       ? { text: `Expired ${prettyDay(lastEnd)}`, cls: "border-red bg-red text-white" }
       : { text: "No plan yet", cls: "border-line text-ash" };
+  const streakDays = (streak.data as number) ?? 0;
+  const lastVisit = v.reduce<string | null>((max, x) => (!max || x.day > max ? x.day : max), null);
+  const email = member.email && !member.email.endsWith(`@${LOGIN_EMAIL_DOMAIN}`) ? member.email : null; // not the hidden sign-in one
+  // the numbers the desk asks about, in one strip
+  const glance: [string, string][] = [
+    ["Plan", current ? planName(current.plans) : lastGym ? planName(lastGym.plans) : "None yet"],
+    [current ? "Valid till" : "Ended", lastEnd ? prettyDay(lastEnd) : "—"],
+    ["Visits · 30 days", String(new Set(v.map((x) => x.day)).size)],
+    ["Last visit", lastVisit ? (lastVisit === today ? "Today" : prettyDay(lastVisit)) : "Not in 30 days"],
+    ["Streak", `${streakDays} day${streakDays === 1 ? "" : "s"}`],
+    ...(member.emergency_contact ? [["Emergency", member.emergency_contact] as [string, string]] : []),
+    ...(email ? [["Email", email] as [string, string]] : []),
+  ];
 
   return (
     <Desk owner={isOwner} branches={b.filter((x) => x.active && (!branchId || x.id === branchId))} plans={ref.plans} offers={ref.offers} trainers={trainersFor(ref.trainers, view)}>
       <Link href={`/admin/members${back.startsWith("?") ? back : ""}`} className="-mb-2 self-start text-sm font-bold text-ash hover:text-chalk">← Members</Link>
 
-      {/* who, are they paid up, and the things the desk does next */}
-      <section className="flex flex-col gap-5 rounded-lg border border-line bg-carbon p-4 sm:flex-row sm:items-center sm:p-5">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <Avatar src={photo} name={member.full_name || "?"} size="size-20 sm:size-24" />
+      {/* who, are they paid up, the numbers at a glance, and the things the desk does next */}
+      <section className="flex flex-col gap-4 rounded-lg border border-line bg-carbon p-4 sm:p-5">
+        <div className="flex min-w-0 items-center gap-4">
+          <Avatar src={photo} name={member.full_name || "?"} size="size-16 sm:size-20" />
           <div className="flex min-w-0 flex-col gap-1.5">
-            <h1 className="font-display text-[clamp(28px,5vw,44px)] leading-none break-words uppercase">{member.full_name || "Member"}</h1>
-            {member.phone && <p className="text-ash">{member.phone}</p>}
-            {facts && <p className="text-sm text-ash">{facts}</p>}
+            <h1 className="font-display text-[clamp(26px,4vw,40px)] leading-none break-words uppercase">{member.full_name || "Member"}</h1>
+            {(member.phone || facts) && <p className="text-sm text-ash">{[member.phone, facts].filter(Boolean).join(" · ")}</p>}
             <span className={`self-start rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${status.cls}`}>{status.text}</span>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-col sm:w-48">
-          <RenewButton member={member} renew={!!lastGym} lastPlanId={lastGym?.plans.id} currentEnd={lastEnd} admissionPaise={paid.length ? null : ref.admissionPaise} className="btn-red col-span-2 min-h-12" />
-          {member.phone && <a href={waLink(waNumber(member.phone), `Hi ${first}!`)} target="_blank" rel="noreferrer" className="btn-ghost min-h-11">WhatsApp</a>}
-          {member.phone && <a href={`tel:${member.phone}`} className="btn-ghost min-h-11">Call</a>}
-          {current && <Link href={`/pass/${current.id}`} className="btn-ghost min-h-11">Show pass</Link>}
-          <AdminModal label="Edit" title={`Edit · ${member.full_name || "member"}`} className="btn-ghost min-h-11">
-            <div className="flex flex-col gap-6">
-              <MemberEditForm member={member} branches={b.filter((x) => x.active && (!branchId || x.id === branchId))} />
-              <div className="border-t border-line pt-5"><MemberPhotoForm id={member.id} url={photo} /></div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-line py-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {glance.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-xs text-ash">{label}</dt>
+              <dd className="truncate font-semibold">{value}</dd>
             </div>
-          </AdminModal>
+          ))}
+        </dl>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <RenewButton member={member} renew={!!lastGym} lastPlanId={lastGym?.plans.id} currentEnd={lastEnd} admissionPaise={paid.length ? null : ref.admissionPaise} className="btn-red min-h-10 px-6 max-sm:basis-full" />
+          <WhatsAppButton member={member} endsOn={lastEnd} expired={!current && !!lastEnd} />
+          <MemberTools member={member} passId={current?.id ?? null} cancelSubId={current?.id ?? null}
+            editExtra={<MemberPhotoForm id={member.id} url={photo} />} />
         </div>
       </section>
 

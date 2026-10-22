@@ -220,6 +220,7 @@ html[data-busy]::before { content: ""; position: fixed; z-index: 100; top: 0; le
 /* ── Circle cursor (see components/cursor.tsx) ── */
 /* the popover wrapper that keeps it above dialogs and menus: a click-through, unstyled full-screen layer */
 .cursor-layer { position: fixed; inset: 0; width: auto; height: auto; margin: 0; padding: 0; border: 0; background: none; overflow: visible; pointer-events: none; }
+.cursor-dot { view-transition-name: cursor-dot; } .cursor-ring { view-transition-name: cursor-ring; }
 .cursor-dot, .cursor-ring { position: fixed; top: 0; left: 0; z-index: 9999; pointer-events: none; opacity: 0; border-radius: 9999px; will-change: transform; }
 /* solid white with a faint dark edge: reads on the dark photo, on red buttons and on light areas, no colour shift */
 .cursor-dot { width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35); }
@@ -244,4 +245,40 @@ html[data-busy]::before { content: ""; position: fixed; z-index: 100; top: 0; le
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   [data-reveal] { opacity: 1; transform: none; }
+}
+
+/* ── Page transitions (app/template.tsx + dashboard/admin templates, React <ViewTransition>) ──
+   The old page leaves fast so it never competes; the new one fades in just behind it. Clicks pass through while it runs. */
+::view-transition { pointer-events: none; }
+::view-transition-old(.vt-page-out) { animation: vt-fade 0.12s ease-in both reverse; }
+::view-transition-new(.vt-page-in) { animation: vt-fade 0.22s ease-out 0.06s both; }
+@keyframes vt-fade { from { opacity: 0; } }
+/* the skeleton (loading.tsx) gives way to the real page: content fades in where the placeholders were. Opacity only —
+   a transform here would trap the fixed tab bars and sticky headers inside the page while it ran */
+.page-in > * { animation: page-in 0.3s ease-out both; }
+@keyframes page-in { from { opacity: 0; } }
+/* the active tab's marker slides to the tapped tab instead of jumping */
+::view-transition-group(tab-mark), ::view-transition-group(side-mark) { animation-duration: 0.32s; animation-timing-function: var(--ease-lift); }
+/* the custom cursor keeps tracking the mouse instead of freezing in the snapshot */
+::view-transition-group(cursor-dot), ::view-transition-group(cursor-ring), ::view-transition-new(cursor-dot), ::view-transition-new(cursor-ring) { animation: none; }
+::view-transition-old(cursor-dot), ::view-transition-old(cursor-ring) { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*), ::view-transition-new(*), ::view-transition-group(*) { animation: none !important; }
+}
+
+/* ── Every <dialog> (sheets, menus, confirm boxes, scanner): rises and fades in, sinks and fades out; its backdrop fades.
+   Native (@starting-style + allow-discrete), so no JS; older browsers just open instantly. In base so a dialog's own
+   utilities still win. */
+@layer base {
+  dialog { opacity: 0; translate: 0 1rem; transition: opacity 0.2s ease-out, translate 0.32s var(--ease-lift), overlay 0.32s allow-discrete, display 0.32s allow-discrete; }
+  dialog[open] { opacity: 1; translate: none; }
+  @starting-style { dialog[open] { opacity: 0; translate: 0 1rem; } }
+  dialog::backdrop { opacity: 0; transition: opacity 0.2s ease-out, overlay 0.32s allow-discrete, display 0.32s allow-discrete; }
+  dialog[open]::backdrop { opacity: 1; }
+  @starting-style { dialog[open]::backdrop { opacity: 0; } }
+
+  /* FAQ and "more" sections (<details>): the content slides open instead of snapping */
+  details { interpolate-size: allow-keywords; }
+  details::details-content { block-size: 0; overflow: clip; transition: block-size 0.3s var(--ease-lift), content-visibility 0.3s allow-discrete; }
+  details[open]::details-content { block-size: auto; }
 }

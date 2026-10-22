@@ -74,7 +74,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/admin/team"
 
   return (
     <>
-      <PageHeader title="Team" intro="Desk staff and trainers in one place. A trainer who also runs the desk is one person here.">
+      <PageHeader title="Team" intro="Desk staff and trainers.">
         <AdminModal label="+ Add person" title="Add to the team">
           <TeamForm branches={active} />
         </AdminModal>
@@ -98,7 +98,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/admin/team"
         )}
       </Panel>
 
-      <Panel title={`Personal training · ${clients.length}`} intro="Running PT plans by trainer. Set the trainer when selling a PT plan, or change it here." flush>
+      <Panel title={`Personal training · ${clients.length}`} intro="Running PT plans by trainer." flush>
         {groups.length ? (
           <div className="divide-y divide-line">
             {groups.map((g) => (

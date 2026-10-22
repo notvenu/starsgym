@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/supabase";
 import type { Plan } from "@/lib/gym";
-import { PageHeader, Panel } from "../kit";
+import { PageHeader, Panel, PRICING_TABS, Tabs } from "../kit";
 import { AdmissionForm, PriceForm } from "../ui";
 
 export const metadata = { title: "Pricing — Stars Gym admin" };
@@ -13,11 +13,12 @@ export default async function PricingPage() {
   ]);
   return (
     <>
-      <PageHeader title="Pricing" intro="Change any price and hit save — the website, checkout and desk form update straight away. Switch a plan off to stop selling it." />
-      <Panel title="Prices (₹)" intro="Longer plans show their monthly equivalent and how much cheaper they are than paying monthly.">
+      <Tabs tabs={PRICING_TABS} current="/admin/pricing" />
+      <PageHeader title="Pricing" intro="Saved prices go live everywhere at once." />
+      <Panel title="Prices (₹)">
         <PriceForm plans={(data ?? []) as Plan[]} />
       </Panel>
-      <Panel title="Admission" intro="Charged once, on a member's first membership — online and at the desk. Not on trial days or day passes. Set 0 to switch it off.">
+      <Panel title="Admission" intro="Once, on a first membership. 0 = off.">
         <AdmissionForm paise={settings?.admission_fee_paise ?? 19900} />
       </Panel>
     </>

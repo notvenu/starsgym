@@ -61,7 +61,7 @@ export default async function SummaryPage({ searchParams }: PageProps<"/admin/su
 
       {/* who bought what that day — tap a group to see the names */}
       {s.people.length > 0 && (
-        <Panel title="Who joined and renewed" intro="Tap a group to see the people." flush>
+        <Panel title="Who joined and renewed" flush>
           <div className="divide-y divide-line">
             {([["new", "New joiners", "First membership"], ["renewal", "Renewals", "Had a plan before"], ["pass", "Day passes & trials", "One-day visits"]] as const).map(([kind, label, sub]) => {
               const list = s.people.filter((x) => x.kind === kind);
@@ -90,7 +90,7 @@ export default async function SummaryPage({ searchParams }: PageProps<"/admin/su
       )}
 
       {s.byBranch.length > 1 && (
-        <Panel title="By branch" intro="Tap a branch for its detail." flush>
+        <Panel title="By branch" flush>
           <div className="divide-y divide-line">
             {s.byBranch.map((b) => {
               const rows: [string, string][] = [
@@ -126,9 +126,6 @@ export default async function SummaryPage({ searchParams }: PageProps<"/admin/su
         </Panel>
       )}
 
-      {isOwner && <p className="text-sm text-ash">
-        Who did what that day: <Link href="/admin/log" className="font-bold text-red hover:text-chalk">Staff log →</Link> · Trends over weeks and months: <Link href="/admin/analytics" className="font-bold text-red hover:text-chalk">Analytics →</Link>
-      </p>}
     </>
   );
 }

@@ -8,6 +8,7 @@ import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
 import { NotificationToggle } from "@/components/push";
+import { InstallApp } from "@/components/install";
 
 export const metadata = { title: "Admin — Stars Gym" };
 
@@ -23,6 +24,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const branchName = ref.branches.find((x) => x.id === view)?.name;
   const branchList = canSwitch ? ref.branches.filter((x) => x.active) : null;
 
+  // the daily work, for everyone at the desk
   const desk: NavGroup = {
     label: "Front desk",
     items: [
@@ -30,38 +32,31 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       { href: "/admin/members", label: "Members", icon: "members" },
       { href: "/admin/payments", label: "Payments", icon: "payments", badge: pending.count ?? 0 },
       { href: "/admin/checkins", label: "Check-ins", icon: "scan" },
-      // staff: holidays, enquiries and the running offers here; the owner has the full pages in their own sections
-      ...(isOwner ? [] : [
-        { href: "/admin/summary", label: "Daily summary", icon: "overview" as const },
-        { href: "/admin/enquiries", label: "Enquiries", icon: "enquiries" as const, badge: enquiries.count ?? 0 },
-        { href: "/admin/offers", label: "Offers", icon: "plans" as const },
-        { href: "/admin/branches", label: "Holidays", icon: "branches" as const },
-      ]),
+      { href: "/admin/summary", label: "Daily summary", icon: "summary" },
+      { href: "/admin/enquiries", label: "Enquiries", icon: "enquiries", badge: enquiries.count ?? 0 },
     ],
   };
-  // staff get the front desk for their branch; everything else is the owner's
-  const groups: NavGroup[] = !isOwner ? [desk] : [
+  // related pages share one item, with tabs on the page (kit.tsx Tabs)
+  const groups: NavGroup[] = [
     desk,
-    {
-      label: "Business",
-      items: [
-        { href: "/admin/pricing", label: "Pricing", icon: "pricing" },
-        { href: "/admin/offers", label: "Offers", icon: "plans" },
-        { href: "/admin/branches", label: "Branches & holidays", icon: "branches" },
-        { href: "/admin/team", label: "Team", icon: "staff" },
-      ],
-    },
-    { label: "Insights", items: [{ href: "/admin/summary", label: "Daily summary", icon: "overview" }, { href: "/admin/analytics", label: "Analytics", icon: "analytics" }, { href: "/admin/log", label: "Staff log", icon: "log" }] },
-    {
-      label: "Website",
-      items: [
-        { href: "/admin/content/client", label: "Transformations", icon: "results" },
-        { href: "/admin/content/gallery", label: "Gallery", icon: "gallery" },
-        { href: "/admin/content/reel", label: "Reels", icon: "reels" },
-        { href: "/admin/settings", label: "Socials & contact", icon: "settings" },
-      ],
-    },
-    { label: "Inbox", items: [{ href: "/admin/enquiries", label: "Enquiries", icon: "enquiries", badge: enquiries.count ?? 0 }] },
+    isOwner
+      ? {
+          label: "Manage",
+          items: [
+            { href: "/admin/pricing", label: "Pricing & offers", icon: "pricing", match: ["/admin/offers"] },
+            { href: "/admin/branches", label: "Branches & holidays", icon: "branches" },
+            { href: "/admin/team", label: "Team", icon: "staff" },
+            { href: "/admin/content/client", label: "Website", icon: "gallery", match: ["/admin/content", "/admin/settings"] },
+            { href: "/admin/analytics", label: "Reports", icon: "analytics", match: ["/admin/log"] },
+          ],
+        }
+      : {
+          label: "More",
+          items: [
+            { href: "/admin/offers", label: "Offers", icon: "plans" },
+            { href: "/admin/branches", label: "Holidays", icon: "branches" },
+          ],
+        },
   ];
 
   const switcher = branchList && branchList.length > 1 ? <BranchSwitch branches={branchList.map((x) => [x.id, x.name])} value={view ?? ""} /> : null;
@@ -69,7 +64,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const footer = (
     <div className="flex flex-col gap-1">
       {/* desk alerts: UPI screenshots to verify, discounts to approve */}
-      <div className="px-3 pb-2"><NotificationToggle compact /></div>
+      <div className="px-3 pb-2"><InstallApp /><NotificationToggle compact /></div>
       <Link href="/" className="rounded px-3 py-2.5 text-sm text-ash hover:bg-steel hover:text-chalk">View website ↗</Link>
       <form action={signOut}>
         <button className="w-full cursor-pointer rounded px-3 py-2.5 text-left text-sm text-ash hover:bg-steel hover:text-chalk">Sign out</button>

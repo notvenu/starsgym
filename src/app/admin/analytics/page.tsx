@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/supabase";
 import { GENDERS, gymDate, inr, planName, prettyDay, waLink, type Track } from "@/lib/gym";
 import { BarList, ColumnChart, Heatmap, type Point } from "../charts";
-import { Empty, PageHeader, Panel, waNumber } from "../kit";
+import { Empty, PageHeader, Panel, REPORT_TABS, Tabs, waNumber } from "../kit";
 
 export const metadata = { title: "Analytics — Stars Gym admin" };
 
@@ -100,6 +100,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
 
   return (
     <>
+      <Tabs tabs={REPORT_TABS} current="/admin/analytics" />
       <PageHeader title="Analytics" intro={`${where} · ${prettyDay(from)} – ${prettyDay(to)}`} />
 
       {/* one control scopes the page; it scrolls sideways on narrow phones */}
@@ -127,7 +128,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
         <ColumnChart data={series(s.revenue_by_day, from, to, range)} format="inr" unit="revenue" />
       </Panel>
 
-      <Panel title={`Gone quiet · ${s.quiet.length}`} intro="Have a plan but haven't trained in 10+ days. A quick message brings most of them back." flush>
+      <Panel title={`Gone quiet · ${s.quiet.length}`} intro="Have a plan, no visit in 10+ days." flush>
         {s.quiet.length ? (
           <ul className="divide-y divide-line">
             {s.quiet.map((m) => (
@@ -152,7 +153,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
         <Panel title="Check-ins" intro={`Visits per ${per}.`}>
           <ColumnChart data={series(s.checkins_by_day, from, to, range)} format="count" unit="check-ins" />
         </Panel>
-        <Panel title="Peak hours" intro="When members check in. Staff the dark squares.">
+        <Panel title="Peak hours">
           <Heatmap cells={s.heatmap} />
         </Panel>
       </div>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LinkPending } from "@/components/client";
 
 // stroke icon paths (24×24)
 const TABS = [
@@ -30,7 +31,7 @@ export function HeaderTabs() {
             <li key={t.href}>
               <Link href={t.href} aria-current={active ? "page" : undefined}
                 className={`flex min-h-10 items-center gap-2 rounded-full px-4 text-[15px] font-semibold transition-colors duration-200 ${active ? "bg-steel text-chalk shadow-[inset_0_0_0_1px_var(--color-strong)]" : "text-ash hover:text-chalk"}`}>
-                <span className={active ? "text-red" : ""}><Icon d={t.icon} size={17} /></span>
+                <LinkPending className={active ? "text-red" : ""}><Icon d={t.icon} size={17} /></LinkPending>
                 {t.label}
               </Link>
             </li>
@@ -54,8 +55,8 @@ export function BottomTabs() {
               <Link href={t.href} aria-current={active ? "page" : undefined}
                 className={`relative flex min-h-16 touch-manipulation flex-col items-center justify-center gap-1 text-[11px] font-semibold select-none ${active ? "text-chalk" : "text-faint active:text-ash"}`}>
                 {/* the active tab's marker, on the bar's top edge */}
-                {active && <span className="absolute inset-x-5 top-0 h-0.5 rounded-b bg-red" />}
-                <span className={active ? "text-red" : ""}><Icon d={t.icon} size={22} /></span>
+                {active && <span className="absolute inset-x-5 top-0 h-0.5 rounded-b bg-red [view-transition-name:tab-mark]" />}
+                <LinkPending className={active ? "text-red" : ""}><Icon d={t.icon} size={22} /></LinkPending>
                 {t.label}
               </Link>
             </li>

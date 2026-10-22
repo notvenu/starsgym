@@ -30,7 +30,7 @@ export default async function BranchesPage({ searchParams }: PageProps<"/admin/b
 
   return (
     <>
-      <PageHeader title={isOwner ? "Branches & holidays" : "Holidays"} intro={isOwner ? "Each branch's hours and entrance QR, and the days the gym is closed." : "Add a day the gym is closed. The owner can remove one if needed."}>
+      <PageHeader title={isOwner ? "Branches & holidays" : "Holidays"} intro={isOwner ? undefined : "Add a day the gym is closed."}>
         {isOwner && <BranchModal label="+ New branch" className="btn-red" />}
       </PageHeader>
 

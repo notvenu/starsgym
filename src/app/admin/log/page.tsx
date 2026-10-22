@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/supabase";
-import { Empty, PageHeader, Panel } from "../kit";
+import { Empty, PageHeader, Panel, REPORT_TABS, Tabs } from "../kit";
 
 export const metadata = { title: "Staff log — Stars Gym admin" };
 
@@ -22,7 +22,8 @@ export default async function StaffLogPage({ searchParams }: PageProps<"/admin/l
 
   return (
     <>
-      <PageHeader title="Staff log" intro="Every sale, payment, discount request, edit and setting change — and who made it." />
+      <Tabs tabs={REPORT_TABS} current="/admin/log" />
+      <PageHeader title="Staff log" intro="Who did what, newest first." />
       <nav aria-label="Filter by person" className="flex gap-1.5 overflow-x-auto [scrollbar-width:none]">
         {[["", "Everyone"] as const, ...(team.data ?? []).map((p) => [p.id as string, (p.full_name as string) || "Unnamed"] as const)].map(([id, name]) => (
           <Link key={id || "all"} href={id ? `/admin/log?who=${id}` : "/admin/log"} aria-current={(who ?? "") === id ? "page" : undefined}

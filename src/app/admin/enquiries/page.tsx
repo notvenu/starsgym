@@ -35,7 +35,7 @@ export default async function EnquiriesPage() {
 
   return (
     <>
-      <PageHeader title="Enquiries" intro="Messages from the Contact us form. Call or WhatsApp back, then mark them handled." />
+      <PageHeader title="Enquiries" intro="From the Contact us form." />
       <Panel title={`New · ${(open.data ?? []).length}`} flush>
         {(open.data ?? []).length ? (
           <ul className="divide-y divide-line px-5">{((open.data ?? []) as unknown as Enquiry[]).map((e) => <EnquiryRow key={e.id} id={e.id}>{row(e)}</EnquiryRow>)}</ul>

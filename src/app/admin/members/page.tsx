@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
-import { fuzzyScore, gymDate, gymDateIn, waLink } from "@/lib/gym";
+import { fuzzyScore, gymDate, gymDateIn } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
-import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, waNumber } from "../kit";
-import { AddMemberForm, AdminModal, Desk, MemberActions, MemberFilters, MemberSearch } from "../ui";
+import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL } from "../kit";
+import { AddMemberForm, AdminModal, Desk, MemberActions, MemberSearch, SortSelect, WhatsAppButton } from "../ui";
 import { deskRef, trainersFor } from "../data";
 
 export const metadata = { title: "Members — Stars Gym admin" };
@@ -17,16 +17,14 @@ type Member = Profile & {
 const FILTERS = [
   ["all", "All"],
   ["active", "Active"],
-  ["expiring", "Ending in 7 days"],
+  ["expiring", "Expiring soon"],
   ["expired", "Expired"],
-  ["upcoming", "Starts later"],
-  ["none", "No plan"],
 ] as const;
 type Show = (typeof FILTERS)[number][0];
 
 const SORTS = [
-  ["ending_late", "Ending latest"],
-  ["ending", "Ending soonest"],
+  ["ending_late", "Plan end date"],
+  ["ending", "Expired → ending last"],
   ["new", "Newest first"],
   ["name", "Name A–Z"],
 ] as const;
@@ -42,9 +40,6 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
   const q = str("q").toLowerCase();
   const show = pick(FILTERS, sp.show, "all");
   const sort = pick(SORTS, sp.sort, "ending_late");
-  const gender = str("gender");
-  const branch = str("branch");
-  const noPhoto = str("photo") === "none";
   const today = gymDate();
   const weekOut = gymDateIn(7);
 
@@ -72,13 +67,14 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
     const lastEnd = subs.reduce<string | null>((max, s) => (!max || s.ends_on! > max ? s.ends_on! : max), null);
     // a run of back-to-back plans (e.g. 2 × 1 month) counts as one: days left run to the last end date
     const endsOn = current ? lastEnd : null;
-    const state: Exclude<Show, "all" | "expiring"> = current ? "active" : upcoming ? "upcoming" : subs.length ? "expired" : "none";
+    const state = current ? "active" : upcoming ? "upcoming" : subs.length ? "expired" : "none";
     // the pass to show: today's, else the next one
     // what Renew pre-picks: their latest membership (not PT or a day pass)
     const lastPlanId = subs.filter((s) => gymPlan.has(s.plan_id)).sort((a, b) => b.ends_on!.localeCompare(a.ends_on!))[0]?.plan_id ?? null;
     return { ...m, state, endsOn, startsOn: upcoming?.starts_on ?? null, lastEnd, passId: (current ?? upcoming)?.id ?? null, hadPlan: subs.length > 0, lastPlanId };
   });
 
+  // expiring soon: a running plan that ends in the next 7 days
   const matches = (m: (typeof everyone)[number], s: Show) =>
     s === "all" || (s === "expiring" ? m.state === "active" && m.endsOn! <= weekOut : m.state === s);
   // fuzzy search: typos, initials and partial phone numbers still find them; best matches first
@@ -86,21 +82,20 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
   const base = everyone.filter(
     (m) =>
       (!q || score.get(m.id) != null) &&
-      (!gender || m.gender === gender) &&
-      (!branch || m.home_branch_id === branch) &&
-      (!view || m.home_branch_id === view || (!m.home_branch_id && m.role === "member")) &&
-      (!noPhoto || (!m.photo_path && m.role === "member")),
+      (!view || m.home_branch_id === view || (!m.home_branch_id && m.role === "member")),
   );
   const counts = Object.fromEntries(FILTERS.map(([k]) => [k, base.filter((m) => matches(m, k)).length])) as Record<Show, number>;
   const byEnd = (m: (typeof everyone)[number]) => m.endsOn ?? m.lastEnd ?? "";
+  // best search match first, then the picked order
   const filtered = base
     .filter((m) => matches(m, show))
     .sort((a, b) =>
       q && score.get(a.id) !== score.get(b.id) ? score.get(a.id)! - score.get(b.id)!
       : sort === "name" ? (a.full_name || "").localeCompare(b.full_name || "")
-      // members with no plan sink to the bottom either way
+      // plan end date: on Expiring soon the one ending first is on top; elsewhere the latest end date (no plan last)
+      // every end date, earliest first: expired, then expiring soon, then the plans ending last (no plan at the bottom)
       : sort === "ending" ? (byEnd(a) || "9999").localeCompare(byEnd(b) || "9999")
-      : sort === "ending_late" ? byEnd(b).localeCompare(byEnd(a))
+      : sort === "ending_late" ? (show === "expiring" ? byEnd(a).localeCompare(byEnd(b)) : byEnd(b).localeCompare(byEnd(a)))
       : b.created_at.localeCompare(a.created_at),
     );
 
@@ -109,11 +104,10 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
   const rows = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const photos = await photoUrls(rows.map((m) => m.photo_path));
 
-  const params = { show, sort, q: str("q"), gender, branch, photo: noPhoto ? "none" : "" };
-  const defaults: Record<string, string> = { show: "all", sort: "ending_late" };
+  const params = { show, sort, q: str("q") };
   const href = (over: Partial<typeof params> & { page?: number }) => {
     const all = { ...params, ...over } as Record<string, string | number>;
-    const out = Object.entries(all).filter(([k, v]) => v && v !== defaults[k] && !(k === "page" && v === 1));
+    const out = Object.entries(all).filter(([k, v]) => v && !(k === "show" && v === "all") && !(k === "sort" && v === "ending_late") && !(k === "page" && v === 1));
     return `/admin/members${out.length ? `?${new URLSearchParams(out.map(([k, v]) => [k, String(v)]))}` : ""}`;
   };
   const branchList = ref.branches.filter((b) => b.active && (!branchId || b.id === branchId)); // staff: just theirs
@@ -122,10 +116,9 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
 
   return (
     <>
-      <PageHeader title="Members" intro="Look anyone up, see who's in today, sign up walk-ins.">
+      <PageHeader title="Members">
         {isOwner && <a href="/admin/members/export" download className="btn-ghost">Download CSV</a>}
-        <AdminModal label="+ New member" title="New member" startOpen={sp.new === "1"}>
-          <p className="-mt-1 mb-5 text-sm text-ash">Details → photo → plan → payment. Ends with their account details: a temporary password and a sign-in QR for their phone.</p>
+        <AdminModal label="+ New member" title="New member">
           <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} admissionPaise={fee} />
         </AdminModal>
       </PageHeader>
@@ -139,7 +132,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
           <MemberSearch initial={params.q} />
         }
       >
-        {/* one row: plan-state tabs (scroll sideways on phones), then the sort and filter icons */}
+        {/* plan-state tabs (scroll sideways on phones), then the sort order */}
         <div className="flex items-center gap-3 border-b border-line py-3 pr-5">
           <nav aria-label="Filter members" className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pl-5 [scrollbar-width:none]">
             {FILTERS.map(([k, label]) => (
@@ -149,14 +142,14 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
               </Link>
             ))}
           </nav>
-          <MemberFilters defaultSort="ending_late" query={params} sorts={SORTS} branches={branchList.map((b) => [b.id, b.name])} />
+          <SortSelect value={sort} options={SORTS} />
         </div>
         {rows.length ? (
           <ul className="divide-y divide-line">
             {rows.map((m) => {
               const daysLeft = m.endsOn ? Math.round((Date.parse(m.endsOn) - Date.parse(today)) / 864e5) + 1 : 0;
               return (
-                <li key={m.id} className="flex items-center gap-1.5 pr-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
+                <li key={m.id} className="flex flex-wrap items-center gap-1.5 pr-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
                   <Link href={`/admin/members/${m.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2 pl-3 sm:pl-5">
                     <Avatar src={m.photo_path ? photos.get(m.photo_path) : null} name={m.full_name || "?"} size="size-10" />
                     <span className="min-w-0 flex-1">
@@ -181,11 +174,11 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
                       </span>
                     )}
                   </Link>
+                  <WhatsAppButton member={m} endsOn={m.endsOn ?? m.lastEnd} expired={m.state === "expired"} />
                   <MemberActions
                     member={m}
                     passId={m.passId}
                     cancelSubId={m.state === "active" ? m.passId : null}
-                    waHref={m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}!`) : null}
                     admissionPaise={m.hadPlan ? null : fee}
                     lastPlanId={m.lastPlanId}
                     currentEnd={m.lastEnd}

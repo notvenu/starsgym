@@ -77,14 +77,35 @@ export function NotificationToggle({ compact, nudge }: { compact?: boolean; nudg
 
   if (state === "loading" || state === "unsupported") return null;
   if (nudge && state !== "off") return null; // a reminder to turn them on: gone once they're on (or can't be)
+  // the desk menu: one line — bell, label, a switch (or why there's none)
+  if (compact) {
+    const on = state === "on";
+    const can = state === "on" || state === "off";
+    return (
+      <div className="flex min-h-10 items-center gap-2.5 text-sm">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`shrink-0 ${on ? "text-red" : "text-ash"}`}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
+        <span className="flex-1 font-semibold">Notifications</span>
+        {can ? (
+          <button type="button" role="switch" aria-checked={on} aria-label="Notifications on this device" disabled={busy} onClick={on ? turnOff : turnOn}
+            className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${on ? "bg-red" : "bg-strong"}`}>
+            <span className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white transition-transform duration-200 ease-lift ${on ? "translate-x-5" : ""}`} />
+          </button>
+        ) : (
+          <span className="text-xs text-ash" title={state === "blocked" ? "Allow notifications in your browser's site settings" : "Add Stars Gym to your home screen, then open it from there"}>
+            {state === "blocked" ? "Blocked" : "Install app"}
+          </span>
+        )}
+      </div>
+    );
+  }
   const hint = {
     "ios-install": "On iPhone: Share → Add to Home Screen, then open Stars Gym from there to turn these on.",
     blocked: "Blocked for this site. Allow notifications in your browser's site settings, then come back.",
-    off: compact ? "Payments, plan reminders, holidays" : "Payment confirmed, your plan ending soon, holiday closures.",
+    off: "Payment confirmed, your plan ending soon, holiday closures.",
     on: "On for this device.",
   }[state];
   return (
-    <div className={`flex items-center gap-3 ${compact ? "" : "rounded-xl border border-line bg-carbon p-4"}`}>
+    <div className="flex items-center gap-3 rounded-xl border border-line bg-carbon p-4">
       <span aria-hidden="true" className={`flex size-10 shrink-0 items-center justify-center rounded-full ${state === "on" ? "bg-red text-white" : "bg-steel text-ash"}`}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
       </span>

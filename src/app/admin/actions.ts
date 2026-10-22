@@ -694,4 +694,3 @@ export async function switchBranch(branchId: string) {
   (await cookies()).set("admin_branch", branchId, { path: "/admin", maxAge: 31536000, httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
   revalidatePath("/admin", "layout");
 }
-
