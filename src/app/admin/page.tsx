@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { requireStaff, type Profile } from "@/lib/supabase";
-import { ageOf, GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, waLink, type Branch, type Holiday, type Offer, type Plan } from "@/lib/gym";
+import { GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, waLink, type Holiday, type Plan } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
-import { MemberActions, RequestRow } from "./ui";
-import { getTrainers } from "./data";
+import { Desk, MemberActions, RequestRow } from "./ui";
+import { deskRef, trainersFor } from "./data";
 import { siteOrigin } from "@/lib/pass";
 import { ScanButton } from "@/components/scanner";
 import { NotificationToggle } from "@/components/push";
@@ -13,7 +13,11 @@ type Visit = { created_at: string; session: string; branch_id: string; user_id: 
 type Ending = { id: string; user_id: string; ends_on: string; plans: Plan; profiles: Profile | null };
 
 export default async function Overview({ searchParams }: PageProps<"/admin">) {
-  const scanNext = (await searchParams).scan === "1"; // "Scan next" on a checked pass comes back here
+  const sp = await searchParams;
+  const scanNext = sp.scan === "1"; // "Scan next" on a checked pass comes back here
+  // "Show 10 more" on the expiring / expired lists: how many rows each shows (only those get photos signed)
+  const upTo = (v: unknown) => Math.min(500, Math.max(10, Number(v) || 10));
+  const count = { expiring: upTo(sp.expiring), expired: upTo(sp.expired) };
   const { supabase, profile, isOwner, branchId, view } = await requireStaff();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the generic query-builder type recurses too deep
   const only = (q: any) => (view ? q.eq("branch_id", view) : q);
@@ -23,15 +27,14 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const monthAgo = gymDateIn(-30);
 
   const newSince = gymDateIn(-6); // the last 7 days, today included
-  const [branches, checkins, active, paid, holidays, offers, enquiries, expiring, plans, requests, ended, trainers, joined] = await Promise.all([
-    supabase.from("branches").select("*").eq("active", true).order("created_at"),
+  const [ref, checkins, active, paid, holidays, enquiries, expiring, requests, ended, joined, sold] = await Promise.all([
+    deskRef(),
     only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
     // ponytail: counts distinct members client-side; switch to an SQL count past ~10k active plans
     only(supabase.from("subscriptions").select("user_id").eq("status", "active").lte("starts_on", today).gte("ends_on", today)).limit(10000),
     // the month's takings are the owner's; staff see who to renew instead
     isOwner ? only(supabase.from("subscriptions").select("amount_paise").eq("status", "active").gte("paid_at", `${monthStart}T00:00:00+05:30`)).limit(10000) : null,
     supabase.from("holidays").select("*").gte("day", today).order("day").limit(3),
-    supabase.from("offers").select("*").eq("active", true).lte("starts_on", today).gte("ends_on", today),
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
     only(supabase
       .from("subscriptions")
@@ -40,8 +43,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .gte("ends_on", today)
       .lte("ends_on", weekOut))
       .order("ends_on")
-      .limit(50),
-    supabase.from("plans").select("*").eq("active", true).order("track").order("duration_days"),
+      .limit(300),
     // members' name / gender / branch / photo change requests this desk can see (RLS); none before 0015
     supabase.from("profile_requests").select("*,profiles!profile_requests_user_id_fkey(full_name,photo_path,gender,home_branch_id,phone,email)").eq("status", "pending").order("created_at"),
     // plans that ran out in the last 30 days — the renewal list (members who bought again are dropped below)
@@ -53,7 +55,6 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .lt("ends_on", today))
       .order("ends_on", { ascending: false })
       .limit(300),
-    getTrainers(supabase, view),
     // new joiners: paid plans that started in the last 7 days — the ones that are someone's first are kept below.
     // (Not account age: the GymPro import made hundreds of accounts in one day.)
     only(supabase
@@ -64,8 +65,12 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .lte("starts_on", today))
       .order("starts_on", { ascending: false })
       .limit(300),
+    // memberships sold in the last 7 days — the ones to people who'd had a plan before are renewals (counted below)
+    only(supabase.from("subscriptions").select("user_id,plans!inner(track,duration_days)").eq("status", "active").gte("paid_at", `${newSince}T00:00:00+05:30`).gt("plans.duration_days", 1).neq("plans.track", "personal_training")).limit(1000),
   ]);
-  const b = (branches.data ?? []) as Branch[];
+  const b = ref.branches.filter((x) => x.active);
+  const liveOffers = ref.offers.filter((o) => o.starts_on <= today && o.ends_on >= today);
+  const trainers = trainersFor(ref.trainers, view);
   const members = new Set(((active.data ?? []) as { user_id: string }[]).map((r) => r.user_id)).size;
   const collected = ((paid?.data ?? []) as { amount_paise: number }[]).reduce((sum, r) => sum + r.amount_paise, 0);
   const origin = await siteOrigin();
@@ -78,11 +83,15 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const startedRows = (joined.data ?? []) as unknown as Joiner[];
   const startedIds = [...new Set(startedRows.map((j) => j.user_id))];
   // one round trip for both: who renewed after lapsing, and who already had a plan before this week
-  const [{ data: renewed }, { data: earlier }] = await Promise.all([
+  // a plan before this week (imported ones have no paid_at) makes this week's purchase a renewal
+  const soldIds = [...new Set(((sold.data ?? []) as { user_id: string }[]).map((r) => r.user_id))];
+  const [{ data: renewed }, { data: earlier }, { data: before }] = await Promise.all([
     lapsedIds.length ? supabase.from("subscriptions").select("user_id").eq("status", "active").gte("ends_on", today).in("user_id", lapsedIds) : { data: [] },
     startedIds.length ? supabase.from("subscriptions").select("user_id").eq("status", "active").lt("starts_on", newSince).in("user_id", startedIds) : { data: [] },
+    soldIds.length ? supabase.from("subscriptions").select("user_id").eq("status", "active").or(`paid_at.is.null,paid_at.lt.${new Date(`${newSince}T00:00:00+05:30`).toISOString()}`).in("user_id", soldIds) : { data: [] },
   ]);
   const returning = new Set((earlier ?? []).map((r) => r.user_id as string));
+  const renewals = new Set((before ?? []).map((r) => r.user_id as string)).size; // bought this week, had a plan before it
   const joiners = startedRows.filter((j, i) => !returning.has(j.user_id) && startedRows.findIndex((x) => x.user_id === j.user_id) === i);
   const back = new Set((renewed ?? []).map((r) => r.user_id as string));
   const lapsed = endedRows.filter((e, i) => !back.has(e.user_id) && endedRows.findIndex((x) => x.user_id === e.user_id) === i);
@@ -91,17 +100,26 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     profiles: { full_name: string; photo_path: string | null; gender: string | null; home_branch_id: string | null; phone: string | null; email: string | null } | null };
   const queue = (requests.data ?? []) as unknown as Req[];
   // an overview, not the full lists: the first few of each (with a link to all) keeps the page quick to open on a phone
-  const TOP = 10;
-  const shown = { visits: visits.slice(0, 12), ending: ending.slice(0, TOP), lapsed: lapsed.slice(0, TOP), joiners: joiners.slice(0, 30) }; // a week of new joiners is short: show them all
+  const shown = { visits: visits.slice(0, 12), ending: ending.slice(0, count.expiring), lapsed: lapsed.slice(0, count.expired), joiners: joiners.slice(0, 30) }; // a week of new joiners is short: show them all
   const photos = await photoUrls([...shown.visits.map((v) => v.profiles?.photo_path), ...shown.ending.map((e) => e.profiles?.photo_path), ...shown.lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path]), ...shown.joiners.map((j) => j.profiles?.photo_path)]);
   const more = (total: number, showing: number, href: string, what: string) =>
     total > showing && <Link href={href} className="block border-t border-line px-5 py-3 text-sm font-bold text-red hover:bg-steel/60 hover:text-chalk">All {total} {what} →</Link>;
+  // the renewal lists grow 10 at a time right here — the members list counts "expired" differently (ever, not 30 days)
+  const toggle = (list: "expiring" | "expired", total: number) => {
+    if (total <= count[list]) return null;
+    const next = new URLSearchParams(Object.entries({ ...count, [list]: count[list] + 10 }).filter(([, n]) => n > 10).map(([k, n]) => [k, String(n)]));
+    return (
+      <Link href={`/admin?${next}`} scroll={false} className="block border-t border-line px-5 py-3 text-center text-sm font-bold text-red hover:bg-steel/60 hover:text-chalk">
+        Show 10 more · {total - count[list]} left
+      </Link>
+    );
+  };
   const pic = (p?: string | null) => (p ? photos.get(p) : null);
   const branchName = (id: string) => b.find((x) => x.id === id)?.name ?? "";
   const where = (h: Holiday) => (h.branch_id ? b.find((x) => x.id === h.branch_id)?.name ?? "One branch" : "All branches");
   const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
-  // one row for the renewal lists: who, which plan, a badge, a one-tap WhatsApp renewal message, and the ⋯ menu
+  // one row for the renewal lists: who, which plan, a badge, a one-tap WhatsApp renewal message, Renew, and the ⋯ menu
   const renewRow = (e: Ending, badge: string, message: string, runningSubId: string | null) => {
     const m = e.profiles;
     if (!m) return null;
@@ -109,36 +127,24 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     const renew = `${origin}${e.plans.active ? `/buy/${e.plans.id}` : "/#plans"}`;
     const wa = m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}! ${message} Renew online: ${renew} — or at the desk.`) : null;
     return (
-      <li key={e.id} className="flex items-center gap-2 pr-3 transition-colors hover:bg-steel/60 sm:pr-5">
-        <Link href={`/admin/members/${e.user_id}`} className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-5">
-          <Avatar src={pic(m.photo_path)} name={m.full_name || "?"} size="size-12" />
+      <li key={e.id} className="flex items-center gap-1.5 pr-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
+        <Link href={`/admin/members/${e.user_id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2 pl-3 sm:pl-5">
+          <Avatar src={pic(m.photo_path)} name={m.full_name || "?"} size="size-10" />
           <span className="min-w-0 flex-1">
             <span className="block truncate font-bold">{m.full_name || "—"}</span>
-            <span className="block truncate text-xs text-ash">{[branchName(m.home_branch_id ?? ""), ageOf(m) != null && `${ageOf(m)} yrs`, GENDERS.find(([k]) => k === m.gender)?.[1]].filter(Boolean).join(" · ")}</span>
-            <span className="block truncate text-sm text-ash">{[m.phone, m.email].filter(Boolean).join(" · ")}</span>
-            <span className="block truncate text-sm text-ash">{planName(e.plans)} · {runningSubId ? "till" : "ended"} {prettyDay(e.ends_on)}</span>
-            <span className="mt-1 inline-block rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-red uppercase sm:hidden">{badge}</span>
+            <span className="flex min-w-0 items-center gap-1.5 text-sm text-ash">
+              <span className="shrink-0 rounded-full border border-red px-1.5 text-[10px] leading-4 font-bold tracking-wider text-red uppercase">{badge}</span>
+              {m.phone && <span className="truncate">{m.phone}</span>}
+            </span>
           </span>
-          <span className="shrink-0 rounded-full border border-red px-3 py-1 text-xs font-bold tracking-wider text-red uppercase max-sm:hidden">{badge}</span>
         </Link>
         {wa && (
           <a href={wa} target="_blank" rel="noreferrer" aria-label={`Send ${m.full_name} a renewal message on WhatsApp`} title="Renewal message on WhatsApp"
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-ink transition-transform hover:scale-105">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.4z" /><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8a5 5 0 0 1-2.8-2.8l.8-1-1-2z" /></svg>
+            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-ink transition-transform hover:scale-105">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.4z" /><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8a5 5 0 0 1-2.8-2.8l.8-1-1-2z" /></svg>
           </a>
         )}
-        <MemberActions
-          owner={isOwner}
-          member={m}
-          passId={runningSubId}
-          cancelSubId={runningSubId}
-          waHref={wa}
-          branches={b.filter((x) => !branchId || x.id === branchId)}
-          plans={(plans.data ?? []) as Plan[]}
-          offers={(offers.data ?? []) as Offer[]}
-          trainers={trainers}
-          admissionPaise={null}
-        />
+        <MemberActions member={m} passId={runningSubId} cancelSubId={runningSubId} waHref={wa} admissionPaise={null} lastPlanId={e.plans.id} currentEnd={runningSubId ? e.ends_on : null} />
       </li>
     );
   };
@@ -148,17 +154,18 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       {scanNext && <ScanButton kind="pass" autoOpen className="hidden">Scan</ScanButton>}
       <PageHeader title={`Hi, ${profile.full_name.split(" ")[0] || "coach"}`} intro={`Here's Stars Gym on ${prettyDay(today)}.`}>
         <Link href="/admin/members?new=1" className="btn-red">+ New member</Link>
-        {isOwner && <Link href="/admin/pricing" className="btn-ghost">Edit prices</Link>}
         <Link href="/admin/branches?holiday=1#holidays" className="btn-ghost">Add holiday</Link>
       </PageHeader>
 
       {/* shows only on a device that hasn't turned them on yet: UPI screenshots, discount requests, enquiries */}
       <NotificationToggle nudge />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {/* phones: an odd last tile spans the row */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2">
         <Stat label="Active members" value={members} href="/admin/members?show=active" />
         <Stat label="Check-ins today" value={visits.length} href="#today" />
         <Stat label="New joiners · 7 days" value={joiners.length} href="#joiners" />
+        <Stat label="Renewed · 7 days" value={renewals} />
         <Stat label="Expiring in 7 days" value={ending.length} href="#expiring" tone={ending.length ? "red" : undefined} />
         <Stat label="Expired · not renewed" value={lapsed.length} href="#expired" tone={lapsed.length ? "red" : undefined} />
         {/* the month's takings are the owner's */}
@@ -188,6 +195,36 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         </Panel>
       )}
 
+      <Desk owner={isOwner} branches={b.filter((x) => !branchId || x.id === branchId)} plans={ref.plans} offers={ref.offers} trainers={trainers}>
+      <Panel id="expiring" title={`Expiring soon · ${ending.length}`} intro="Ending in the next 7 days. Renew at the desk, or send a WhatsApp reminder." flush>
+        {ending.length ? (
+          <ul className="divide-y divide-line">
+            {shown.ending.map((e) => {
+              const days = Math.round((Date.parse(e.ends_on) - Date.parse(today)) / 864e5) + 1;
+              return renewRow(e, days <= 1 ? "Ends today" : `${days}d left`, `Your Stars Gym ${planName(e.plans)} plan ends on ${prettyDay(e.ends_on)}. Renew to keep your streak going.`, e.id);
+            })}
+          </ul>
+        ) : (
+          <Empty>No plans ending in the next 7 days.</Empty>
+        )}
+        {toggle("expiring", ending.length)}
+      </Panel>
+
+      <Panel id="expired" title={`Expired · ${lapsed.length}`} intro="Plan ended in the last 30 days and they haven't renewed. Win them back." flush>
+        {lapsed.length ? (
+          <ul className="divide-y divide-line">
+            {shown.lapsed.map((e) => {
+              const ago = Math.round((Date.parse(today) - Date.parse(e.ends_on)) / 864e5);
+              return renewRow(e, ago <= 1 ? "Ended yesterday" : `${ago}d ago`, `We miss you at Stars Gym! Your ${planName(e.plans)} plan ended on ${prettyDay(e.ends_on)}. Renew and pick up where you left off.`, null);
+            })}
+          </ul>
+        ) : (
+          <Empty>Nobody lapsed in the last 30 days.</Empty>
+        )}
+        {toggle("expired", lapsed.length)}
+      </Panel>
+      </Desk>
+
       {/* who walked in today, with their photo — staff can match faces at a glance */}
       <Panel id="today" title="Checked in today" intro={b.length > 1 ? b.map((x) => `${x.name} ${visits.filter((v) => v.branch_id === x.id).length}`).join(" · ") : undefined} flush>
         {visits.length ? (
@@ -211,34 +248,6 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
           <Empty>No check-ins yet today.</Empty>
         )}
         {more(visits.length, shown.visits.length, "/admin/checkins", "check-ins today")}
-      </Panel>
-
-      <Panel id="expiring" title={`Expiring soon · ${ending.length}`} intro="Ending in the next 7 days. Tap the green button to send a renewal message." flush action={<Link href="/admin/members?show=expiring&sort=ending" className="text-sm font-bold text-red hover:text-chalk">All →</Link>}>
-        {ending.length ? (
-          <ul className="divide-y divide-line">
-            {shown.ending.map((e) => {
-              const days = Math.round((Date.parse(e.ends_on) - Date.parse(today)) / 864e5) + 1;
-              return renewRow(e, days <= 1 ? "Ends today" : `${days}d left`, `Your Stars Gym ${planName(e.plans)} plan ends on ${prettyDay(e.ends_on)}. Renew to keep your streak going.`, e.id);
-            })}
-          </ul>
-        ) : (
-          <Empty>No plans ending in the next 7 days.</Empty>
-        )}
-        {more(ending.length, shown.ending.length, "/admin/members?show=expiring&sort=ending", "ending this week")}
-      </Panel>
-
-      <Panel id="expired" title={`Expired · ${lapsed.length}`} intro="Plan ended in the last 30 days and they haven't renewed. Win them back." flush action={<Link href="/admin/members?show=expired" className="text-sm font-bold text-red hover:text-chalk">All →</Link>}>
-        {lapsed.length ? (
-          <ul className="divide-y divide-line">
-            {shown.lapsed.map((e) => {
-              const ago = Math.round((Date.parse(today) - Date.parse(e.ends_on)) / 864e5);
-              return renewRow(e, ago <= 1 ? "Ended yesterday" : `${ago}d ago`, `We miss you at Stars Gym! Your ${planName(e.plans)} plan ended on ${prettyDay(e.ends_on)}. Renew and pick up where you left off.`, null);
-            })}
-          </ul>
-        ) : (
-          <Empty>Nobody lapsed in the last 30 days.</Empty>
-        )}
-        {more(lapsed.length, shown.lapsed.length, "/admin/members?show=expired", "expired")}
       </Panel>
 
       <Panel id="joiners" title={`New joiners · ${joiners.length}`} intro="First membership started in the last 7 days. Say hello and make them feel at home." flush>
@@ -268,10 +277,10 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
           {((holidays.data ?? []) as Holiday[]).map((h) => (
             <li key={h.id}><span className="font-bold">Closed {prettyDay(h.day)}</span> <span className="text-ash">· {where(h)}{h.note && ` · ${h.note}`}</span></li>
           ))}
-          {((offers.data ?? []) as Offer[]).map((o) => (
+          {liveOffers.map((o) => (
             <li key={o.id}><span className="font-bold text-red">{o.percent_off}% off</span> <span className="text-ash">· {o.title} till {prettyDay(o.ends_on)}</span></li>
           ))}
-          {!holidays.data?.length && !offers.data?.length && <li className="text-ash">No holidays or live offers.</li>}
+          {!holidays.data?.length && !liveOffers.length && <li className="text-ash">No holidays or live offers.</li>}
         </ul>
       </Panel>
     </>

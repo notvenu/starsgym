@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminDb } from "@/lib/supabase";
-import { inr, orderUpi, planName, type Plan } from "@/lib/gym";
+import { unstable_cache, revalidateTag } from "next/cache";
+import { inr, orderUpi, planName, type Branch, type Offer, type Plan } from "@/lib/gym";
 
 type PendingSub = { branches: { upi_id?: string | null } | null; trainer_id: string | null; id: string; amount_paise: number; method: string; created_at: string; approval: string | null; standard_paise: number | null; plans: Plan; profiles: { full_name: string; email: string | null }; requester: { full_name: string } | null };
 
@@ -36,13 +37,40 @@ export async function getPending(supabase: SupabaseClient, limit = 100, branchId
 /** [id, name, their PT fee per month in paise — null = the standard PT price] */
 export type Trainer = [id: string, name: string, feePaise: number | null];
 
-/** Trainer cards for the PT trainer picker, this branch's plus both-branch ones. */
-export async function getTrainers(supabase: SupabaseClient, branchId: string | null = null): Promise<Trainer[]> {
-  // ponytail: * so the picker still works before the pt_fee_paise column is added
-  const q = supabase.from("site_items").select("*").eq("kind", "trainer").order("sort");
-  const { data } = await (branchId ? q.or(`branch_id.is.null,branch_id.eq.${branchId}`) : q);
-  return (data ?? []).map((t) => [t.id as string, (t.title as string) || "Trainer", (t.pt_fee_paise as number | null) ?? null]);
-}
+/**
+ * What every desk page reads but only the owner's settings change: branches, active plans and offers, the admission fee
+ * and the trainers. Cached across requests and users (tag "desk"); every admin save expires it (clearDesk), and it
+ * refreshes itself every 5 minutes anyway. Service key: nothing here is per-user — pages scope it to their branch.
+ */
+export const deskRef = unstable_cache(
+  async () => {
+    const db = adminDb();
+    const [branches, plans, offers, settings, trainers] = await Promise.all([
+      db.from("branches").select("*").order("created_at"),
+      db.from("plans").select("*").eq("active", true).order("track").order("duration_days"),
+      db.from("offers").select("*").eq("active", true),
+      db.from("site_settings").select("admission_fee_paise").eq("id", 1).maybeSingle(),
+      // ponytail: * so the picker still works before the pt_fee_paise column is added
+      db.from("site_items").select("*").eq("kind", "trainer").order("sort"),
+    ]);
+    return {
+      branches: (branches.data ?? []) as Branch[],
+      plans: (plans.data ?? []) as Plan[],
+      offers: (offers.data ?? []) as Offer[],
+      admissionPaise: (settings.data?.admission_fee_paise as number | undefined) ?? 0,
+      trainers: (trainers.data ?? []).map((t) => ({ id: t.id as string, name: (t.title as string) || "Trainer", fee: (t.pt_fee_paise as number | null) ?? null, branchId: (t.branch_id as string | null) ?? null })),
+    };
+  },
+  ["desk-ref"],
+  { tags: ["desk"], revalidate: 300 },
+);
+
+/** After any admin save: the next page load reads fresh prices, offers, branches and trainers. */
+export const clearDesk = () => revalidateTag("desk", { expire: 0 });
+
+/** Trainers for the PT picker: this branch's plus both-branch ones. */
+export const trainersFor = (all: Awaited<ReturnType<typeof deskRef>>["trainers"], branchId: string | null): Trainer[] =>
+  all.filter((t) => !branchId || !t.branchId || t.branchId === branchId).map((t) => [t.id, t.name, t.fee]);
 
 /** One branch's day. Money fields are for the owner's eyes only (the page hides them from staff). */
 export type BranchDay = { name: string; checkins: number; sales: number; renewed: number; newMembers: number; ended: number; expiringWeek: number; collected: number; cash: number; upi: number; online: number };

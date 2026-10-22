@@ -173,7 +173,7 @@ export default async function Home() {
             {trial && <Pass href={`/buy/${trial.id}`} title="Trial day" sub="First visit · one per person" price={<Price paise={trial.price_paise} offer={bestOffer(offers, "trial", 1)} days={1} />} cta="Book" red />}
             {dayPass && <Pass href={`/buy/${dayPass.id}`} title="Day pass" sub="Single day · any branch" price={<Price paise={dayPass.price_paise} offer={bestOffer(offers, "day_pass", 1)} days={1} />} cta="Buy" />}
           </div>
-          <p className="text-[15px] text-ash">Prefer the desk? Choose “Pay at the desk” at checkout and scan the UPI QR at reception.</p>
+          <p className="text-[15px] text-ash">Pay by UPI at checkout and send the screenshot — the desk confirms it and your plan starts.</p>
         </div>
       </section>
 

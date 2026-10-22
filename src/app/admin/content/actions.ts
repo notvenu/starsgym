@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { clearDesk } from "@/app/admin/data";
 import { adminDb, requireAdmin, requireStaff } from "@/lib/supabase";
 import { logAction } from "@/lib/log";
 import { reelEmbed, videoEmbed, type ItemKind } from "@/lib/gym";
@@ -9,7 +10,7 @@ import { sitePhoto } from "./upload";
 export type Result = { error?: string; ok?: string } | undefined;
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const KINDS: ItemKind[] = ["trainer", "client", "gallery", "reel"];
-const refresh = (ok: string): Result => (revalidatePath("/", "layout"), { ok });
+const refresh = (ok: string): Result => (revalidatePath("/", "layout"), clearDesk(), { ok });
 
 const https = (v: string) => !v || v.startsWith("https://");
 

@@ -3,13 +3,14 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { clearDesk } from "@/app/admin/data";
 import { redirect } from "next/navigation";
 import { adminDb, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, hasProof, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
 import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
-import { notifyAfter, ownerIds } from "@/lib/push";
+import { notifyAfter } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
 import { allow, SLOW_DOWN } from "@/lib/rate-limit";
 
@@ -22,7 +23,7 @@ export type Created = {
   plans: SoldPlan[]; // the membership and/or PT add-on sold with the account (none for "account only")
   planError?: string; // the account was made but the plan wasn't sold (still show the password and QR)
 };
-export type SoldPlan = { label: string; amount: number; state: "paid" | "pay" | "approval"; subId: string; endsOn: string | null };
+export type SoldPlan = { label: string; amount: number; state: "paid" | "pay"; subId: string; endsOn: string | null };
 
 /** A temporary password nobody can work out from the member's details: 8 random characters, no look-alikes (0/o, 1/l). */
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -37,7 +38,7 @@ async function loginLink(email: string) {
   return `${await siteOrigin()}/auth/confirm?${q}`;
 }
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const done = (ok: string): Result => (revalidatePath("/admin", "layout"), revalidatePath("/"), { ok });
+const done = (ok: string): Result => (revalidatePath("/admin", "layout"), revalidatePath("/"), clearDesk(), { ok });
 /** done(), after a line in the staff log. */
 const logged = async (me: Profile, action: string, ok: string, opts?: Parameters<typeof logAction>[2]): Promise<Result> => {
   await logAction(me, action, opts);
@@ -107,7 +108,7 @@ function pickedStart(form: FormData): { start: string | null; error?: string } {
 
 /** Desk sign-up: creates the member and optionally sells their first plan — paid now, or shown as a UPI QR. */
 export async function addMember(_: Result, form: FormData): Promise<Result> {
-  const { supabase, branchId, profile: me, isOwner } = await requireStaff();
+  const { supabase, branchId, profile: me } = await requireStaff();
   const branch = branchId ?? s(form, "branch_id"); // staff sign people up at their own branch
   const email = s(form, "email").toLowerCase(); // optional: they sign in with their phone either way
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: "Check the email — or leave it blank." };
@@ -165,7 +166,7 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
   }
   await logAction(me, existing ? "Updated member" : "Added member", { memberId: userId, memberName: s(form, "full_name"), branchId: branch || null });
 
-  const sold = s(form, "plan_id") || s(form, "pt_plan_id") ? await sellPlans(supabase, me, isOwner, userId, branch || null, form) : null;
+  const sold = s(form, "plan_id") || s(form, "pt_plan_id") ? await sellPlans(supabase, me, userId, branch || null, form) : null;
   const planError = sold && "error" in sold ? sold.error : undefined;
   revalidatePath("/admin", "layout");
   // even when the plan fails, the account exists: always hand over its password and sign-in QR (sell the plan after)
@@ -176,12 +177,12 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
 }
 
 /** Sell an existing member their next plan (from the members list). Queued after their current plan if one is running.
- *  Staff renew at the standard price; a discount waits for the owner like any other sale. */
+ *  The desk can set any price; a discount is noted in the staff log. */
 export async function renewMember(_: Result, form: FormData): Promise<Result> {
-  const { supabase, profile: me, branchId, isOwner } = await requireStaff();
+  const { supabase, profile: me, branchId } = await requireStaff();
   const userId = s(form, "user_id");
   if (!(await sees(supabase, "profiles", userId))) return NOT_YOURS;
-  const sold = await sellPlans(supabase, me, isOwner, userId, branchId ?? (s(form, "branch_id") || null), form);
+  const sold = await sellPlans(supabase, me, userId, branchId ?? (s(form, "branch_id") || null), form);
   if ("error" in sold) return sold;
   // a QR still has to be shown to the member; a paid renewal just confirms — the pass is the member's, not the desk's
   const qr = sold.find((x) => x.state === "pay");
@@ -189,12 +190,7 @@ export async function renewMember(_: Result, form: FormData): Promise<Result> {
     revalidatePath("/admin", "layout");
     redirect(`/pay/${qr.subId}`);
   }
-  const paid = sold.filter((x) => x.state === "paid");
-  const asked = sold.filter((x) => x.state === "approval");
-  return done([
-    paid.length && `Renewed · ${paid.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}`,
-    asked.length && `Sent to the owner to approve ${asked.map((x) => `${x.label} at ${inr(x.amount)}`).join(" and ")} — take the money once it's approved (Payments)`,
-  ].filter(Boolean).join(". "));
+  return done(`Renewed · ${sold.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}`);
 }
 
 /** Owner only. Deletes the member's account, plans, visits and photo. Staff and admin accounts can't be deleted here. */
@@ -260,10 +256,10 @@ async function placeDates(subId: string, userId: string, picked: string | null):
 /**
  * Sells the membership and/or PT add-on on the form, from one payment: creates each order (the database prices it,
  * live offer applied, admission only on a first membership — never on PT), then activates it (cash / UPI received)
- * or leaves it for the QR. The owner can set any price; a staff price below the standard (or a changed admission)
- * waits, unpaid, for the owner (0018). A cash part covers the membership first, then the PT.
+ * or leaves it for the QR. The desk (owner or staff) can set any price — no approval; the staff log notes the standard.
+ * A cash part covers the membership first, then the PT.
  */
-async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: string, branchId: string | null, form: FormData): Promise<{ error: string } | SoldPlan[]> {
+async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: string | null, form: FormData): Promise<{ error: string } | SoldPlan[]> {
   const items = saleItems(form);
   if ("error" in items) return items;
   const pay = s(form, "payment"); // "cash" | "upi_paid" | "split" (part cash, rest UPI) | "qr"
@@ -285,7 +281,7 @@ async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: st
   if (proof.error) return { error: proof.error };
 
   // 1. the orders, unpaid
-  type Made = { id: string; item: SaleItem; fee: number; adm: number; standard: number; total: number; discounted: boolean; needsApproval: boolean; label: string; method?: string; cashPart?: number | null };
+  type Made = { id: string; item: SaleItem; fee: number; adm: number; standard: number; total: number; discounted: boolean; label: string; method?: string; cashPart?: number | null };
   const made: Made[] = [];
   const dropAll = () => Promise.all(made.map((m) => adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", m.id).eq("status", "pending")));
   for (const i of items) {
@@ -304,7 +300,7 @@ async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: st
     const adm = fee > 0 ? (i.admission !== null ? Math.round(i.admission * 100) : fee) : 0;
     const total = planPart + adm;
     const discounted = total !== standard || adm !== fee;
-    made.push({ id: sub.id as string, item: i, fee, adm, standard, total, discounted, needsApproval: discounted && !isOwner, label: plan ? `${planName(plan as Plan)}${i.addOn ? " (add-on)" : ""}` : "Plan" });
+    made.push({ id: sub.id as string, item: i, fee, adm, standard, total, discounted, label: plan ? `${planName(plan as Plan)}${i.addOn ? " (add-on)" : ""}` : "Plan" });
   }
 
   // 2. who pays what
@@ -320,9 +316,8 @@ async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: st
     m.method = pay === "cash" || (pay === "split" && part >= m.total) ? "cash" : "upi_qr";
     m.cashPart = pay === "split" && part > 0 && part < m.total ? part : null;
   }
-  // taken now (not a QR, not waiting for the owner): any UPI needs its screenshot; cash may have a photo of the receipt
-  const takenNow = (m: Made) => pay !== "qr" && !m.needsApproval;
-  if (made.some((m) => takenNow(m) && m.method !== "cash") && !proof.file) {
+  // taken now (not a QR): any UPI needs its screenshot
+  if (pay !== "qr" && made.some((m) => m.method !== "cash") && !proof.file) {
     await dropAll();
     return { error: "Add a screenshot of the UPI payment." };
   }
@@ -338,7 +333,6 @@ async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: st
         cash_paise: m.cashPart ?? null,
         ...(m.item.trainerId && { trainer_id: m.item.trainerId }),
         ...(picked.start && { starts_on: picked.start }), // paid later: Mark paid keeps it
-        ...(m.needsApproval && { approval: "pending", standard_paise: m.standard, requested_by: me.id }),
       })
       .eq("id", m.id);
     if (error) {
@@ -347,17 +341,11 @@ async function sellPlans(supabase: Db, me: Profile, isOwner: boolean, userId: st
     }
   }
 
-  // 4. approvals wait; the rest is logged, then activated now or left for the QR
+  // 4. logged, then activated now or left for the QR
   const out: SoldPlan[] = [];
   for (const m of made) {
     const what = `${m.label} · ${inr(m.total)}${m.discounted ? ` (standard ${inr(m.standard)})` : ""}`;
     const sold = { label: m.label, amount: m.total, subId: m.id, endsOn: null };
-    if (m.needsApproval) {
-      await logAction(me, "Asked for a discount", { memberId: userId, branchId, detail: what });
-      notifyAfter(ownerIds, { title: "Discount to approve", body: `${me.full_name || "Staff"}: ${what}`, url: "/admin/payments", tag: `discount-${m.id}` });
-      out.push({ ...sold, state: "approval" });
-      continue;
-    }
     await logAction(me, pay === "qr" ? "Created order" : "Sold plan", { memberId: userId, branchId, detail: `${what} · ${m.method === "cash" ? "cash" : m.cashPart ? "cash + UPI" : "UPI"}` });
     if (pay === "qr") {
       out.push({ ...sold, state: "pay" });

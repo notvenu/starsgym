@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Sheet } from "@/components/sheet";
 export { Sheet };
 import { useRouter } from "next/navigation";
-import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { createContext, useActionState, useCallback, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { Field, MemberDetailsFields, PhoneField } from "@/components/client";
 import { confirmDialog, ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
 import QRCode from "qrcode";
@@ -115,7 +115,7 @@ function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, upiId, onClose }
         </a>
       )}
       {sent && <ProofCheck src={sent} amountPaise={amountPaise} createdAt={createdAt} upiId={upiId} />}
-      <ProofInput required={!cash && !sent} hint={sent ? "Only if you want to replace theirs." : cash ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment."} />
+      {!cash && <ProofInput required={!sent} hint={sent ? "Only if you want to replace theirs." : "Screenshot of the UPI payment."} />}
       <div className="flex flex-wrap items-center gap-2">
         <button disabled={pending} className="btn-red min-h-11 px-5 text-xs whitespace-nowrap max-sm:flex-1">{pending ? "Saving…" : "Confirm paid"}</button>
         <button type="button" onClick={onClose} className="btn-ghost min-h-11 px-4 text-xs max-sm:flex-1">Cancel</button>
@@ -138,7 +138,7 @@ const GYM_TRACKS: Track[] = ["strength", "strength_cardio", "couples"];
 const PT_ONLY: [Kind, string, string] = ["pt", "PT only", "Add-on to their plan"];
 
 /** Desk onboarding: details → pass → payment, then straight to the member's ticket. */
-type NewMemberProps = { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; owner: boolean; admissionPaise?: number };
+type NewMemberProps = { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; admissionPaise?: number };
 
 /** "+ New member": the form, then the account-created screen. "Add another" starts a fresh, empty form. */
 export function AddMemberForm(props: NewMemberProps) {
@@ -146,7 +146,7 @@ export function AddMemberForm(props: NewMemberProps) {
   return <NewMemberForm key={round} {...props} onAnother={() => setRound((n) => n + 1)} />;
 }
 
-function NewMemberForm({ branches, plans, offers, trainers, owner, admissionPaise = 0, onAnother }: NewMemberProps & { onAnother: () => void }) {
+function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, onAnother }: NewMemberProps & { onAnother: () => void }) {
   const [state, action, pending] = useActionState(addMember, undefined);
   if (state?.created) return <AccountCreated c={state.created} onAnother={onAnother} />;
   return (
@@ -165,7 +165,7 @@ function NewMemberForm({ branches, plans, offers, trainers, owner, admissionPais
           </div>
         </div>
       </Step>
-      <PlanSteps plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
     </form>
   );
 }
@@ -236,7 +236,7 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
           <div className="min-w-0">
             <p className="font-bold">{plan.label} · {inr(plan.amount)}</p>
             <p className="text-sm text-ash">
-              {plan.state === "paid" ? `Paid · active${plan.endsOn ? ` till ${prettyDay(plan.endsOn)}` : ""}` : plan.state === "pay" ? "Waiting for payment" : "Waiting for the owner to approve the price"}
+              {plan.state === "paid" ? `Paid · active${plan.endsOn ? ` till ${prettyDay(plan.endsOn)}` : ""}` : "Waiting for payment"}
             </p>
           </div>
           {plan.state === "pay" && <Link href={`/pay/${plan.subId}`} className="btn-red min-h-11 shrink-0 px-4 text-xs">Show UPI QR</Link>}
@@ -249,8 +249,49 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
   );
 }
 
-/** Members list → Renew: sell an existing member their next plan. Starts the day after their current one ends. */
-export function RenewForm({ userId, branchId, plans, offers, trainers, owner, admissionPaise, onDone }: { userId: string; branchId: string | null; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; owner: boolean; admissionPaise: number | null; onDone?: () => void }) {
+type DeskData = { owner: boolean; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[] };
+const DeskContext = createContext<DeskData>({ owner: false, branches: [], plans: [], offers: [], trainers: [] });
+/** What every row's Renew / Edit needs (prices, offers, trainers, branches), sent once per page instead of once per row. */
+export function Desk({ children, ...value }: DeskData & { children: React.ReactNode }) {
+  return <DeskContext value={value}>{children}</DeskContext>;
+}
+
+/** Renew / sell in one tap: opens the plan form with their last plan already picked. Cash is the default, so a plain
+ *  renewal is this button, then "Renew & issue pass". */
+export function RenewButton({ member, renew, lastPlanId, currentEnd, admissionPaise, className }: {
+  member: Pick<Profile, "id" | "full_name" | "home_branch_id">; renew: boolean; lastPlanId?: string | null; currentEnd?: string | null; admissionPaise: number | null; className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const verb = renew ? "Renew" : "Sell plan";
+  return (
+    <>
+      {className ? (
+        <button type="button" onClick={() => setOpen(true)} className={className}>{verb}</button>
+      ) : (
+        // list rows: a big red icon on phones (the thumb target), the word on wider screens
+        <>
+          <button type="button" onClick={() => setOpen(true)} aria-label={`${verb} ${member.full_name}`} title={verb}
+            className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-red text-white transition-transform active:scale-95 sm:hidden">
+            <Icon size={20} d={renew ? "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" : "M12 5v14M5 12h14"} />
+          </button>
+          <button type="button" onClick={() => setOpen(true)} className="btn-ghost min-h-9 shrink-0 px-3 text-xs max-sm:hidden">{verb}</button>
+        </>
+      )}
+      {open && (
+        <Sheet title={`${verb} · ${member.full_name}`} open onClose={() => setOpen(false)}>
+          <RenewForm userId={member.id} branchId={member.home_branch_id} lastPlanId={lastPlanId} currentEnd={currentEnd} admissionPaise={admissionPaise} onDone={() => setOpen(false)} />
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+/** Sell an existing member their next plan. Starts the day after their current one ends. */
+function RenewForm({ userId, branchId, lastPlanId, currentEnd, admissionPaise, onDone }: { userId: string; branchId: string | null; lastPlanId?: string | null; currentEnd?: string | null; admissionPaise: number | null; onDone?: () => void }) {
+  const { plans, offers, trainers } = useContext(DeskContext);
+  // the day after their current plan (or run of plans) ends; today when nothing is running
+  const today = gymDate();
+  const startOn = currentEnd && currentEnd >= today ? new Date(Date.parse(`${currentEnd}T12:00:00Z`) + 864e5).toISOString().slice(0, 10) : today;
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await renewMember(prev, form);
     if (r?.ok) {
@@ -263,23 +304,24 @@ export function RenewForm({ userId, branchId, plans, offers, trainers, owner, ad
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
       <input type="hidden" name="user_id" value={userId} />
       <input type="hidden" name="branch_id" value={branchId ?? ""} />
-      <PlanSteps plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} kinds={[...KINDS.filter(([k]) => k === "membership" || k === "day_pass"), PT_ONLY]} first={1} verb="Renew" pending={pending} state={state} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} kinds={[...KINDS.filter(([k]) => k === "membership" || k === "day_pass"), PT_ONLY]} first={1} verb="Renew" pending={pending} state={state} start={plans.find((p) => p.id === lastPlanId)} startOn={startOn} />
     </form>
   );
 }
 
-/** Pass → payment → submit. admissionPaise null = they've had a membership, so no admission field. */
-function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, first, verb, pending, state }: {
-  plans: Plan[]; offers: Offer[]; trainers: Trainer[]; owner: boolean; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result;
+/** Pass → payment → submit. admissionPaise null = they've had a membership, so no admission field. `start` pre-picks
+ *  the track and length (their last plan). */
+function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb, pending, state, start, startOn }: {
+  plans: Plan[]; offers: Offer[]; trainers: Trainer[]; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result; start?: Plan; startOn?: string;
 }) {
+  const pre = start && GYM_TRACKS.includes(start.track) ? start : undefined;
   const [kind, setKind] = useState<Kind>("membership");
-  const [track, setTrack] = useState<Track>("strength");
-  const [days, setDays] = useState(30);
+  const [picking, setPicking] = useState(!pre); // a renewal starts on their last plan; "Change" opens the full chooser
+  const [track, setTrack] = useState<Track>(pre?.track ?? "strength");
+  const [days, setDays] = useState(pre?.duration_days ?? 30);
   const [payment, setPayment] = useState("cash");
-  const [asking, setAsking] = useState(false); // staff priced it below standard: it waits for the owner, nothing is paid yet
-  const [ptAsking, setPtAsking] = useState(false);
   const [withPt, setWithPt] = useState(false); // membership + personal training add-on
-  const [ptDays, setPtDays] = useState(30);
+  const [ptDays, setPtDays] = useState(pre?.duration_days ?? 30);
   const [trainerId, setTrainerId] = useState("");
   const [gymTotal, setGymTotal] = useState(0);
   const [ptTotal, setPtTotal] = useState(0);
@@ -289,7 +331,6 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
   const ptPlan = kind === "pt" || (kind === "membership" && withPt) ? ptPlans.find((p) => p.duration_days === ptDays) : undefined;
   const fee = trainers.find(([id]) => id === trainerId)?.[2];
   const selling = !!plan || !!ptPlan;
-  const anyAsking = (!!plan && asking) || (!!ptPlan && ptAsking);
   // a QR covers one plan: with PT, the money is taken at the desk (a QR picked earlier reads as cash)
   const pay = plan && ptPlan && payment === "qr" ? "cash" : payment;
   const n = (i: number) => String(first + i).padStart(2, "0");
@@ -297,12 +338,21 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
   return (
     <>
       <Step n={n(0)} title="Pass">
-        <div className={`grid grid-cols-2 gap-2 ${kinds.length > 2 ? "sm:grid-cols-4" : ""}`}>
+        {!picking && plan && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-red bg-redwash px-4 py-3">
+            <span className="min-w-0">
+              <span className="block font-bold">{planName(plan)}</span>
+              <span className="block text-xs text-ash">Same as last time</span>
+            </span>
+            <button type="button" onClick={() => setPicking(true)} className="btn-ghost min-h-10 shrink-0 px-4 text-xs">Change</button>
+          </div>
+        )}
+        {picking && <div className={`grid grid-cols-2 gap-2 ${kinds.length > 2 ? "sm:grid-cols-4" : ""}`}>
           {kinds.map(([k, label, sub]) => (
             <Choice key={k} name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} label={label} sub={sub} />
           ))}
-        </div>
-        {kind === "membership" && (
+        </div>}
+        {picking && kind === "membership" && (
           <div className="flex flex-col gap-2">
             <Segmented label="Track" options={GYM_TRACKS.map((t) => [t, TRACKS[t]])} value={track} onChange={(v) => setTrack(v as Track)} />
             <Segmented label="Length" options={DURATIONS.map((d) => [String(d.days), d.label])} value={String(days)} onChange={(v) => { setDays(Number(v)); if (!withPt) setPtDays(Number(v)); }} />
@@ -314,8 +364,6 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
             standard={discounted(plan.price_paise, bestOffer(offers, plan.track, plan.duration_days), plan.duration_days)}
             list={plan.price_paise}
             admission={MEMBERSHIPS.includes(plan.track) ? admissionPaise : null}
-            owner={owner}
-            onAsk={setAsking}
             onTotal={setGymTotal}
           />
         )}
@@ -340,7 +388,7 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
             )}
             {ptPlan ? (
               // a trainer with their own fee (Team page) prices it; otherwise the standard PT price, offer applied
-              <PtFee key={`${ptPlan.id}-${trainerId}`} standard={fee ? trainerFee(fee, ptPlan.duration_days) : discounted(ptPlan.price_paise, bestOffer(offers, ptPlan.track, ptPlan.duration_days), ptPlan.duration_days)} owner={owner} onAsk={setPtAsking} onTotal={setPtTotal} />
+              <PtFee key={`${ptPlan.id}-${trainerId}`} standard={fee ? trainerFee(fee, ptPlan.duration_days) : discounted(ptPlan.price_paise, bestOffer(offers, ptPlan.track, ptPlan.duration_days), ptPlan.duration_days)} onTotal={setPtTotal} />
             ) : (
               <p className="text-red">No personal training price for that length — set it on the Pricing page.</p>
             )}
@@ -354,11 +402,12 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
           </p>
         )}
         {selling && (
-          // blank = today, or the day after their current plan ends; pick one to backdate (any past date) or start later (up to 60 days)
+          // renewals come filled in (today, or the day after their current plan ends); any past date backdates, up to 60 days ahead starts later.
+          // New members: blank = today
           <label className="flex flex-col gap-1.5 sm:max-w-64">
-            <span className="label">Start date (optional)</span>
-            <input type="date" name="start_on" max={gymDateIn(60)} className="field" />
-            <span className="text-xs text-ash">Leave blank to start today — or the day after their current plan ends.</span>
+            <span className="label">{startOn ? "Starts on" : "Start date (optional)"}</span>
+            <input type="date" name="start_on" defaultValue={startOn} max={gymDateIn(60)} className="field" />
+            <span className="text-xs text-ash">{startOn ? "Change it to backdate or start later." : "Leave blank to start today."}</span>
           </label>
         )}
         {kind !== "none" && kind !== "pt" && !plan && <p className="text-red">That plan isn&apos;t available.</p>}
@@ -387,9 +436,9 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
               <span className="text-xs text-ash">The rest is recorded as UPI.</span>
             </label>
           )}
-          {/* taken now: UPI needs its screenshot, cash may have the paper receipt. A QR (or an owner approval) is paid later */}
-          {pay !== "qr" && !anyAsking && (
-            <ProofInput required={pay !== "cash"} hint={pay === "cash" ? "A photo of the paper receipt, if you wrote one." : "Screenshot of the UPI payment on their phone or yours."} />
+          {/* UPI taken now needs its screenshot; cash needs nothing. A QR (or an owner approval) is paid later */}
+          {pay !== "qr" && pay !== "cash" && (
+            <ProofInput required hint="Screenshot of the UPI payment on their phone or yours." />
           )}
         </Step>
       )}
@@ -405,13 +454,10 @@ function PlanSteps({ plans, offers, trainers, owner, admissionPaise, kinds, firs
 }
 
 /** Desk pricing: starts at the standard price (offer applied) and admission; staff can change either after negotiating. */
-function NegotiatedPrice({ standard, list, admission, owner, onAsk, onTotal }: { standard: number; list: number; admission: number | null; owner: boolean; onAsk: (asking: boolean) => void; onTotal?: (paise: number) => void }) {
+function NegotiatedPrice({ standard, list, admission, onTotal }: { standard: number; list: number; admission: number | null; onTotal?: (paise: number) => void }) {
   const [price, setPrice] = useState(String(standard / 100));
   const [fee, setFee] = useState(admission !== null ? String(admission / 100) : "0");
   const changed = Math.round(Number(price) * 100) !== standard;
-  // the server's rule (sellPlan): staff below the standard price, or a changed admission, waits for the owner
-  const asking = !owner && (changed || (admission !== null && Math.round(Number(fee) * 100) !== admission));
-  useEffect(() => onAsk(asking), [asking, onAsk]);
   const total = (Number(price) || 0) + (admission !== null ? Number(fee) || 0 : 0);
   useEffect(() => onTotal?.(Math.round(total * 100)), [total, onTotal]);
   const money = (label: string, name: string, value: string, set: (v: string) => void, hint: React.ReactNode) => (
@@ -435,17 +481,14 @@ function NegotiatedPrice({ standard, list, admission, owner, onAsk, onTotal }: {
         <span className="font-display text-3xl">{inr(Math.round(total * 100))}</span>
       </p>
       {admission !== null && <p className="-mt-2 text-xs text-ash">If they&apos;ve had a membership before, admission is skipped automatically.</p>}
-      {!owner && <p className="-mt-1 text-sm font-semibold text-red">Any price below the standard goes to the owner to approve before you take the money.</p>}
     </div>
   );
 }
 
-/** The PT add-on's fee: starts at the standard (offer applied); a staff price below it waits for the owner, like plans. */
-function PtFee({ standard, owner, onAsk, onTotal }: { standard: number; owner: boolean; onAsk: (asking: boolean) => void; onTotal: (paise: number) => void }) {
+/** The PT add-on's fee: starts at the standard (offer applied); the desk can change it. */
+function PtFee({ standard, onTotal }: { standard: number; onTotal: (paise: number) => void }) {
   const [price, setPrice] = useState(String(standard / 100));
   const paise = Math.round((Number(price) || 0) * 100);
-  const asking = !owner && paise !== standard;
-  useEffect(() => onAsk(asking), [asking, onAsk]);
   useEffect(() => onTotal(paise), [paise, onTotal]);
   return (
     <label className="flex min-w-0 flex-col gap-1.5 sm:max-w-64">
@@ -657,11 +700,13 @@ const Icon = ({ d, size = 18 }: { d: string; size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
 );
 
-/** Members list: the ⋯ menu on each row. Edit and renew open in a pop-up without leaving the list. */
-export function MemberActions({ member, passId, cancelSubId, waHref, branches, plans, offers, trainers, admissionPaise, owner }: {
-  owner: boolean; member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; admissionPaise: number | null;
+/** A member row's actions: Renew / Sell right on the row, everything else under ⋯. Both open in a pop-up without leaving
+ *  the list. Needs a <Desk> around the list. */
+export function MemberActions({ member, passId, cancelSubId, waHref, admissionPaise, lastPlanId, currentEnd }: {
+  member: Profile; passId: string | null; cancelSubId?: string | null; waHref: string | null; admissionPaise: number | null; lastPlanId?: string | null; currentEnd?: string | null;
 }) {
-  const [sheet, setSheet] = useState<"edit" | "renew" | null>(null);
+  const { owner, branches } = useContext(DeskContext);
+  const [sheet, setSheet] = useState<"edit" | null>(null);
   const [pending, start] = useTransition();
   const remove = async () => {
     const ok = await confirmDialog({
@@ -675,13 +720,13 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
 
   return (
     <>
+      <RenewButton member={member} renew={!!passId || lastPlanId != null} lastPlanId={lastPlanId} currentEnd={currentEnd} admissionPaise={admissionPaise} />
       <Pop id={`actions-${member.id}`} label={`Actions for ${member.full_name}`} disabled={pending}
         icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>}>
         {(close) => (
           <>
             <Link href={`/admin/members/${member.id}`} className={MENU_ITEM}>View profile</Link>
             <button type="button" onClick={() => (close(), setSheet("edit"))} className={MENU_ITEM}>Edit details</button>
-            <button type="button" onClick={() => (close(), setSheet("renew"))} className={MENU_ITEM}>{passId ? "Renew plan" : "Sell a plan"}</button>
             {passId && <Link href={`/pass/${passId}`} className={MENU_ITEM}>Show pass</Link>}
             {waHref && <a href={waHref} target="_blank" rel="noreferrer" className={MENU_ITEM}>WhatsApp</a>}
             {member.phone && <a href={`tel:${member.phone}`} className={MENU_ITEM}>Call</a>}
@@ -707,12 +752,8 @@ export function MemberActions({ member, passId, cancelSubId, waHref, branches, p
         )}
       </Pop>
       {sheet && (
-        <Sheet title={sheet === "edit" ? member.full_name || "Edit member" : `${passId ? "Renew" : "Sell a plan"} · ${member.full_name}`} open onClose={() => setSheet(null)}>
-          {sheet === "edit" ? (
-            <MemberEditForm member={member} branches={branches} />
-          ) : (
-            <RenewForm userId={member.id} branchId={member.home_branch_id} plans={plans} offers={offers} trainers={trainers} owner={owner} admissionPaise={admissionPaise} onDone={() => setSheet(null)} />
-          )}
+        <Sheet title={member.full_name || "Edit member"} open onClose={() => setSheet(null)}>
+          <MemberEditForm member={member} branches={branches} />
         </Sheet>
       )}
     </>

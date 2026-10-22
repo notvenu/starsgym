@@ -1,17 +1,17 @@
 import Link from "next/link";
 import { requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
-import { fuzzyScore, ageOf, GENDERS, gymDate, gymDateIn, waLink, type Branch, type Offer, type Plan } from "@/lib/gym";
+import { fuzzyScore, gymDate, gymDateIn, waLink } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, waNumber } from "../kit";
-import { AddMemberForm, AdminModal, MemberActions, MemberFilters, MemberSearch } from "../ui";
-import { getTrainers } from "../data";
+import { AddMemberForm, AdminModal, Desk, MemberActions, MemberFilters, MemberSearch } from "../ui";
+import { deskRef, trainersFor } from "../data";
 
 export const metadata = { title: "Members — Stars Gym admin" };
 
 type Member = Profile & {
   created_at: string;
   checkins: { session: string }[];
-  subscriptions: { id: string; status: string; starts_on: string | null; ends_on: string | null }[];
+  subscriptions: { id: string; status: string; starts_on: string | null; ends_on: string | null; plan_id: string }[];
 };
 
 const FILTERS = [
@@ -50,21 +50,20 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
 
   // ponytail: loads every member and filters/sorts here — a gym has hundreds, not tens of thousands.
   // Supabase caps a response at 1000 rows by default; page the query with .range() past that.
-  const [list, branches, plans, offers, settings, trainers] = await Promise.all([
+  const [list, ref] = await Promise.all([
     supabase
       .from("profiles")
-      .select("*,checkins(session),subscriptions!subscriptions_user_id_fkey(id,status,starts_on,ends_on)")
+      .select("*,checkins(session),subscriptions!subscriptions_user_id_fkey(id,status,starts_on,ends_on,plan_id)")
       .eq("checkins.day", today) // only today's visits
       .eq("subscriptions.status", "active") // paid plans only; pending/cancelled orders don't make anyone a member
       .order("created_at", { ascending: false })
       .limit(5000),
-    supabase.from("branches").select("*").eq("active", true).order("created_at"),
-    supabase.from("plans").select("*").eq("active", true).order("track").order("duration_days"),
-    supabase.from("offers").select("*").eq("active", true),
-    supabase.from("site_settings").select("*").eq("id", 1).maybeSingle(),
-    getTrainers(supabase, view),
+    deskRef(),
   ]);
+  const trainers = trainersFor(ref.trainers, view);
 
+  const planList = ref.plans;
+  const gymPlan = new Set(planList.filter((p) => p.track !== "personal_training" && p.duration_days > 1).map((p) => p.id));
   // each member's plan state: the plan covering today, else the next one, else the last one that ended
   const everyone = ((list.data ?? []) as unknown as Member[]).map((m) => {
     const subs = m.subscriptions.filter((s) => s.ends_on);
@@ -75,7 +74,9 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
     const endsOn = current ? lastEnd : null;
     const state: Exclude<Show, "all" | "expiring"> = current ? "active" : upcoming ? "upcoming" : subs.length ? "expired" : "none";
     // the pass to show: today's, else the next one
-    return { ...m, state, endsOn, startsOn: upcoming?.starts_on ?? null, lastEnd, passId: (current ?? upcoming)?.id ?? null, hadPlan: subs.length > 0 };
+    // what Renew pre-picks: their latest membership (not PT or a day pass)
+    const lastPlanId = subs.filter((s) => gymPlan.has(s.plan_id)).sort((a, b) => b.ends_on!.localeCompare(a.ends_on!))[0]?.plan_id ?? null;
+    return { ...m, state, endsOn, startsOn: upcoming?.starts_on ?? null, lastEnd, passId: (current ?? upcoming)?.id ?? null, hadPlan: subs.length > 0, lastPlanId };
   });
 
   const matches = (m: (typeof everyone)[number], s: Show) =>
@@ -115,11 +116,9 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
     const out = Object.entries(all).filter(([k, v]) => v && v !== defaults[k] && !(k === "page" && v === 1));
     return `/admin/members${out.length ? `?${new URLSearchParams(out.map(([k, v]) => [k, String(v)]))}` : ""}`;
   };
-  const branchList = ((branches.data ?? []) as Branch[]).filter((b) => !branchId || b.id === branchId); // staff: just theirs
-  const branchName = new Map(((branches.data ?? []) as Branch[]).map((b) => [b.id, b.name]));
-  const planList = (plans.data ?? []) as Plan[];
-  const offerList = (offers.data ?? []) as Offer[];
-  const fee = settings.data?.admission_fee_paise ?? 0;
+  const branchList = ref.branches.filter((b) => b.active && (!branchId || b.id === branchId)); // staff: just theirs
+  const offerList = ref.offers;
+  const fee = ref.admissionPaise;
 
   return (
     <>
@@ -127,10 +126,11 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
         {isOwner && <a href="/admin/members/export" download className="btn-ghost">Download CSV</a>}
         <AdminModal label="+ New member" title="New member" startOpen={sp.new === "1"}>
           <p className="-mt-1 mb-5 text-sm text-ash">Details → photo → plan → payment. Ends with their account details: a temporary password and a sign-in QR for their phone.</p>
-          <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} owner={isOwner} admissionPaise={fee} />
+          <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} admissionPaise={fee} />
         </AdminModal>
       </PageHeader>
 
+      <Desk owner={isOwner} branches={branchList} plans={planList} offers={offerList} trainers={trainers}>
       <Panel
         title={params.q ? `Results for “${params.q}”` : "Members"}
         intro={`${filtered.length} of ${everyone.length} members`}
@@ -156,17 +156,16 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
             {rows.map((m) => {
               const daysLeft = m.endsOn ? Math.round((Date.parse(m.endsOn) - Date.parse(today)) / 864e5) + 1 : 0;
               return (
-                <li key={m.id} className="flex items-center gap-2 pr-3 transition-colors hover:bg-steel/60 sm:pr-5">
-                  <Link href={`/admin/members/${m.id}`} className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-5">
-                    <Avatar src={m.photo_path ? photos.get(m.photo_path) : null} name={m.full_name || "?"} size="size-12" />
+                <li key={m.id} className="flex items-center gap-1.5 pr-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
+                  <Link href={`/admin/members/${m.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2 pl-3 sm:pl-5">
+                    <Avatar src={m.photo_path ? photos.get(m.photo_path) : null} name={m.full_name || "?"} size="size-10" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="truncate font-bold">{m.full_name || "—"}</span>
                         {m.role !== "member" && <span className="rounded bg-steel px-1.5 text-[11px] font-bold tracking-wider text-ash uppercase">{ROLE_LABEL[m.role]}</span>}
                         {!m.photo_path && m.role === "member" && <span className="rounded border border-redline px-1.5 text-[11px] font-bold tracking-wider text-red uppercase">No photo</span>}
                       </span>
-                      <span className="block truncate text-xs text-ash">{[branchName.get(m.home_branch_id ?? ""), ageOf(m) != null && `${ageOf(m)} yrs`, GENDERS.find(([k]) => k === m.gender)?.[1]].filter(Boolean).join(" · ")}</span>
-                      <span className="block truncate text-sm text-ash">{[m.phone, m.email].filter(Boolean).join(" · ")}</span>
+                      {m.phone && <span className="block truncate text-sm text-ash">{m.phone}</span>}
                       {m.checkins.length > 0 && (
                         <span className="block text-xs font-bold tracking-wider text-red uppercase">In today: {m.checkins.map((c) => SESSION_LABEL[c.session] ?? c.session).join(" + ")}</span>
                       )}
@@ -183,16 +182,13 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
                     )}
                   </Link>
                   <MemberActions
-                    owner={isOwner}
                     member={m}
                     passId={m.passId}
                     cancelSubId={m.state === "active" ? m.passId : null}
                     waHref={m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}!`) : null}
-                    branches={branchList}
-                    plans={planList}
-                    offers={offerList}
-                    trainers={trainers}
                     admissionPaise={m.hadPlan ? null : fee}
+                    lastPlanId={m.lastPlanId}
+                    currentEnd={m.lastEnd}
                   />
                 </li>
               );
@@ -213,7 +209,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
           </nav>
         )}
       </Panel>
-
+      </Desk>
     </>
   );
 }

@@ -10,7 +10,6 @@ import { PassDialog } from "../pass/[subId]/ui";
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
 import { CheckInPanel, ProfileEditor, RenewSheet, ShowcaseForm, type ChangeRequest } from "./ui";
-import { razorpayEnabled } from "@/lib/razorpay";
 import { loadWorkouts } from "./workouts/section";
 
 export const metadata = { title: "Dashboard — Stars Gym" };
@@ -74,7 +73,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const hadMembership = allSubs.some((s) => s.status === "active" && MEMBERSHIP.includes(s.plans.track));
   const renew = (label: string, className?: string) => (
     <RenewSheet label={label} className={className} plans={(plans.data ?? []) as Plan[]} offers={notices.offers} branches={checkInBranches} homeBranch={profile.home_branch_id}
-      current={active ? { track: active.plans.track, days: active.plans.duration_days } : null} online={razorpayEnabled} admissionPaise={hadMembership ? 0 : settings.admission_fee_paise ?? 0} />
+      current={active ? { track: active.plans.track, days: active.plans.duration_days } : null} admissionPaise={hadMembership ? 0 : settings.admission_fee_paise ?? 0} />
   );
   const daysLeft = active ? Math.round((Date.parse(active.ends_on!) - Date.parse(today)) / 864e5) + 1 : 0;
 

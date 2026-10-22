@@ -6,9 +6,8 @@ import { useRouter } from "next/navigation";
 import { Check, Field, OpenStatus, Price, WeekHolidays } from "@/components/client";
 import type { Profile } from "@/lib/supabase";
 import { bestOffer, DURATIONS, GENDERS, inr, ladiesLabel, locate, TRACKS, weekHolidays, type Branch, type Holiday, type Offer, type Plan, type Session, type Track } from "@/lib/gym";
-import { payOnline, RazorpayScript } from "../buy/[planId]/checkout";
+import { UpiPay, type UpiOrder } from "../buy/[planId]/checkout";
 import { startUpi } from "../buy/[planId]/actions";
-import { ProofUpload } from "../pay/[subId]/proof";
 import { PhotoCapture } from "@/components/photo";
 import { Sheet } from "@/components/sheet";
 import { ScanButton } from "@/components/scanner";
@@ -360,14 +359,13 @@ function ContactForm({ profile }: { profile: Profile }) {
 }
 
 const RENEW_TRACKS: Track[] = ["strength", "strength_cardio", "couples"];
-type UpiOrder = { id: string; amount: number; ref: string; link: string; qr: string };
 
 /**
  * "Renew / upgrade" on the dashboard: pick the plan and pay without leaving the page. UPI: their UPI app (or the QR),
- * then the screenshot — required, the desk verifies it and the plan starts once they confirm. Or online via Razorpay.
+ * then the screenshot — required, the desk verifies it and the plan starts once they confirm. UPI is the only way.
  */
-export function RenewSheet({ plans, offers, branches, homeBranch, current, online, admissionPaise, label, className = "btn-ghost" }: {
-  plans: Plan[]; offers: Offer[]; branches: Branch[]; homeBranch: string | null; current: { track: Track; days: number } | null; online: boolean; admissionPaise: number; label: string; className?: string;
+export function RenewSheet({ plans, offers, branches, homeBranch, current, admissionPaise, label, className = "btn-ghost" }: {
+  plans: Plan[]; offers: Offer[]; branches: Branch[]; homeBranch: string | null; current: { track: Track; days: number } | null; admissionPaise: number; label: string; className?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -399,7 +397,6 @@ export function RenewSheet({ plans, offers, branches, homeBranch, current, onlin
     <>
       <button type="button" onClick={() => setOpen(true)} className={className}>{label}</button>
       <Sheet title={order ? "Pay by UPI" : "Renew or upgrade"} open={open} onClose={close}>
-        {online && <RazorpayScript />}
         {sent ? (
           <div className="flex flex-col items-center gap-4 py-4 text-center">
             <span className="flex size-16 items-center justify-center rounded-full bg-red text-white"><Check className="size-8" /></span>
@@ -408,19 +405,7 @@ export function RenewSheet({ plans, offers, branches, homeBranch, current, onlin
             <button type="button" onClick={close} className="btn-red min-h-12 w-full max-w-xs">Done</button>
           </div>
         ) : order ? (
-          <div className="flex flex-col items-center gap-4 text-center">
-            <p className="font-display text-6xl leading-none">{inr(order.amount)}</p>
-            <p className="font-label text-lg font-bold tracking-[0.2em]">REF {order.ref}</p>
-            {/* phones: straight into GPay / PhonePe / Paytm with the amount filled in */}
-            <a href={order.link} className="btn-red min-h-14 w-full max-w-sm text-base">Pay with a UPI app</a>
-            <details className="w-full max-w-sm text-sm text-ash">
-              <summary className="min-h-11 cursor-pointer list-none py-3 font-semibold hover:text-chalk">Paying from another phone? Show the QR</summary>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={order.qr} alt={`UPI QR for ${inr(order.amount)}`} width={240} height={240} className="mx-auto rounded-lg border-8 border-chalk" />
-            </details>
-            <p className="text-sm text-ash">After paying, send the screenshot. It&apos;s needed — the desk matches it with the payment before starting your plan.</p>
-            <ProofUpload subId={order.id} sent={null} onSent={() => setSent(true)} />
-          </div>
+          <UpiPay order={order} onSent={() => setSent(true)} />
         ) : (
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
@@ -453,11 +438,6 @@ export function RenewSheet({ plans, offers, branches, homeBranch, current, onlin
               </label>
             )}
             <button type="button" onClick={upi} disabled={pending || !plan} className="btn-red min-h-14 text-base">{pending ? "Working…" : "Pay by UPI"}</button>
-            {online && (
-              <button type="button" onClick={() => start(() => payOnline(plan!.id, branchId, start))} disabled={pending || !plan} className="btn-ghost min-h-12">
-                Pay online · cards, netbanking
-              </button>
-            )}
           </div>
         )}
       </Sheet>

@@ -51,6 +51,9 @@ const nextConfig: NextConfig = {
   ],
   experimental: {
     serverActions: { bodySizeLimit: "11mb" }, // photos are capped at 5 MB each; transformations upload two
+    // revisiting a tab within 30 s is instant from the browser's cache instead of a fresh server render.
+    // Every save (server action → revalidatePath) clears it, so the desk never sees its own change missing.
+    staleTimes: { dynamic: 30 },
   },
   turbopack: {
     rules: {

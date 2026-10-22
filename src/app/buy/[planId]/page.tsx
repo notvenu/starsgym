@@ -5,7 +5,6 @@ import { Price } from "@/components/client";
 import { getNotices, getSettings } from "@/lib/data";
 import Link from "next/link";
 import { bestOffer, discounted, DURATIONS, inr, MEMBERSHIP, planName, savings, type Branch, type Plan } from "@/lib/gym";
-import { razorpayEnabled } from "@/lib/razorpay";
 import { Checkout } from "./checkout";
 
 export const metadata = { title: "Checkout — Stars Gym" };
@@ -68,7 +67,7 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
             </div>
           )}
         </div>
-        <Checkout online={razorpayEnabled} planId={plan.id} branches={(branches ?? []) as Branch[]} homeBranch={profile.home_branch_id} />
+        <Checkout planId={plan.id} branches={(branches ?? []) as Branch[]} homeBranch={profile.home_branch_id} />
       </div>
     </main>
   );

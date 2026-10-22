@@ -38,7 +38,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
     <main className="min-h-dvh pb-20">
       <SiteNav />
       <div className="wrap flex flex-col items-center gap-6 pt-6 text-center">
-        <p className="eyebrow">{sub.status === "active" ? "Paid" : "Pay at the desk"}</p>
+        <p className="eyebrow">{sub.status === "active" ? "Paid" : "Pay by UPI"}</p>
         <h1 className="font-display text-[clamp(44px,6vw,72px)] leading-none uppercase">{planName(plan)}</h1>
         {member && <p className="text-ash">{member}</p>}
         {sub.status === "active" ? (
@@ -61,7 +61,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={qr} alt={`UPI QR for ${inr(sub.amount_paise)}`} width={280} height={280} className="rounded-lg border-8 border-chalk" />
             ) : (
-              <p className="text-ash">Pay at the desk by cash or UPI and mention this reference.</p>
+              <p className="text-ash">UPI isn&apos;t set up for this branch yet — ask at the desk and mention this reference.</p>
             )}
             <p className="font-label text-2xl font-bold tracking-[0.2em]">REF {ref}</p>
             <p className="max-w-sm text-ash">{qr ? "Scan with any UPI app, then send the screenshot below — or show this screen at the desk." : "Show this screen at the desk."} Your plan starts once staff confirm the payment.</p>

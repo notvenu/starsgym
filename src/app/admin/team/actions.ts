@@ -2,6 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { clearDesk } from "@/app/admin/data";
 import { adminDb, requireAdmin } from "@/lib/supabase";
 import { sitePhoto } from "../content/upload";
 import { logAction } from "@/lib/log";
@@ -103,6 +104,7 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
   }
 
   revalidatePath("/", "layout"); // the website's trainer pages and the admin
+  clearDesk(); // the PT trainer picker
   await logAction(me, isNew ? "Added to team" : "Edited team member", { memberId: profileId, memberName: name, detail: access === "none" ? "trainer card" : access });
   return { ok: isNew ? "Added to the team" : "Saved" };
 }

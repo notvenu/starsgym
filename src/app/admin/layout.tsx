@@ -3,7 +3,7 @@ import { Logo } from "@/components/site";
 import { requireStaff } from "@/lib/supabase";
 import { AccountPrompt } from "@/components/account-prompt";
 import { BranchSwitch } from "./ui";
-import { openEnquiries } from "./data";
+import { deskRef, openEnquiries } from "./data";
 import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
@@ -14,13 +14,14 @@ export const metadata = { title: "Admin — Stars Gym" };
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const { supabase, profile, isOwner, view, canSwitch, branchId } = await requireStaff();
   const pendingCount = supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending");
-  const [pending, enquiries, branch, branchList, requests] = await Promise.all([
+  const [pending, enquiries, ref, requests] = await Promise.all([
     view ? pendingCount.eq("branch_id", view) : pendingCount, // staff: their branch (RLS)
     openEnquiries(branchId, view), // staff: their branch's (and any-branch) enquiries
-    view ? supabase.from("branches").select("name").eq("id", view).maybeSingle() : null,
-    canSwitch ? supabase.from("branches").select("id,name").eq("active", true).order("created_at") : null,
+    deskRef(),
     supabase.from("profile_requests").select("id", { count: "exact", head: true }).eq("status", "pending"), // RLS: what this desk can see
   ]);
+  const branchName = ref.branches.find((x) => x.id === view)?.name;
+  const branchList = canSwitch ? ref.branches.filter((x) => x.active) : null;
 
   const desk: NavGroup = {
     label: "Front desk",
@@ -63,7 +64,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
     { label: "Inbox", items: [{ href: "/admin/enquiries", label: "Enquiries", icon: "enquiries", badge: enquiries.count ?? 0 }] },
   ];
 
-  const switcher = branchList?.data && branchList.data.length > 1 ? <BranchSwitch branches={branchList.data.map((x) => [x.id, x.name])} value={view ?? ""} /> : null;
+  const switcher = branchList && branchList.length > 1 ? <BranchSwitch branches={branchList.map((x) => [x.id, x.name])} value={view ?? ""} /> : null;
 
   const footer = (
     <div className="flex flex-col gap-1">
@@ -86,7 +87,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
             <div className="flex items-center gap-3">
               <Logo size={52} />
               <div className="leading-tight">
-                <p className="font-display text-xl uppercase">{isOwner ? "Admin" : `Staff · ${branch?.data?.name ?? "Both branches"}`}</p>
+                <p className="font-display text-xl uppercase">{isOwner ? "Admin" : `Staff · ${branchName ?? "Both branches"}`}</p>
                 <p className="max-w-[140px] truncate text-xs text-ash">{profile.full_name || profile.email}</p>
               </div>
             </div>
