@@ -59,10 +59,6 @@ export async function saveProof(subId: string, file: File) {
   const { error } = await adminDb().storage.from("faces").upload(proofPath(subId), file, { contentType: file.type, upsert: true });
   if (error) throw new Error(error.message);
 }
-export async function hasProof(subId: string) {
-  const { data } = await adminDb().storage.from("faces").list("payments", { search: subId, limit: 1 });
-  return !!data?.some((f) => f.name === subId);
-}
 /** order id → signed URL of its proof, for the orders that have one. */
 export async function proofUrls(subIds: string[]) {
   const urls = await photoUrls(subIds.map(proofPath));

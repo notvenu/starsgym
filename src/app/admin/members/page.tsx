@@ -149,31 +149,34 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
             {rows.map((m) => {
               const daysLeft = m.endsOn ? Math.round((Date.parse(m.endsOn) - Date.parse(today)) / 864e5) + 1 : 0;
               return (
-                <li key={m.id} className="flex flex-wrap items-center gap-1.5 pr-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
-                  <Link href={`/admin/members/${m.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2 pl-3 sm:pl-5">
+                // name and phone get the full width; the plan tag and the buttons sit on the line below
+                <li key={m.id} className="flex flex-wrap items-center gap-1.5 pr-2 pb-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
+                  <Link href={`/admin/members/${m.id}`} className="flex min-w-0 basis-full items-center gap-3 pt-2 pl-3 sm:pl-5">
                     <Avatar src={m.photo_path ? photos.get(m.photo_path) : null} name={m.full_name || "?"} size="size-10" />
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
+                      <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate font-bold">{m.full_name || "—"}</span>
-                        {m.role !== "member" && <span className="rounded bg-steel px-1.5 text-[11px] font-bold tracking-wider text-ash uppercase">{ROLE_LABEL[m.role]}</span>}
-                        {!m.photo_path && m.role === "member" && <span className="rounded border border-redline px-1.5 text-[11px] font-bold tracking-wider text-red uppercase">No photo</span>}
+                        {m.role !== "member" && <span className="shrink-0 rounded bg-steel px-1.5 text-[11px] font-bold tracking-wider text-ash uppercase">{ROLE_LABEL[m.role]}</span>}
+                        {!m.photo_path && m.role === "member" && <span className="shrink-0 rounded border border-redline px-1.5 text-[11px] font-bold tracking-wider text-red uppercase">No photo</span>}
                       </span>
                       {m.phone && <span className="block truncate text-sm text-ash">{m.phone}</span>}
                       {m.checkins.length > 0 && (
                         <span className="block text-xs font-bold tracking-wider text-red uppercase">In today: {m.checkins.map((c) => SESSION_LABEL[c.session] ?? c.session).join(" + ")}</span>
                       )}
                     </span>
+                  </Link>
+                  {/* lined up under the name */}
+                  <span className="mr-auto pl-16 sm:pl-[4.5rem]">
                     {m.state === "active" ? (
-                      <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${daysLeft <= 7 ? "border-red text-red" : "border-redline bg-redwash"}`}>
-                        <span className="sm:hidden">{daysLeft}d</span>
-                        <span className="max-sm:hidden">{daysLeft <= 7 ? `${daysLeft}d left` : `Till ${m.endsOn}`}</span>
+                      <span className={`inline-block rounded-full border px-3 py-1 text-xs font-bold tracking-wider whitespace-nowrap uppercase ${daysLeft <= 7 ? "border-red text-red" : "border-redline bg-redwash"}`}>
+                        {daysLeft <= 7 ? `${daysLeft}d left` : `Till ${m.endsOn}`}
                       </span>
                     ) : (
-                      <span className="shrink-0 rounded-full border border-line px-3 py-1 text-xs font-bold tracking-wider text-ash uppercase">
-                        {m.state === "upcoming" ? `From ${m.startsOn}` : m.state === "expired" ? <><span className="sm:hidden">Expired</span><span className="max-sm:hidden">Ended {m.lastEnd}</span></> : "No plan"}
+                      <span className="inline-block rounded-full border border-line px-3 py-1 text-xs font-bold tracking-wider whitespace-nowrap text-ash uppercase">
+                        {m.state === "upcoming" ? `From ${m.startsOn}` : m.state === "expired" ? `Ended ${m.lastEnd}` : "No plan"}
                       </span>
                     )}
-                  </Link>
+                  </span>
                   <WhatsAppButton member={m} endsOn={m.endsOn ?? m.lastEnd} expired={m.state === "expired"} />
                   <MemberActions
                     member={m}

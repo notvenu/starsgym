@@ -46,14 +46,16 @@ async function checkFace(canvas: HTMLCanvasElement): Promise<string | null> {
 }
 
 /**
- * Take a selfie or upload a photo. Checks the face, crops a square, and puts the JPEG in a hidden
+ * Take a photo (front or back camera) or upload one. Checks the face, crops a square, and puts the JPEG in a hidden
  * <input type="file" name="photo"> so the surrounding form submits it like any other field.
+ * `back`: open the back camera first — staff photographing a member at the desk.
  */
-export function PhotoCapture({ current, label = "Photo", required }: { current?: string | null; label?: string; required?: boolean }) {
+export function PhotoCapture({ current, label = "Photo", required, back }: { current?: string | null; label?: string; required?: boolean; back?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [camera, setCamera] = useState(false);
+  const [facing, setFacing] = useState<"user" | "environment">(back ? "environment" : "user");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<string | null>(null);
@@ -65,10 +67,12 @@ export function PhotoCapture({ current, label = "Photo", required }: { current?:
   };
   useEffect(() => stop, []);
 
-  async function openCamera() {
+  async function openCamera(side = facing) {
     setError("");
+    stream.current?.getTracks().forEach((t) => t.stop()); // switching cameras: let go of the other one first
     try {
-      stream.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+      stream.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: side, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+      setFacing(side);
       setCamera(true);
       void getDetector(); // warm up while they pose
       requestAnimationFrame(() => {
@@ -132,13 +136,17 @@ export function PhotoCapture({ current, label = "Photo", required }: { current?:
       {camera ? (
         <div className="flex flex-col items-center gap-3">
           <div className="relative size-[min(16rem,68vw)] overflow-hidden rounded-full border-4 border-red bg-black sm:size-72">
-            <video ref={video} autoPlay playsInline muted className="size-full -scale-x-100 object-cover" />
+            {/* the front camera is mirrored like a mirror; the back camera shows the scene as it is */}
+            <video ref={video} autoPlay playsInline muted className={`size-full object-cover ${facing === "user" ? "-scale-x-100" : ""}`} />
             {/* face guide */}
             <div aria-hidden="true" className="pointer-events-none absolute inset-[16%_22%] rounded-[50%] border-2 border-dashed border-white/70" />
           </div>
           <p className="text-center text-sm text-ash">Face inside the oval, good light, no cap or sunglasses.</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
             <button type="button" onClick={capture} disabled={busy} className="btn-red">{busy ? "Checking…" : "Capture"}</button>
+            <button type="button" onClick={() => void openCamera(facing === "user" ? "environment" : "user")} disabled={busy} className="btn-ghost">
+              {facing === "user" ? "Back camera" : "Front camera"}
+            </button>
             <button type="button" onClick={stop} className="btn-ghost">Cancel</button>
           </div>
         </div>
@@ -153,7 +161,7 @@ export function PhotoCapture({ current, label = "Photo", required }: { current?:
             )}
           </div>
           <div className="flex min-w-0 flex-wrap gap-2">
-            <button type="button" onClick={openCamera} disabled={busy} className="btn-red min-h-11 px-5 text-sm">{shown ? "Retake" : "Take photo"}</button>
+            <button type="button" onClick={() => void openCamera()} disabled={busy} className="btn-red min-h-11 px-5 text-sm">{shown ? "Retake" : "Take photo"}</button>
             <label className="btn-ghost min-h-11 cursor-pointer px-5 text-sm">
               {busy ? "Checking…" : "Upload"}
               <input type="file" accept="image/*" className="sr-only" disabled={busy} onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} />

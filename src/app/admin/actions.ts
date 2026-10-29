@@ -7,7 +7,7 @@ import { clearDesk } from "@/app/admin/data";
 import { redirect } from "next/navigation";
 import { adminDb, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
-import { formPhoto, hasProof, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
+import { formPhoto, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
 import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter } from "@/lib/push";
@@ -51,7 +51,7 @@ const sees = async (supabase: Db, table: "profiles" | "subscriptions", id: strin
   !!(await supabase.from(table).select("id").eq("id", id).maybeSingle()).data;
 const NOT_YOURS = { error: "That member belongs to another branch." };
 
-/** Confirm a desk payment. Anything but cash needs a screenshot of the payment (cash may have a photo of the receipt). */
+/** Confirm a desk payment. A photo of the payment (UPI screenshot or cash receipt) is optional. */
 export async function markPaid(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me } = await requireStaff();
   const subId = s(form, "id");
@@ -61,7 +61,6 @@ export async function markPaid(_: Result, form: FormData): Promise<Result> {
   if (sub.approval === "pending") return { error: "The owner hasn't approved this price yet." };
   const proof = formPhoto(form, "proof");
   if (proof.error) return { error: proof.error };
-  if (sub.method !== "cash" && !proof.file && !(await hasProof(subId))) return { error: "Add a screenshot of the UPI payment." };
   if (proof.file) {
     try {
       await saveProof(subId, proof.file);
@@ -316,12 +315,6 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
     m.method = pay === "cash" || (pay === "split" && part >= m.total) ? "cash" : "upi_qr";
     m.cashPart = pay === "split" && part > 0 && part < m.total ? part : null;
   }
-  // taken now (not a QR): any UPI needs its screenshot
-  if (pay !== "qr" && made.some((m) => m.method !== "cash") && !proof.file) {
-    await dropAll();
-    return { error: "Add a screenshot of the UPI payment." };
-  }
-
   // 3. each order's agreed price, how it was paid, trainer and picked start (service key: desk-only path, checked above)
   for (const m of made) {
     const { error } = await adminDb()

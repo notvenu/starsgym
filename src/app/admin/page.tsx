@@ -130,17 +130,18 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     const renew = `${origin}${e.plans.active ? `/buy/${e.plans.id}` : "/#plans"}`;
     const wa = m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}! ${message} Renew online: ${renew} — or at the desk.`) : null;
     return (
-      <li key={e.id} className="flex flex-wrap items-center gap-1.5 pr-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
-        <Link href={`/admin/members/${e.user_id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2 pl-3 sm:pl-5">
+      // name and phone get the full width; the badge and the buttons sit on the line below
+      <li key={e.id} className="flex flex-wrap items-center gap-1.5 pr-2 pb-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
+        <Link href={`/admin/members/${e.user_id}`} className="flex min-w-0 basis-full items-center gap-3 pt-2 pl-3 sm:pl-5">
           <Avatar src={pic(m.photo_path)} name={m.full_name || "?"} size="size-10" />
           <span className="min-w-0 flex-1">
             <span className="block truncate font-bold">{m.full_name || "—"}</span>
-            <span className="flex min-w-0 items-center gap-1.5 text-sm text-ash">
-              <span className="shrink-0 rounded-full border border-red px-1.5 text-[10px] leading-4 font-bold tracking-wider text-red uppercase">{badge}</span>
-              {m.phone && <span className="truncate">{m.phone}</span>}
-            </span>
+            {m.phone && <span className="block truncate text-sm text-ash">{m.phone}</span>}
           </span>
         </Link>
+        <span className="mr-auto pl-16 sm:pl-[4.5rem]">
+          <span className="inline-block rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider whitespace-nowrap text-red uppercase">{badge}</span>
+        </span>
         {wa && (
           <a href={wa} target="_blank" rel="noreferrer" aria-label={`Send ${m.full_name} a renewal message on WhatsApp`} title="Renewal message on WhatsApp"
             className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-ink transition-transform hover:scale-105">
