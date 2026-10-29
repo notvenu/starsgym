@@ -96,7 +96,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
   );
 }
 
-/** "Mark paid" on an order: the payment photo (UPI screenshot required, a cash receipt optional), then confirm.
+/** "Mark paid" on an order: an optional payment photo (UPI screenshot), then confirm.
  *  A screenshot the member already sent counts — the desk checks it against their UPI app first. */
 function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, upiId, onClose }: { id: string; cash: boolean; sent: string | null; amountPaise: number; createdAt: string; upiId: string; onClose: () => void }) {
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
@@ -116,7 +116,7 @@ function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, upiId, onClose }
         </a>
       )}
       {sent && <ProofCheck src={sent} amountPaise={amountPaise} createdAt={createdAt} upiId={upiId} />}
-      {!cash && <ProofInput required={!sent} hint={sent ? "Only if you want to replace theirs." : "Screenshot of the UPI payment."} />}
+      {!cash && <ProofInput hint={sent ? "Only if you want to replace theirs." : "Screenshot of the UPI payment."} />}
       <div className="flex flex-wrap items-center gap-2">
         <button disabled={pending} className="btn-red min-h-11 px-5 text-xs whitespace-nowrap max-sm:flex-1">{pending ? "Saving…" : "Confirm paid"}</button>
         <button type="button" onClick={onClose} className="btn-ghost min-h-11 px-4 text-xs max-sm:flex-1">Cancel</button>
@@ -162,7 +162,7 @@ function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, 
           <Select label="Branch" name="branch_id" options={branches.map((b) => [b.id, b.name])} />
           <MemberDetailsFields phone={false} />
           <div className="sm:col-span-2">
-            <PhotoCapture label="Member photo · staff check it when they scan the pass" required />
+            <PhotoCapture label="Member photo · staff check it when they scan the pass" required back />
           </div>
         </div>
       </Step>
@@ -437,9 +437,9 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
               <span className="text-xs text-ash">The rest is recorded as UPI.</span>
             </label>
           )}
-          {/* UPI taken now needs its screenshot; cash needs nothing. A QR (or an owner approval) is paid later */}
+          {/* UPI taken now can have its screenshot (optional); cash needs nothing. A QR (or an owner approval) is paid later */}
           {pay !== "qr" && pay !== "cash" && (
-            <ProofInput required hint="Screenshot of the UPI payment on their phone or yours." />
+            <ProofInput hint="Screenshot of the UPI payment on their phone or yours." />
           )}
         </Step>
       )}
@@ -611,7 +611,7 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-3">
       <input type="hidden" name="id" value={id} />
-      <PhotoCapture current={url} label="Retake photo" />
+      <PhotoCapture current={url} label="Retake photo" back />
       <div className="flex items-center gap-3">
         <button disabled={pending} className="btn-ghost min-h-10 px-4 text-sm">{pending ? "Saving…" : "Save photo"}</button>
         <ResultToast state={state} />
