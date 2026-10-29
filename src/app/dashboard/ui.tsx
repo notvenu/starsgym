@@ -10,6 +10,7 @@ import { UpiPay, type UpiOrder } from "../buy/[planId]/checkout";
 import { startUpi } from "../buy/[planId]/actions";
 import { PhotoCapture } from "@/components/photo";
 import { Sheet } from "@/components/sheet";
+import { Zoomable } from "@/components/zoom";
 import { ScanButton } from "@/components/scanner";
 import { ShareStreak } from "@/components/streak-card";
 import { ResultToast, toast, toastResult, keepFields } from "@/components/feedback";
@@ -84,8 +85,7 @@ export function CheckInPanel(props: {
         <div className="flex items-center gap-3">
           {/* the member's photo — the same face staff see when they scan the pass */}
           {props.photo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={props.photo} alt="" className={`size-12 rounded-full border-2 object-cover ${done ? "border-red" : "border-strong"}`} />
+            <Zoomable src={props.photo} alt="Your photo" className={`size-12 rounded-full border-2 object-cover ${done ? "border-red" : "border-strong"}`} />
           ) : (
             <span className="flex size-12 items-center justify-center rounded-full border-2 border-strong font-display text-xl uppercase">{props.name[0]}</span>
           )}
@@ -259,8 +259,7 @@ function ProfileBody({ profile, photo, branches, request }: { profile: Profile; 
         <section className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
             {photo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={photo} alt="Your photo" className="size-20 rounded-2xl border border-line object-cover" />
+              <Zoomable src={photo} alt="Your photo" className="size-20 rounded-2xl border border-line object-cover" />
             ) : (
               <span className="stripes size-20 rounded-2xl" />
             )}
@@ -275,8 +274,7 @@ function ProfileBody({ profile, photo, branches, request }: { profile: Profile; 
           {open ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-redline bg-redwash px-4 py-3">
               <div className="flex min-w-0 items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {open.photoUrl && <img src={open.photoUrl} alt="Requested photo" className="size-11 rounded-full border-2 border-red object-cover" />}
+                {open.photoUrl && <Zoomable src={open.photoUrl} alt="Requested photo" className="size-11 rounded-full border-2 border-red object-cover" />}
                 <p className="min-w-0 text-sm"><b className="block text-chalk">Waiting for the desk</b><span className="text-ash">{asked}</span></p>
               </div>
               <button type="button" disabled={pending} onClick={() => start(async () => toastResult(await cancelRequest()))} className="cursor-pointer text-sm font-bold text-ash hover:text-red">Cancel</button>

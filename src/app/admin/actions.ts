@@ -96,12 +96,12 @@ export async function cancelSub(subId: string): Promise<Result> {
   return done("Cancelled");
 }
 
-/** The start date the desk picked: blank = automatic (today, or the day after their current plan ends). Any past date
- *  (a member entered months late, old records) or up to 60 days ahead (a plan that begins next month). */
+/** The start date the desk picked: blank = automatic (today, or the day after their current plan ends). Up to 3 months
+ *  back (a member entered late) or up to 60 days ahead (a plan that begins next month). */
 function pickedStart(form: FormData): { start: string | null; error?: string } {
   const start = s(form, "start_on");
   if (!start) return { start: null };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || start < "2015-01-01" || start > gymDateIn(60)) return { start: null, error: "Pick a start date up to 60 days from today (any past date is fine)." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || start < gymDateIn(-92) || start > gymDateIn(60)) return { start: null, error: "Pick a start date within the last 3 months or up to 60 days ahead." };
   return { start };
 }
 
@@ -220,11 +220,22 @@ function saleItems(form: FormData): { error: string } | SaleItem[] {
 
 const dayAfter = (iso: string, n = 1) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
+/** The last day of a plan: monthly plans (30/90/180/365 days) run by calendar months to the day before the same date —
+ *  28 Jun + 6 months ends 27 Dec; 31 Jan + 1 month has no 31 Feb, so it ends 28/29 Feb. Shorter plans count days. */
+function planEnd(start: string, days: number) {
+  if (days < 28) return dayAfter(start, days - 1);
+  const [y, m, d] = start.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + Math.round(days / 30), 1)); // 365 days → 12 months
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  if (d > lastDay) return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), lastDay)).toISOString().slice(0, 10);
+  return dayAfter(new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), d)).toISOString().slice(0, 10), -1);
+}
+
 /**
  * Puts a just-activated plan on the calendar (the app decides, not the database's activation, which can't tell a
  * PT add-on from a gym plan): the start the desk picked; else a membership the day after their current membership
  * ends (today if none), a PT add-on the day after their current PT — or alongside the membership it goes with —
- * and a day pass or trial today. It then runs its full length: a 30-day plan from 19 Oct ends 17 Nov.
+ * and a day pass or trial today. It then runs its full length (see planEnd): a 1-month plan from 19 Oct ends 18 Nov.
  */
 async function placeDates(subId: string, userId: string, picked: string | null): Promise<{ ends?: string; error?: string }> {
   const db = adminDb();
@@ -247,7 +258,7 @@ async function placeDates(subId: string, userId: string, picked: string | null):
       start = gym?.starts_on && gym.starts_on > today ? gym.starts_on : today;
     } else start = today;
   }
-  const ends = dayAfter(start, days - 1);
+  const ends = planEnd(start, days);
   const { error } = await db.from("subscriptions").update({ starts_on: start, ends_on: ends }).eq("id", subId).eq("status", "active");
   return error ? { error: error.message } : { ends };
 }

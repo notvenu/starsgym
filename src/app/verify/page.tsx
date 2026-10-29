@@ -4,6 +4,7 @@ import { publicDb } from "@/lib/supabase";
 import { gymDate, planName, prettyDay, type Track } from "@/lib/gym";
 import { readPassCode } from "@/lib/pass";
 import { photoUrl } from "@/lib/photo";
+import { Zoomable } from "@/components/zoom";
 
 export const metadata = { title: "Verify pass — Stars Gym", robots: { index: false } };
 
@@ -41,8 +42,7 @@ export default async function VerifyPage({ searchParams }: PageProps<"/verify">)
       <div className="pop-in relative" style={{ "--burst": "#16a34a" } as React.CSSProperties}>
         {ok && <><span className="ring-burst" /><span className="ring-burst" /></>}
         {photo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo} alt={`${pass?.first_name ?? "Member"}'s photo`} className={`size-52 rounded-full border-[6px] object-cover ${ok ? "border-[#16a34a]" : "border-red"}`} />
+          <Zoomable src={photo} alt={`${pass?.first_name ?? "Member"}'s photo`} className={`size-52 rounded-full border-[6px] object-cover ${ok ? "border-[#16a34a]" : "border-red"}`} />
         ) : (
           <div className={`flex size-36 items-center justify-center rounded-full ${ok ? "bg-[#16a34a]" : "bg-red"}`} />
         )}

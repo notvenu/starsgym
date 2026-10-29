@@ -407,7 +407,7 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
           // New members: blank = today
           <label className="flex flex-col gap-1.5 sm:max-w-64">
             <span className="label">{startOn ? "Starts on" : "Start date (optional)"}</span>
-            <input type="date" name="start_on" defaultValue={startOn} max={gymDateIn(60)} className="field" />
+            <input type="date" name="start_on" defaultValue={startOn} min={gymDateIn(-92)} max={gymDateIn(60)} className="field" />
             <span className="text-xs text-ash">{startOn ? "Change it to backdate or start later." : "Leave blank to start today."}</span>
           </label>
         )}

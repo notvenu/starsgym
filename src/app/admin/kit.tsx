@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Zoomable } from "@/components/zoom";
 
 /** Page title row: what this section is for, plus optional actions on the right. */
 export function PageHeader({ title, intro, children }: { title: string; intro?: string; children?: ReactNode }) {
@@ -68,9 +69,11 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="px-5 py-8 text-center text-ash">{children}</p>;
 }
 
-/** Member photo, or their initial when there's none. */
-export function Avatar({ src, name, size = "size-11" }: { src?: string | null; name: string; size?: string }) {
-  return src ? (
+/** Member photo, or their initial when there's none. `zoom` opens it full size on tap (not in list rows, which are links). */
+export function Avatar({ src, name, size = "size-11", zoom }: { src?: string | null; name: string; size?: string; zoom?: boolean }) {
+  return src && zoom ? (
+    <Zoomable src={src} alt={`${name}'s photo`} className={`${size} shrink-0 rounded-full border border-line object-cover`} />
+  ) : src ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={src} alt="" loading="lazy" decoding="async" className={`${size} shrink-0 rounded-full border border-line object-cover`} />
   ) : (

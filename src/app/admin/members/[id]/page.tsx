@@ -70,7 +70,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
       {/* who, are they paid up, the numbers at a glance, and the things the desk does next */}
       <section className="flex flex-col gap-4 rounded-lg border border-line bg-carbon p-4 sm:p-5">
         <div className="flex min-w-0 items-center gap-4">
-          <Avatar src={photo} name={member.full_name || "?"} size="size-16 sm:size-20" />
+          <Avatar src={photo} name={member.full_name || "?"} size="size-16 sm:size-20" zoom />
           <div className="flex min-w-0 flex-col gap-1.5">
             <h1 className="font-display text-[clamp(26px,4vw,40px)] leading-none break-words uppercase">{member.full_name || "Member"}</h1>
             {(member.phone || facts) && <p className="text-sm text-ash">{[member.phone, facts].filter(Boolean).join(" · ")}</p>}

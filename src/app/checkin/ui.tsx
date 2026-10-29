@@ -7,6 +7,7 @@ import { toast } from "@/components/feedback";
 import { ShareStreak } from "@/components/streak-card";
 import { locate, prettyDay, type Holiday, type Session } from "@/lib/gym";
 import { doorCheckIn, type DoorResult } from "./actions";
+import { Zoomable } from "@/components/zoom";
 
 type By = "phone" | "ref";
 const SESSION: Record<Session, string> = { morning: "Morning", evening: "Evening", ladies: "Ladies' hours" };
@@ -47,8 +48,7 @@ export function DoorCheckIn({ autoGo, doorKey, member, memberPhoto, holidays, ne
         <div className="flex flex-col gap-4">
           <div className="flex flex-col items-center gap-3">
             {memberPhoto ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={memberPhoto} alt="" className={`size-28 rounded-full border-4 border-red object-cover ${pending ? "animate-pulse-red" : ""}`} />
+              <Zoomable src={memberPhoto} alt="Your photo" className={`size-28 rounded-full border-4 border-red object-cover ${pending ? "animate-pulse-red" : ""}`} />
             ) : (
               <span className="flex size-28 items-center justify-center rounded-full border-4 border-strong bg-panel font-display text-5xl uppercase">{member?.[0]}</span>
             )}
@@ -106,8 +106,7 @@ function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: 
       <div className="pop-in relative">
         <span className="ring-burst" /><span className="ring-burst" />
         {r.photo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={r.photo} alt="" className="relative size-44 rounded-full border-[6px] border-red object-cover shadow-[0_0_60px_rgba(227,20,28,.45)]" />
+          <Zoomable src={r.photo} alt="Member photo" className="relative size-44 rounded-full border-[6px] border-red object-cover shadow-[0_0_60px_rgba(227,20,28,.45)]" />
         ) : (
           <div className="relative flex size-36 items-center justify-center rounded-full bg-red shadow-[0_0_60px_rgba(227,20,28,.45)]">
             <Check className="size-16 text-white" />
