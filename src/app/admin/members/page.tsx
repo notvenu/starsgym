@@ -29,6 +29,10 @@ const SORTS = [
   ["name", "Name A–Z"],
 ] as const;
 
+// "28 Oct", or "28 Oct 25" outside this year — short enough for the tag to fit beside the buttons on a phone
+const shortDay = (iso: string | null, today: string) =>
+  iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC", ...(iso.slice(0, 4) !== today.slice(0, 4) && { year: "2-digit" }) }) : "";
+
 const PER_PAGE = 25; // a phone screenful or three; more made the page slow to open on phones
 const pick = <T extends string>(list: readonly (readonly [T, string])[], v: unknown, fallback: T) =>
   list.some(([k]) => k === v) ? (v as T) : fallback;
@@ -165,15 +169,15 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
                       )}
                     </span>
                   </Link>
-                  {/* lined up under the name */}
-                  <span className="mr-auto pl-16 sm:pl-[4.5rem]">
+                  {/* under the photo on phones, lined up with the name from sm up; the tag gives way (never the buttons) so they stay on one line */}
+                  <span className="flex min-w-0 flex-1 pl-3 sm:pl-[4.5rem]">
                     {m.state === "active" ? (
-                      <span className={`inline-block rounded-full border px-3 py-1 text-xs font-bold tracking-wider whitespace-nowrap uppercase ${daysLeft <= 7 ? "border-red text-red" : "border-redline bg-redwash"}`}>
-                        {daysLeft <= 7 ? `${daysLeft}d left` : `Till ${m.endsOn}`}
+                      <span className={`truncate rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${daysLeft <= 7 ? "border-red text-red" : "border-redline bg-redwash"}`}>
+                        {daysLeft <= 7 ? `${daysLeft}d left` : `Till ${shortDay(m.endsOn, today)}`}
                       </span>
                     ) : (
-                      <span className="inline-block rounded-full border border-line px-3 py-1 text-xs font-bold tracking-wider whitespace-nowrap text-ash uppercase">
-                        {m.state === "upcoming" ? `From ${m.startsOn}` : m.state === "expired" ? `Ended ${m.lastEnd}` : "No plan"}
+                      <span className="truncate rounded-full border border-line px-3 py-1 text-xs font-bold tracking-wider text-ash uppercase">
+                        {m.state === "upcoming" ? `From ${shortDay(m.startsOn, today)}` : m.state === "expired" ? `Ended ${shortDay(m.lastEnd, today)}` : "No plan"}
                       </span>
                     )}
                   </span>

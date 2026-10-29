@@ -139,8 +139,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
             {m.phone && <span className="block truncate text-sm text-ash">{m.phone}</span>}
           </span>
         </Link>
-        <span className="mr-auto pl-16 sm:pl-[4.5rem]">
-          <span className="inline-block rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider whitespace-nowrap text-red uppercase">{badge}</span>
+        <span className="flex min-w-0 flex-1 pl-3 sm:pl-[4.5rem]">
+          <span className="truncate rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-red uppercase">{badge}</span>
         </span>
         {wa && (
           <a href={wa} target="_blank" rel="noreferrer" aria-label={`Send ${m.full_name} a renewal message on WhatsApp`} title="Renewal message on WhatsApp"
