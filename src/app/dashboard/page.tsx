@@ -117,7 +117,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
                   <div className="h-1.5 overflow-hidden rounded-full bg-strong">
                     <div className="h-full bg-red" style={{ width: `${Math.min(100, (daysLeft / active.plans.duration_days) * 100)}%` }} />
                   </div>
-                  <p className="text-sm text-ash">{daysLeft} day{daysLeft === 1 ? "" : "s"} left · ends {active.ends_on}</p>
+                  <p className="text-sm text-ash">Started {active.starts_on} · {daysLeft} day{daysLeft === 1 ? "" : "s"} left · ends {active.ends_on}</p>
                   <div className="flex flex-wrap gap-2">
                     {passes.has(active.id) && <PassDialog label="Show my pass" className="btn-red" startOpen={openPass === active.id}><Ticket pass={passes.get(active.id)!} /></PassDialog>}
                     {renew("Renew / upgrade")}

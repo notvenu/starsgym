@@ -41,6 +41,8 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   // back-to-back plans count as one run: days left go to the last end date
   const lastEnd = paid.reduce<string | null>((max, p) => (!max || p.ends_on! > max ? p.ends_on! : max), null);
   const daysLeft = current && lastEnd ? Math.round((Date.parse(lastEnd) - Date.parse(today)) / 864e5) + 1 : 0;
+  const firstStart = paid.reduce<string | null>((min, p) => (p.starts_on && (!min || p.starts_on < min) ? p.starts_on : min), null);
+  const totalPaid = paid.reduce((sum, p) => sum + p.amount_paise, 0);
   const lastGym = paid.find((p) => p.plans.track !== "personal_training" && p.plans.duration_days > 1);
   const age = ageOf(member);
   const facts = [b.find((x) => x.id === member.home_branch_id)?.name, GENDERS.find(([g]) => g === member.gender)?.[1], age != null && `${age} yrs`].filter(Boolean).join(" · ");
@@ -55,7 +57,9 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   // the numbers the desk asks about, in one strip
   const glance: [string, string][] = [
     ["Plan", current ? planName(current.plans) : lastGym ? planName(lastGym.plans) : "None yet"],
+    ...(current?.starts_on ? [["Started", prettyDay(current.starts_on)] as [string, string]] : []),
     [current ? "Valid till" : "Ended", lastEnd ? prettyDay(lastEnd) : "—"],
+    ["Member since", firstStart ? prettyDay(firstStart) : "—"],
     ["Visits · 30 days", String(new Set(v.map((x) => x.day)).size)],
     ["Last visit", lastVisit ? (lastVisit === today ? "Today" : prettyDay(lastVisit)) : "Not in 30 days"],
     ["Streak", `${streakDays} day${streakDays === 1 ? "" : "s"}`],
@@ -93,7 +97,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
         </div>
       </section>
 
-      <Panel title="Plans & payments" flush>
+      <Panel title="Membership history" intro={paid.length ? `${paid.length} plan${paid.length === 1 ? "" : "s"} · ${inr(totalPaid)} paid${firstStart ? ` · since ${prettyDay(firstStart)}` : ""}` : undefined} flush>
         {plans.length ? (
           <ul className="divide-y divide-line">
             {plans.map((p) => {
