@@ -4,7 +4,7 @@ import { getNotices, getSettings } from "@/lib/data";
 import { requireUser } from "@/lib/supabase";
 import { NotificationToggle } from "@/components/push";
 import { DAY_NAMES, inr, MEMBERSHIP, monthDates, recentGymDates, shiftMonth, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
-import { getPass } from "../pass/[subId]/data";
+import { PASS_FIELDS, type PassData } from "../pass/[subId]/data";
 import { Ticket } from "../pass/[subId]/ticket";
 import { PassDialog } from "../pass/[subId]/ui";
 import { photoUrl } from "@/lib/photo";
@@ -14,7 +14,7 @@ import { loadWorkouts } from "./workouts/section";
 
 export const metadata = { title: "Dashboard — Stars Gym" };
 
-type Sub = { id: string; status: string; method: string; starts_on: string | null; ends_on: string | null; amount_paise: number; plans: Plan };
+type Sub = PassData;
 
 export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
   const sp = await searchParams;
@@ -30,7 +30,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
 
   const [branches, subs, streak, week, post, feed, notices, photo, settings, lastRequest, older, firstVisit, plans, workouts] = await Promise.all([
     supabase.from("branches").select("*").eq("active", true).order("created_at"),
-    supabase.from("subscriptions").select("id,status,method,starts_on,ends_on,amount_paise,plans(*)").eq("user_id", user.id).neq("status", "cancelled").order("created_at", { ascending: false }),
+    supabase.from("subscriptions").select(PASS_FIELDS).eq("user_id", user.id).neq("status", "cancelled").order("created_at", { ascending: false }),
     supabase.rpc("current_streak", { uid: user.id }),
     supabase.from("checkins").select("day,session").eq("user_id", user.id).gte("day", month[0]),
     supabase.from("showcase_posts").select("image_path,created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -68,7 +68,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
     today: iso === today,
   }));
   // full ticket data for the pop-ups (current plan + any queued renewals)
-  const passes = new Map((await Promise.all([active, ...upcoming].filter((s) => !!s).map((s) => getPass(supabase, s.id)))).filter((p) => !!p).map((p) => [p.id, p]));
+  const passes = new Map([active, ...upcoming].filter((s) => !!s).map((s) => [s.id, s]));
   // renew / upgrade right here; admission only shows (and is charged, by the database) on a first membership
   const hadMembership = allSubs.some((s) => s.status === "active" && MEMBERSHIP.includes(s.plans.track));
   const renew = (label: string, className?: string) => (

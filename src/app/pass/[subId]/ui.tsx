@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import QRCode from "qrcode";
 import { livePassUrl } from "./actions";
 
 /** Re-signs the QR every 30 s so only the live phone screen verifies. */
@@ -13,7 +12,7 @@ export function LiveQr({ subId }: { subId: string }) {
     let alive = true;
     const refresh = async () => {
       const url = await livePassUrl(subId);
-      if (alive && url) setSrc(await QRCode.toDataURL(url, { margin: 1, width: 480, color: { dark: "#0a0a0a", light: "#f4f2ee" } }));
+      if (alive && url) setSrc(await (await import("qrcode")).toDataURL(url, { margin: 1, width: 480, color: { dark: "#0a0a0a", light: "#f4f2ee" } }));
       setTick(30);
     };
     refresh();

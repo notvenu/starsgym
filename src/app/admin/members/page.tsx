@@ -19,6 +19,9 @@ const FILTERS = [
   ["active", "Active"],
   ["expiring", "Expiring soon"],
   ["expired", "Expired"],
+  // nothing running today but a plan booked to start later (renewed after lapsing, or a picked future start) —
+  // without this tab they were in neither Active nor Expired
+  ["upcoming", "Starting later"],
 ] as const;
 type Show = (typeof FILTERS)[number][0];
 

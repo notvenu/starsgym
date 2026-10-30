@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { createContext, useActionState, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { Field, MemberDetailsFields, PhoneField } from "@/components/client";
 import { confirmDialog, ResultToast, toast, toastResult, keepFields, withUndo } from "@/components/feedback";
-import QRCode from "qrcode";
 import { PhotoCapture } from "@/components/photo";
 import { ProofCheck, ProofInput, ReceiptScan } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
@@ -176,7 +175,9 @@ function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, 
 function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void }) {
   const [qr, setQr] = useState<string>();
   useEffect(() => {
-    if (c.loginUrl) void QRCode.toDataURL(c.loginUrl, { margin: 1, width: 440, color: { dark: "#0a0a0a", light: "#ffffff" } }).then(setQr);
+    // loaded on demand: only this dialog draws a QR, so it stays out of every other admin page
+    const url = c.loginUrl;
+    if (url) void import("qrcode").then((QRCode) => QRCode.toDataURL(url, { margin: 1, width: 440, color: { dark: "#0a0a0a", light: "#ffffff" } })).then(setQr);
   }, [c.loginUrl]);
   const copy = async () => {
     try {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireStaff, type Profile } from "@/lib/supabase";
-import { ageOf, GENDERS, inr, LOGIN_EMAIL_DOMAIN, payMethod, planName, prettyDay, recentGymDates, type Plan } from "@/lib/gym";
+import { ageOf, GENDERS, inr, LOGIN_EMAIL_DOMAIN, payMethod, planName, recentGymDates, type Plan } from "@/lib/gym";
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
 import { Avatar, Empty, Panel } from "../../kit";
@@ -62,7 +62,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
     ...(current?.starts_on ? [["Started", fullDay(current.starts_on)] as [string, string]] : []),
     [current ? "Valid till" : "Ended", lastEnd ? fullDay(lastEnd) : "—"],
     ["Visits · 30 days", String(new Set(v.map((x) => x.day)).size)],
-    ["Last visit", lastVisit ? (lastVisit === today ? "Today" : prettyDay(lastVisit)) : "Not in 30 days"],
+    ["Last visit", lastVisit ? (lastVisit === today ? "Today" : ((n) => (n === 1 ? "Yesterday" : `${n} days ago`))(Math.round((Date.parse(today) - Date.parse(lastVisit)) / 864e5))) : "Not in 30 days"],
     ["Streak", `${streakDays} day${streakDays === 1 ? "" : "s"}`],
     ...(member.emergency_contact ? [["Emergency", member.emergency_contact] as [string, string]] : []),
     ...(email ? [["Email", email] as [string, string]] : []),

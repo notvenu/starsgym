@@ -10,7 +10,8 @@ import { ScanButton } from "@/components/scanner";
 import { NotificationToggle } from "@/components/push";
 
 type Visit = { created_at: string; session: string; branch_id: string; user_id: string; profiles: { full_name: string; photo_path: string | null } | null };
-type Ending = { id: string; user_id: string; ends_on: string; plans: Plan; profiles: Profile | null };
+type Past = { status: string; starts_on: string | null; ends_on: string | null; paid_at: string | null };
+type Ending = { id: string; user_id: string; ends_on: string; plans: Plan; profiles: (Profile & { history?: Past[] }) | null };
 
 export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const sp = await searchParams;
@@ -49,7 +50,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     // plans that ran out in the last 30 days — the renewal list (members who bought again are dropped below)
     only(supabase
       .from("subscriptions")
-      .select("id,user_id,ends_on,plans(*),profiles!subscriptions_user_id_fkey(*)")
+      .select("id,user_id,ends_on,plans(*),profiles!subscriptions_user_id_fkey(*,history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))")
       .eq("status", "active")
       .gte("ends_on", monthAgo)
       .lt("ends_on", today))
@@ -59,14 +60,14 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     // (Not account age: the GymPro import made hundreds of accounts in one day.)
     only(supabase
       .from("subscriptions")
-      .select("id,user_id,starts_on,ends_on,plans(*),profiles!subscriptions_user_id_fkey(full_name,phone,photo_path,home_branch_id)")
+      .select("id,user_id,starts_on,ends_on,plans(*),profiles!subscriptions_user_id_fkey(full_name,phone,photo_path,home_branch_id,history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))")
       .eq("status", "active")
       .gte("starts_on", newSince)
       .lte("starts_on", today))
       .order("starts_on", { ascending: false })
       .limit(300),
     // memberships sold in the last 7 days — the ones to people who'd had a plan before are renewals (counted below)
-    only(supabase.from("subscriptions").select("user_id,plans!inner(track,duration_days)").eq("status", "active").gte("paid_at", `${newSince}T00:00:00+05:30`).gt("plans.duration_days", 1).neq("plans.track", "personal_training")).limit(1000),
+    only(supabase.from("subscriptions").select("user_id,plans!inner(track,duration_days),profiles!subscriptions_user_id_fkey(history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))").eq("status", "active").gte("paid_at", `${newSince}T00:00:00+05:30`).gt("plans.duration_days", 1).neq("plans.track", "personal_training")).limit(1000),
     // orders waiting for the desk to take the money / check the UPI screenshot
     only(supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending")),
   ]);
@@ -81,23 +82,16 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const ending = (expiring.data ?? []) as unknown as Ending[];
   // lapsed: their latest plan ended in the last 30 days and nothing runs today or later
   const endedRows = (ended.data ?? []) as unknown as Ending[];
-  const lapsedIds = [...new Set(endedRows.map((e) => e.user_id))];
-  type Joiner = { id: string; user_id: string; starts_on: string; ends_on: string | null; plans: Plan; profiles: { full_name: string; phone: string | null; photo_path: string | null; home_branch_id: string | null } | null };
+  type Joiner = { id: string; user_id: string; starts_on: string; ends_on: string | null; plans: Plan; profiles: { full_name: string; phone: string | null; photo_path: string | null; home_branch_id: string | null; history?: Past[] } | null };
   const startedRows = (joined.data ?? []) as unknown as Joiner[];
-  const startedIds = [...new Set(startedRows.map((j) => j.user_id))];
-  // one round trip for both: who renewed after lapsing, and who already had a plan before this week
-  // a plan before this week (imported ones have no paid_at) makes this week's purchase a renewal
-  const soldIds = [...new Set(((sold.data ?? []) as { user_id: string }[]).map((r) => r.user_id))];
-  const [{ data: renewed }, { data: earlier }, { data: before }] = await Promise.all([
-    lapsedIds.length ? supabase.from("subscriptions").select("user_id").eq("status", "active").gte("ends_on", today).in("user_id", lapsedIds) : { data: [] },
-    startedIds.length ? supabase.from("subscriptions").select("user_id").eq("status", "active").lt("starts_on", newSince).in("user_id", startedIds) : { data: [] },
-    soldIds.length ? supabase.from("subscriptions").select("user_id").eq("status", "active").or(`paid_at.is.null,paid_at.lt.${new Date(`${newSince}T00:00:00+05:30`).toISOString()}`).in("user_id", soldIds) : { data: [] },
-  ]);
-  const returning = new Set((earlier ?? []).map((r) => r.user_id as string));
-  const renewals = new Set((before ?? []).map((r) => r.user_id as string)).size; // bought this week, had a plan before it
-  const joiners = startedRows.filter((j, i) => !returning.has(j.user_id) && startedRows.findIndex((x) => x.user_id === j.user_id) === i);
-  const back = new Set((renewed ?? []).map((r) => r.user_id as string));
-  const lapsed = endedRows.filter((e, i) => !back.has(e.user_id) && endedRows.findIndex((x) => x.user_id === e.user_id) === i);
+  // each row carries the member's plan history (same query, no second round trip): who renewed after lapsing, who had a
+  // plan before this week, and whether this week's purchase is a renewal (imported plans have no paid_at)
+  const had = (h: Past[] | undefined, test: (p: Past) => boolean) => (h ?? []).some((p) => p.status === "active" && test(p));
+  const weekStart = Date.parse(`${newSince}T00:00:00+05:30`);
+  type Sold = { user_id: string; profiles: { history?: Past[] } | null };
+  const renewals = new Set(((sold.data ?? []) as unknown as Sold[]).filter((r) => had(r.profiles?.history, (p) => !p.paid_at || Date.parse(p.paid_at) < weekStart)).map((r) => r.user_id)).size; // bought this week, had a plan before it
+  const joiners = startedRows.filter((j, i) => !had(j.profiles?.history, (p) => !!p.starts_on && p.starts_on < newSince) && startedRows.findIndex((x) => x.user_id === j.user_id) === i);
+  const lapsed = endedRows.filter((e, i) => !had(e.profiles?.history, (p) => !!p.ends_on && p.ends_on >= today) && endedRows.findIndex((x) => x.user_id === e.user_id) === i);
   type Req = { id: string; user_id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null; note: string | null;
     phone?: string | null; email?: string | null;
     profiles: { full_name: string; photo_path: string | null; gender: string | null; home_branch_id: string | null; phone: string | null; email: string | null } | null };
