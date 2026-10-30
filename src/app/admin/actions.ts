@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { clearDesk } from "@/app/admin/data";
 import { redirect } from "next/navigation";
-import { adminDb, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
+import { adminDb, allRows, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
 import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
@@ -556,7 +556,7 @@ export async function addHoliday(_: Result, form: FormData): Promise<Result> {
   let emailed = 0;
   if (isOwner && form.get("email") === "on") {
     const { data: branch } = branchId ? await supabase.from("branches").select("name").eq("id", branchId).single() : { data: null };
-    const { data: members } = await supabase.from("profiles").select("email").not("email", "is", null);
+    const { data: members } = await allRows(() => supabase.from("profiles").select("email").not("email", "is", null).order("id"));
     emailed = await emailAll(
       (members ?? []).map((m) => m.email as string),
       `Stars Gym closed ${prettyDay(day)}`,
@@ -568,8 +568,8 @@ Your streak is safe: holidays never break it.
     );
   }
   notifyAfter(async () => {
-    const q = adminDb().from("profiles").select("id").eq("role", "member");
-    return ((await (branchId ? q.eq("home_branch_id", branchId) : q)).data ?? []).map((p) => p.id as string);
+    const q = () => adminDb().from("profiles").select("id").eq("role", "member").order("id");
+    return (await allRows(() => (branchId ? q().eq("home_branch_id", branchId) : q()))).data.map((p) => p.id as string);
   }, { title: `Closed ${prettyDay(day)}`, body: `${note ? `${note} · ` : ""}Your streak is safe — holidays never break it.`, url: "/dashboard", tag: `holiday-${day}` });
   return logged(me, "Declared holiday", emailed ? `Holiday added · emailed ${emailed} members` : "Holiday added · members see it on the site", { branchId, detail: `${prettyDay(day)}${note ? ` · ${note}` : ""}` });
 }
@@ -603,7 +603,7 @@ export async function saveOffer(_: Result, form: FormData): Promise<Result> {
   if (row.ends_on < row.starts_on) return { error: "End date is before the start date." };
   const { error } = await supabase.from("offers").insert(row);
   if (!error) {
-    notifyAfter(async () => ((await adminDb().from("profiles").select("id").eq("role", "member")).data ?? []).map((p) => p.id as string),
+    notifyAfter(async () => (await allRows(() => adminDb().from("profiles").select("id").eq("role", "member").order("id"))).data.map((p) => p.id as string),
       { title: `${row.title} · ${percent}% off`, body: `${row.description || "A new offer on memberships"} · till ${prettyDay(row.ends_on)}.`, url: "/#plans", tag: "offer" });
   }
   return error ? { error: error.message } : logged(me, "Added offer", "Offer live", { detail: `${row.title} · ${perDays ? Object.entries(perDays).map(([d, v]) => `${v}% ${d}d`).join(", ") : `${percent}%`} · ${row.starts_on} → ${row.ends_on}` });

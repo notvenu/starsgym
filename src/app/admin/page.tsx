@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireStaff, type Profile } from "@/lib/supabase";
+import { allRows, requireStaff, type Profile } from "@/lib/supabase";
 import { GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, waLink, type Holiday, type Plan } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
@@ -31,10 +31,10 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const [ref, checkins, active, paid, holidays, enquiries, expiring, requests, ended, joined, sold, toConfirm] = await Promise.all([
     deskRef(),
     only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
-    // ponytail: counts distinct members client-side; switch to an SQL count past ~10k active plans
-    only(supabase.from("subscriptions").select("user_id").eq("status", "active").lte("starts_on", today).gte("ends_on", today)).limit(10000),
+    // ponytail: counts distinct members client-side (every row, 1000 per request); an SQL count past ~10k active plans
+    allRows(() => only(supabase.from("subscriptions").select("user_id").eq("status", "active").lte("starts_on", today).gte("ends_on", today)).order("id")),
     // the month's takings are the owner's; staff see who to renew instead
-    isOwner ? only(supabase.from("subscriptions").select("amount_paise").eq("status", "active").gte("paid_at", `${monthStart}T00:00:00+05:30`)).limit(10000) : null,
+    isOwner ? allRows(() => only(supabase.from("subscriptions").select("amount_paise").eq("status", "active").gte("paid_at", `${monthStart}T00:00:00+05:30`)).order("id")) : null,
     supabase.from("holidays").select("*").gte("day", today).order("day").limit(3),
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
     only(supabase
@@ -67,7 +67,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .order("starts_on", { ascending: false })
       .limit(300),
     // memberships sold in the last 7 days — the ones to people who'd had a plan before are renewals (counted below)
-    only(supabase.from("subscriptions").select("user_id,plans!inner(track,duration_days),profiles!subscriptions_user_id_fkey(history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))").eq("status", "active").gte("paid_at", `${newSince}T00:00:00+05:30`).gt("plans.duration_days", 1).neq("plans.track", "personal_training")).limit(1000),
+    allRows(() => only(supabase.from("subscriptions").select("user_id,plans!inner(track,duration_days),profiles!subscriptions_user_id_fkey(history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))").eq("status", "active").gte("paid_at", `${newSince}T00:00:00+05:30`).gt("plans.duration_days", 1).neq("plans.track", "personal_training")).order("id")),
     // orders waiting for the desk to take the money / check the UPI screenshot
     only(supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending")),
   ]);

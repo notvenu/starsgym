@@ -12,6 +12,23 @@ const KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Every row a query matches. Supabase sends at most 1000 rows per request and silently drops the rest, so lists of
+ * members or plans are read 1000 at a time until a short page comes back. `query` builds the same query each call and
+ * must be ordered by something unique (end with .order("id")) so no row is skipped or repeated between pages.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the query-builder generic recurses too deep to type here
+export async function allRows<T = any>(query: () => any): Promise<{ data: T[]; error: { message: string } | null }> {
+  const PAGE = 1000;
+  const data: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data: rows, error } = await query().range(from, from + PAGE - 1);
+    if (error) return { data, error };
+    data.push(...(rows ?? []));
+    if (!rows || rows.length < PAGE) return { data, error: null };
+  }
+}
+
 /** Acts as the signed-in visitor; RLS applies. */
 export async function db() {
   const store = await cookies();

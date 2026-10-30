@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
+import { allRows, requireStaff, ROLE_LABEL, type Profile } from "@/lib/supabase";
 import { fuzzyScore, gymDate, gymDateIn } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL } from "../kit";
@@ -50,16 +50,16 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
   const today = gymDate();
   const weekOut = gymDateIn(7);
 
-  // ponytail: loads every member and filters/sorts here — a gym has hundreds, not tens of thousands.
-  // Supabase caps a response at 1000 rows by default; page the query with .range() past that.
+  // ponytail: loads every member (1000 per request, see allRows) and filters/sorts here — a gym has hundreds or a few
+  // thousand, not tens of thousands; move the filters into SQL if it ever gets there
   const [list, ref] = await Promise.all([
-    supabase
+    allRows(() => supabase
       .from("profiles")
       .select("*,checkins(session),subscriptions!subscriptions_user_id_fkey(id,status,starts_on,ends_on,plan_id)")
       .eq("checkins.day", today) // only today's visits
       .eq("subscriptions.status", "active") // paid plans only; pending/cancelled orders don't make anyone a member
       .order("created_at", { ascending: false })
-      .limit(5000),
+      .order("id")), // the GymPro import made hundreds of accounts in the same moment
     deskRef(),
   ]);
   const trainers = trainersFor(ref.trainers, view);
@@ -200,17 +200,29 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
         ) : (
           <Empty>No members match.</Empty>
         )}
-        {pages > 1 && (
+        {pages > 1 && (() => {
+          // first, last and the pages either side of this one: 1 … 4 5 6 … 12
+          const nums = [...new Set([1, page - 1, page, page + 1, pages])].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+          return (
           <nav aria-label="Pages" className="flex items-center justify-between gap-3 border-t border-line px-5 py-3 text-sm">
             <span className="text-ash tabular-nums">
               {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}
             </span>
-            <span className="flex gap-2">
-              {page > 1 && <Link href={href({ page: page - 1 })} className="btn-ghost min-h-10 px-4">← Prev</Link>}
-              {page < pages && <Link href={href({ page: page + 1 })} className="btn-ghost min-h-10 px-4">Next →</Link>}
+            <span className="flex flex-wrap items-center gap-1.5">
+              {page > 1 && <Link href={href({ page: page - 1 })} aria-label="Previous page" className="btn-ghost min-h-10 px-3">←</Link>}
+              {nums.map((n, i) => (
+                <span key={n} className="flex items-center gap-1.5">
+                  {i > 0 && n - nums[i - 1] > 1 && <span className="text-ash">…</span>}
+                  {n === page
+                    ? <span aria-current="page" className="flex min-h-10 min-w-10 items-center justify-center rounded border border-red bg-redwash px-2 font-bold tabular-nums">{n}</span>
+                    : <Link href={href({ page: n })} className="btn-ghost min-h-10 min-w-10 px-2 tabular-nums">{n}</Link>}
+                </span>
+              ))}
+              {page < pages && <Link href={href({ page: page + 1 })} aria-label="Next page" className="btn-ghost min-h-10 px-3">→</Link>}
             </span>
           </nav>
-        )}
+          );
+        })()}
       </Panel>
       </Desk>
     </>

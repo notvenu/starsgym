@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/supabase";
+import { allRows, requireAdmin } from "@/lib/supabase";
 import { GENDERS, gymDate, planName, toCsv, type Plan } from "@/lib/gym";
 
 type Row = {
@@ -11,15 +11,15 @@ type Row = {
 export async function GET() {
   const { supabase, view } = await requireAdmin();
   const today = gymDate();
-  // ponytail: one request, capped at 5000 like the members list; page with .range() past that
-  const q = supabase
+  // every member, 1000 per request (allRows)
+  const q = () => supabase
     .from("profiles")
     .select("full_name,email,phone,gender,date_of_birth,age,emergency_contact,home_branch_id,created_at,role,subscriptions!subscriptions_user_id_fkey(starts_on,ends_on,amount_paise,plans(*))")
     .eq("role", "member")
     .eq("subscriptions.status", "active")
     .order("full_name")
-    .limit(5000);
-  const [{ data, error }, { data: branches }] = await Promise.all([view ? q.eq("home_branch_id", view) : q, supabase.from("branches").select("id,name")]);
+    .order("id");
+  const [{ data, error }, { data: branches }] = await Promise.all([allRows(() => (view ? q().eq("home_branch_id", view) : q())), supabase.from("branches").select("id,name")]);
   if (error) return new Response(error.message, { status: 500 });
   const branch = new Map((branches ?? []).map((b) => [b.id as string, b.name as string]));
 
