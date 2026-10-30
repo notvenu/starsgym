@@ -13,6 +13,8 @@ export const metadata = { title: "Member — Stars Gym admin" };
 
 type Sub = { id: string; status: string; method: string; cash_paise: number | null; starts_on: string | null; ends_on: string | null; amount_paise: number; created_at: string; plans: Plan };
 type Visit = { day: string; session: string };
+// plan dates can be years apart, so they carry the year
+const fullDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 /** One member, desk-first: are they paid up, renew in one tap, reach them, their plans, and how often they come. */
 export default async function MemberPage({ params }: PageProps<"/admin/members/[id]">) {
@@ -49,7 +51,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const status = current
     ? { text: `Active · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`, cls: daysLeft <= 7 ? "border-red bg-redwash text-chalk" : "border-red text-red" }
     : lastEnd
-      ? { text: `Expired ${prettyDay(lastEnd)}`, cls: "border-red bg-red text-white" }
+      ? { text: `Expired ${fullDay(lastEnd)}`, cls: "border-red bg-red text-white" }
       : { text: "No plan yet", cls: "border-line text-ash" };
   const streakDays = (streak.data as number) ?? 0;
   const lastVisit = v.reduce<string | null>((max, x) => (!max || x.day > max ? x.day : max), null);
@@ -57,9 +59,8 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   // the numbers the desk asks about, in one strip
   const glance: [string, string][] = [
     ["Plan", current ? planName(current.plans) : lastGym ? planName(lastGym.plans) : "None yet"],
-    ...(current?.starts_on ? [["Started", prettyDay(current.starts_on)] as [string, string]] : []),
-    [current ? "Valid till" : "Ended", lastEnd ? prettyDay(lastEnd) : "—"],
-    ["Member since", firstStart ? prettyDay(firstStart) : "—"],
+    ...(current?.starts_on ? [["Started", fullDay(current.starts_on)] as [string, string]] : []),
+    [current ? "Valid till" : "Ended", lastEnd ? fullDay(lastEnd) : "—"],
     ["Visits · 30 days", String(new Set(v.map((x) => x.day)).size)],
     ["Last visit", lastVisit ? (lastVisit === today ? "Today" : prettyDay(lastVisit)) : "Not in 30 days"],
     ["Streak", `${streakDays} day${streakDays === 1 ? "" : "s"}`],
@@ -97,7 +98,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
         </div>
       </section>
 
-      <Panel title="Membership history" intro={paid.length ? `${paid.length} plan${paid.length === 1 ? "" : "s"} · ${inr(totalPaid)} paid${firstStart ? ` · since ${prettyDay(firstStart)}` : ""}` : undefined} flush>
+      <Panel title="Membership history" intro={paid.length ? `${firstStart ? `Member since ${fullDay(firstStart)} · ` : ""}${paid.length} plan${paid.length === 1 ? "" : "s"} · ${inr(totalPaid)} paid` : undefined} flush>
         {plans.length ? (
           <ul className="divide-y divide-line">
             {plans.map((p) => {
@@ -106,7 +107,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
                 <li key={p.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
                   <span className="min-w-0 flex-1">
                     <span className="block font-bold">{planName(p.plans)} · {inr(p.amount_paise)}</span>
-                    <span className="block text-sm text-ash">{p.starts_on ? `${prettyDay(p.starts_on)} – ${prettyDay(p.ends_on!)}` : "Not started"} · {payMethod(p)}</span>
+                    <span className="block text-sm text-ash">{p.starts_on ? `${fullDay(p.starts_on)} – ${fullDay(p.ends_on!)}` : "Not started"} · {payMethod(p)}</span>
                   </span>
                   <span className={`rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${state === "Active" ? "border-red text-red" : state === "Awaiting payment" ? "border-red bg-redwash" : "border-line text-ash"}`}>{state}</span>
                   {p.status === "pending" && <Link href={`/pay/${p.id}`} className="text-sm font-bold text-red hover:text-chalk">Take payment</Link>}
