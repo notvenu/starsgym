@@ -13,6 +13,9 @@ type Visit = { created_at: string; session: string; branch_id: string; user_id: 
 type Past = { status: string; starts_on: string | null; ends_on: string | null; paid_at: string | null };
 type Ending = { id: string; user_id: string; ends_on: string; plans: Plan; profiles: (Profile & { history?: Past[] }) | null };
 
+// saves on this page (new member, renew, edit, photo) talk to Supabase many times in a row: give them a minute, not 10 s
+export const maxDuration = 60;
+
 export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const sp = await searchParams;
   const scanNext = sp.scan === "1"; // "Scan next" on a checked pass comes back here

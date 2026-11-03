@@ -10,6 +10,9 @@ import { Desk, MemberPhotoForm, MemberTools, RenewButton, WhatsAppButton } from 
 import { deskRef, trainersFor } from "../../data";
 
 export const metadata = { title: "Member — Stars Gym admin" };
+// saves on this page (new member, renew, edit, photo) talk to Supabase many times in a row: give them a minute, not 10 s
+export const maxDuration = 60;
+
 
 type Sub = { id: string; status: string; method: string; cash_paise: number | null; starts_on: string | null; ends_on: string | null; amount_paise: number; created_at: string; plans: Plan };
 type Visit = { day: string; session: string };
