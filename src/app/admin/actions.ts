@@ -9,7 +9,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { adminDb, allRows, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
+import { gymDate, gymDateIn, inr, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
@@ -151,59 +151,58 @@ async function addMemberRun(_: Result, form: FormData): Promise<Result> {
 
   const { data: existing } = email ? await supabase.from("profiles").select("id,photo_path").eq("email", email).maybeSingle() : { data: null };
   if (!photo.file && !existing?.photo_path) return { error: "Take or upload the member's photo — staff check it when they scan the pass." };
-  let userId = existing?.id as string | undefined;
+  // a new account's id is picked here, not by Supabase: the photo uploads (to <id>/…) while the account is being made,
+  // and a phone-only member gets their hidden sign-in address (it contains the id) in the same call
+  const id = (existing?.id as string | undefined) ?? crypto.randomUUID();
+  const upload = photo.file ? uploadPhoto(id, photo.file).then((path) => ({ path }), (e: Error) => ({ error: e.message })) : Promise.resolve(null);
   let password: string | null = null;
   let signInAs = email;
-  if (!userId) {
+  if (!existing) {
     // a random temporary password, shown to the desk once; they're asked to set their own when they first sign in
     password = tempPassword();
-    const { data, error } = await adminDb().auth.admin.createUser({
-      // no email: a hidden sign-in address, swapped in when they type their phone (like the GymPro imports). It needs
-      // the account's id, so the account starts on a throwaway one
-      email: email || `new-${crypto.randomUUID()}@${LOGIN_EMAIL_DOMAIN}`,
+    signInAs = email || loginEmail(id); // no email: the hidden one, swapped in when they type their phone (like the GymPro imports)
+    const { error } = await adminDb().auth.admin.createUser({
+      id,
+      email: signInAs,
       email_confirm: true,
       password,
       app_metadata: { temp_password: true, temp_kind: "random" },
       user_metadata: { full_name: s(form, "full_name"), ...read.details },
     });
-    if (error) return { error: branchId && /already/i.test(error.message) ? "That email belongs to a member of another branch — ask the owner." : error.message };
-    userId = data.user.id;
-    if (!email) {
-      signInAs = loginEmail(userId);
-      const { error: e } = await adminDb().auth.admin.updateUserById(userId, { email: signInAs, email_confirm: true });
-      if (e) {
-        await adminDb().auth.admin.deleteUser(userId);
-        return { error: e.message };
-      }
-      await adminDb().from("profiles").update({ email: null }).eq("id", userId); // nothing is ever mailed to it
+    if (error) {
+      // no account, so the photo that went up alongside has nowhere to belong
+      after(async () => {
+        const u = await upload;
+        if (u && "path" in u) await removePhoto(u.path);
+      });
+      return { error: branchId && /already/i.test(error.message) ? "That email belongs to a member of another branch — ask the owner." : error.message };
     }
   }
   // From here the account exists, so nothing below returns a bare error: a retry would make a second account. Problems
   // come back as saveError / planError next to the password and QR, to fix from Edit or Renew.
-  const id = userId;
   const problems: string[] = [];
-  // the details and the photo upload don't depend on each other: both at once
-  const [profileSave, uploaded] = await Promise.all([
+  const [profileSave, hidden, uploaded] = await Promise.all([
     supabase.from("profiles").update({ ...read.details, ...(branch && { home_branch_id: branch }) }).eq("id", id),
-    photo.file ? uploadPhoto(id, photo.file).then((path) => ({ path }), (e: Error) => ({ error: e.message })) : null,
+    // the hidden sign-in address is never their email on file: nothing is ever mailed to it
+    !existing && !email ? adminDb().from("profiles").update({ email: null }).eq("id", id) : null,
+    upload,
   ]);
   if (profileSave.error) problems.push(`details didn't save (${profileSave.error.message})`);
-  // photo taken at the desk: staff can set or replace it any time, without using up the member's own changes
+  if (hidden?.error) problems.push(`sign-in details didn't save (${hidden.error.message})`);
   if (uploaded && "error" in uploaded) problems.push(`photo didn't upload (${uploaded.error})`);
-  else if (uploaded) {
-    const { data: old, error } = await supabase.rpc("admin_set_photo", { p_user: id, p_path: uploaded.path });
-    if (error) {
-      problems.push(`photo didn't save (${error.message})`);
-      after(() => removePhoto(uploaded.path));
-    } else if (old) after(() => removePhoto(old as string));
-  }
   logSoon(me, existing ? "Updated member" : "Added member", { memberId: id, memberName: s(form, "full_name"), branchId: branch || null });
 
-  // the plan and the sign-in link don't depend on each other either
-  const [sold, loginUrl] = await Promise.all([
+  // the photo, the plan and the sign-in link don't depend on each other: all at once
+  const [photoSet, sold, loginUrl] = await Promise.all([
+    // photo taken at the desk: staff can set or replace it any time, without using up the member's own changes
+    uploaded && "path" in uploaded ? supabase.rpc("admin_set_photo", { p_user: id, p_path: uploaded.path }) : null,
     s(form, "plan_id") || s(form, "pt_plan_id") ? sellPlans(supabase, me, id, branch || null, form).catch((e: Error) => ({ error: e.message })) : null,
     password ? loginLink(signInAs).catch(() => null) : null,
   ]);
+  if (photoSet?.error) {
+    problems.push(`photo didn't save (${photoSet.error.message})`);
+    if (uploaded && "path" in uploaded) after(() => removePhoto(uploaded.path));
+  } else if (photoSet?.data) after(() => removePhoto(photoSet.data as string)); // the photo it replaced
   const planError = sold && "error" in sold ? sold.error : undefined;
   // no revalidatePath here: re-rendering the whole member list made the desk wait for it. The form refreshes the list
   // in the background once the password screen is showing.
@@ -402,15 +401,13 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
       out.push({ ...sold, state: "pay" });
       continue;
     }
-    if (proof.file) {
-      try {
-        await saveProof(m.id, proof.file);
-      } catch (e) {
-        return { error: `Couldn't save the payment photo: ${(e as Error).message}` };
-      }
-    }
-    const act = await supabase.rpc("activate_subscription", { p_sub: m.id });
+    // the payment photo and the activation don't depend on each other: both at once
+    const [saved, act] = await Promise.all([
+      proof.file ? saveProof(m.id, proof.file).then(() => null, (e: Error) => e.message) : null,
+      supabase.rpc("activate_subscription", { p_sub: m.id }),
+    ]);
     if (act.error) return { error: act.error.message };
+    if (saved) console.error(`[desk] payment photo for ${m.id} didn't save:`, saved); // optional: the sale stands without it
     const dates = await placeDates(m.id, userId, picked.start);
     if (dates.error) return { error: `Sold, but the dates didn't save: ${dates.error}` };
     out.push({ ...sold, state: "paid", endsOn: dates.ends ?? null });

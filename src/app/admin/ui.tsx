@@ -170,6 +170,20 @@ function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, 
   );
 }
 
+/**
+ * Refresh the page behind a desk form once its save has finished showing. Called from inside the save (a form action),
+ * a router.refresh() would join the save's transition, and the button would stay on "Saving…" until the whole page —
+ * every member on the list — had re-rendered. Here the refresh starts after the save's result is on screen.
+ */
+function useRefreshAfterSave() {
+  const router = useRouter();
+  const [saves, setSaves] = useState(0);
+  useEffect(() => {
+    if (saves) startTransition(() => router.refresh());
+  }, [saves, router]);
+  return () => setSaves((n) => n + 1);
+}
+
 /** After "+ New member": who was created, the temporary password (shown once), a QR that signs the member in on their
  *  own phone so they can set their own password, and where the plan stands. */
 function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void }) {
@@ -271,6 +285,7 @@ export function RenewButton({ member, renew, lastPlanId, currentEnd, admissionPa
 }) {
   const [open, setOpen] = useState(false);
   const verb = renew ? "Renew" : "Sell plan";
+  const refresh = useRefreshAfterSave();
   return (
     <>
       {className ? (
@@ -287,7 +302,7 @@ export function RenewButton({ member, renew, lastPlanId, currentEnd, admissionPa
       )}
       {open && (
         <Sheet title={`${verb} · ${member.full_name}`} open onClose={() => setOpen(false)}>
-          <RenewForm userId={member.id} branchId={member.home_branch_id} lastPlanId={lastPlanId} currentEnd={currentEnd} admissionPaise={admissionPaise} onDone={() => setOpen(false)} />
+          <RenewForm userId={member.id} branchId={member.home_branch_id} lastPlanId={lastPlanId} currentEnd={currentEnd} admissionPaise={admissionPaise} onDone={() => { setOpen(false); refresh(); }} />
         </Sheet>
       )}
     </>
@@ -297,7 +312,6 @@ export function RenewButton({ member, renew, lastPlanId, currentEnd, admissionPa
 /** Sell an existing member their next plan. Starts the day after their current one ends. */
 function RenewForm({ userId, branchId, lastPlanId, currentEnd, admissionPaise, onDone }: { userId: string; branchId: string | null; lastPlanId?: string | null; currentEnd?: string | null; admissionPaise: number | null; onDone?: () => void }) {
   const { plans, offers, trainers } = useContext(DeskContext);
-  const router = useRouter();
   // the day after their current plan (or run of plans) ends; today when nothing is running
   const today = gymDate();
   const startOn = currentEnd && currentEnd >= today ? new Date(Date.parse(`${currentEnd}T12:00:00Z`) + 864e5).toISOString().slice(0, 10) : today;
@@ -305,8 +319,7 @@ function RenewForm({ userId, branchId, lastPlanId, currentEnd, admissionPaise, o
     const r = await renewMember(prev, form);
     if (r?.ok) {
       toastResult(r); // the sheet closes, so the confirmation can't live inside it
-      onDone?.();
-      startTransition(() => router.refresh()); // new end date on the list, fetched after the sheet has closed
+      onDone?.(); // RenewButton refreshes the list once the sheet has closed
     }
     return r?.ok ? undefined : r;
   }, undefined);
@@ -689,10 +702,10 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
 
 /** Member page: edit details and home branch. */
 export function MemberEditForm({ member, branches }: { member: Profile; branches: Branch[] }) {
-  const router = useRouter();
+  const refresh = useRefreshAfterSave();
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await adminSaveMember(prev, form);
-    if (r?.ok) startTransition(() => router.refresh()); // "Saved" shows at once; the list updates behind it
+    if (r?.ok) refresh(); // "Saved" shows at once; the page updates behind it
     return r;
   }, undefined);
   return (
