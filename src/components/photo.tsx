@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FaceDetector } from "@mediapipe/tasks-vision";
 
 const SIZE = 720; // saved photos are 720×720 JPEGs (~80–150 KB)
-const MP = "1.0.1"; // keep in step with @mediapipe/tasks-vision in package.json
+const MP = "1.1.1"; // must match @mediapipe/tasks-vision in package.json exactly (JS and wasm from different versions break)
 
 // Loaded on first use only (~10 MB of wasm from the CDN), then reused.
 let detector: Promise<FaceDetector | null> | undefined;
@@ -25,15 +25,41 @@ function getDetector() {
   return detector;
 }
 
+/** Start downloading the face checker (~13 MB the first time, then from the browser cache) without blocking anything. */
+export function warmUpFaceCheck() {
+  if (typeof window === "undefined" || detector) return;
+  const go = () => void getDetector();
+  if ("requestIdleCallback" in window) requestIdleCallback(go, { timeout: 3000 });
+  else setTimeout(go, 1500);
+}
+
+// The face check works on a small copy: the detector shrinks its input to 128 px anyway, and handing it 720×720 cost
+// a visible freeze on older phones. Boxes are scaled back to the full photo.
+const CHECK = 256;
+// A desk with slow internet doesn't wait for the checker to download: past this the photo is taken as it is.
+const WAIT_MS = 3500;
+
 /** null = good to go, otherwise what to fix. The face must be clear, alone, close enough, centred and lit. */
 async function checkFace(canvas: HTMLCanvasElement): Promise<string | null> {
-  const fd = await getDetector();
-  // ponytail: if the detector can't load (offline, old browser) the photo is accepted — staff still see it on every scan
+  // ponytail: if the detector can't load in time (slow network, offline, old browser) the photo is accepted — staff
+  // still see it on every scan. It keeps loading in the background for the next photo.
+  const fd = await Promise.race([getDetector(), new Promise<null>((r) => setTimeout(() => r(null), WAIT_MS))]);
   if (!fd) return null;
-  const faces = fd.detect(canvas).detections.filter((d) => (d.categories[0]?.score ?? 0) >= 0.6 && d.boundingBox);
+  const small = document.createElement("canvas");
+  small.width = small.height = CHECK;
+  small.getContext("2d")!.drawImage(canvas, 0, 0, CHECK, CHECK);
+  let found;
+  try {
+    found = fd.detect(small).detections;
+  } catch {
+    return null; // the detector broke on this device: accept the photo, like when it can't load
+  }
+  const faces = found.filter((d) => (d.categories[0]?.score ?? 0) >= 0.6 && d.boundingBox);
   if (faces.length === 0) return "We can't see a face. Face the camera in good light, with nothing covering your face.";
   if (faces.length > 1) return "Only you in the photo, please.";
-  const { originX: x, originY: y, width: w, height: h } = faces[0].boundingBox!;
+  const k = SIZE / CHECK;
+  const b = faces[0].boundingBox!;
+  const [x, y, w, h] = [b.originX * k, b.originY * k, b.width * k, b.height * k].map(Math.round);
   if ((w * h) / (SIZE * SIZE) < 0.07) return "Move closer — your face should fill most of the circle.";
   if (Math.abs(x + w / 2 - SIZE / 2) > SIZE * 0.18 || Math.abs(y + h / 2 - SIZE / 2) > SIZE * 0.2) return "Centre your face in the circle.";
   const px = canvas.getContext("2d")!.getImageData(Math.max(0, x), Math.max(0, y), Math.max(1, Math.min(w, SIZE - x)), Math.max(1, Math.min(h, SIZE - y))).data;
@@ -66,12 +92,16 @@ export function PhotoCapture({ current, label = "Photo", required, back }: { cur
     setCamera(false);
   };
   useEffect(() => stop, []);
+  // a required photo (new member) will be taken for sure: fetch the face checker while the desk types the details
+  useEffect(() => {
+    if (required && !current) warmUpFaceCheck();
+  }, [required, current]);
 
   async function openCamera(side = facing) {
     setError("");
     stream.current?.getTracks().forEach((t) => t.stop()); // switching cameras: let go of the other one first
     try {
-      stream.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: side, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false });
+      stream.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: side, width: { ideal: 960 }, height: { ideal: 960 } }, audio: false });
       setFacing(side);
       setCamera(true);
       void getDetector(); // warm up while they pose
@@ -113,16 +143,22 @@ export function PhotoCapture({ current, label = "Photo", required, back }: { cur
 
   const capture = () => {
     const v = video.current;
-    if (v?.videoWidth) void accept(v, v.videoWidth, v.videoHeight);
+    if (v?.videoWidth) accept(v, v.videoWidth, v.videoHeight).catch(() => (setBusy(false), setError("Couldn't take that photo — try again.")));
   };
 
   async function upload(file: File | undefined) {
     if (!file) return;
     try {
-      const bmp = await createImageBitmap(file);
+      setBusy(true);
+      // decode a 12 MP phone photo straight to ~1000 px instead of full size (much less memory and time)
+      const full = await createImageBitmap(file);
+      const scale = Math.min(1, 1000 / Math.min(full.width, full.height));
+      const bmp = scale < 1 ? await createImageBitmap(full, { resizeWidth: Math.round(full.width * scale), resizeHeight: Math.round(full.height * scale), resizeQuality: "medium" }) : full;
+      if (bmp !== full) full.close();
       await accept(bmp, bmp.width, bmp.height);
       bmp.close();
     } catch {
+      setBusy(false);
       setError("That file isn't a photo we can read. Try a JPG or PNG.");
     }
   }

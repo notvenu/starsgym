@@ -7,6 +7,9 @@ import { AddMemberForm, AdminModal, Desk, MemberActions, MemberSearch, SortSelec
 import { deskRef, trainersFor } from "../data";
 
 export const metadata = { title: "Members — Stars Gym admin" };
+// saves on this page (new member, renew, edit, photo) talk to Supabase many times in a row: give them a minute, not 10 s
+export const maxDuration = 60;
+
 
 type Member = Profile & {
   created_at: string;

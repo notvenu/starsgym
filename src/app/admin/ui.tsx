@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Sheet } from "@/components/sheet";
 export { Sheet };
 import { useRouter } from "next/navigation";
-import { createContext, useActionState, useContext, useEffect, useRef, useState, useTransition } from "react";
+import { createContext, startTransition, useActionState, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { Field, MemberDetailsFields, PhoneField } from "@/components/client";
 import { confirmDialog, ResultToast, toast, toastResult, keepFields, withUndo } from "@/components/feedback";
 import { PhotoCapture } from "@/components/photo";
@@ -170,10 +170,27 @@ function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, 
   );
 }
 
+/**
+ * Refresh the page behind a desk form once its save has finished showing. Called from inside the save (a form action),
+ * a router.refresh() would join the save's transition, and the button would stay on "Saving…" until the whole page —
+ * every member on the list — had re-rendered. Here the refresh starts after the save's result is on screen.
+ */
+function useRefreshAfterSave() {
+  const router = useRouter();
+  const [saves, setSaves] = useState(0);
+  useEffect(() => {
+    if (saves) startTransition(() => router.refresh());
+  }, [saves, router]);
+  return () => setSaves((n) => n + 1);
+}
+
 /** After "+ New member": who was created, the temporary password (shown once), a QR that signs the member in on their
  *  own phone so they can set their own password, and where the plan stands. */
 function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void }) {
   const [qr, setQr] = useState<string>();
+  const router = useRouter();
+  // the list behind the pop-up picks up the new member in the background — the save itself doesn't wait for it
+  useEffect(() => startTransition(() => router.refresh()), [router]);
   useEffect(() => {
     // loaded on demand: only this dialog draws a QR, so it stays out of every other admin page
     const url = c.loginUrl;
@@ -228,6 +245,9 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
         <p className="rounded-lg border border-line px-4 py-3 text-sm text-ash">They already had an account, so their password hasn&apos;t changed.</p>
       )}
 
+      {c.saveError && (
+        <p role="alert" className="rounded-lg border border-redline bg-redwash px-4 py-3 text-sm font-semibold">{c.saveError}</p>
+      )}
       {c.planError && (
         <p role="alert" className="rounded-lg border border-redline bg-redwash px-4 py-3 text-sm font-semibold">
           The plan wasn&apos;t sold: {c.planError} Sell it from the member&apos;s ⋯ menu → Renew.
@@ -265,6 +285,7 @@ export function RenewButton({ member, renew, lastPlanId, currentEnd, admissionPa
 }) {
   const [open, setOpen] = useState(false);
   const verb = renew ? "Renew" : "Sell plan";
+  const refresh = useRefreshAfterSave();
   return (
     <>
       {className ? (
@@ -281,7 +302,7 @@ export function RenewButton({ member, renew, lastPlanId, currentEnd, admissionPa
       )}
       {open && (
         <Sheet title={`${verb} · ${member.full_name}`} open onClose={() => setOpen(false)}>
-          <RenewForm userId={member.id} branchId={member.home_branch_id} lastPlanId={lastPlanId} currentEnd={currentEnd} admissionPaise={admissionPaise} onDone={() => setOpen(false)} />
+          <RenewForm userId={member.id} branchId={member.home_branch_id} lastPlanId={lastPlanId} currentEnd={currentEnd} admissionPaise={admissionPaise} onDone={() => { setOpen(false); refresh(); }} />
         </Sheet>
       )}
     </>
@@ -298,7 +319,7 @@ function RenewForm({ userId, branchId, lastPlanId, currentEnd, admissionPaise, o
     const r = await renewMember(prev, form);
     if (r?.ok) {
       toastResult(r); // the sheet closes, so the confirmation can't live inside it
-      onDone?.();
+      onDone?.(); // RenewButton refreshes the list once the sheet has closed
     }
     return r?.ok ? undefined : r;
   }, undefined);
@@ -406,11 +427,7 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
         {selling && (
           // renewals come filled in (today, or the day after their current plan ends); any past date backdates, up to 60 days ahead starts later.
           // New members: blank = today
-          <label className="flex flex-col gap-1.5 sm:max-w-64">
-            <span className="label">{startOn ? "Starts on" : "Start date (optional)"}</span>
-            <input type="date" name="start_on" defaultValue={startOn} min={gymDateIn(-92)} max={gymDateIn(60)} className="field" />
-            <span className="text-xs text-ash">{startOn ? "Change it to backdate or start later." : "Leave blank to start today."}</span>
-          </label>
+          <StartDate initial={startOn} />
         )}
         {kind !== "none" && kind !== "pt" && !plan && <p className="text-red">That plan isn&apos;t available.</p>}
         <input type="hidden" name="plan_id" value={plan?.id ?? ""} />
@@ -452,6 +469,68 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
         <Status state={state} />
       </div>
     </>
+  );
+}
+
+/**
+ * The plan's start date. Picking a date in the calendar changes nothing until "Save date"; "Cancel" keeps the date it
+ * had — so opening it by mistake (wrong member, can't find the day) never moves anyone's plan. `initial` blank = today.
+ */
+function StartDate({ initial }: { initial?: string }) {
+  const [value, setValue] = useState(initial ?? ""); // what the form sends
+  const [draft, setDraft] = useState<string | null>(null); // null = not changing it
+  const min = gymDateIn(-92);
+  const max = gymDateIn(60);
+  const ok = !!draft && draft >= min && draft <= max;
+  const save = () => {
+    if (!ok) return;
+    setValue(draft === initial || (!initial && draft === gymDate()) ? initial ?? "" : draft);
+    setDraft(null);
+  };
+  const changed = value !== (initial ?? "");
+  return (
+    <div data-field className="flex flex-col gap-1.5 sm:max-w-sm">
+      <span className="label">{initial ? "Starts on" : "Start date"}</span>
+      <input type="hidden" name="start_on" value={value} />
+      {draft === null ? (
+        <div className={`flex items-center justify-between gap-3 rounded-md border px-4 py-2 ${changed ? "border-red bg-redwash" : "border-line"}`}>
+          <span className="min-w-0">
+            <span className="block font-bold">{value ? prettyDay(value) : "Today"}</span>
+            {changed && <span className="block text-xs text-ash">Was {initial ? prettyDay(initial) : "today"}</span>}
+          </span>
+          <span className="flex shrink-0 gap-2">
+            {changed && <button type="button" onClick={() => setValue(initial ?? "")} className="btn-ghost min-h-10 px-3 text-xs">Undo</button>}
+            <button type="button" onClick={() => setDraft(value || gymDate())} className="btn-ghost min-h-10 px-4 text-xs">Change</button>
+          </span>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 rounded-md border border-red p-3">
+          <input
+            type="date"
+            value={draft}
+            min={min}
+            max={max}
+            onChange={(e) => setDraft(e.target.value)}
+            // Enter would submit the whole form; here it means "save this date", Escape means cancel
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== "Escape") return;
+              e.preventDefault();
+              if (e.key === "Enter") save();
+              else setDraft(null);
+            }}
+            aria-label="New start date"
+            className="field"
+          />
+          {draft && !ok && <p className="text-xs text-red">Pick a day within the last 3 months or up to 60 days ahead.</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={save} disabled={!ok} className="btn-red min-h-10 flex-1 px-4 text-xs">Save date</button>
+            <button type="button" onClick={() => setDraft(null)} className="btn-ghost min-h-10 flex-1 px-4 text-xs">Cancel</button>
+          </div>
+          <p className="text-xs text-ash">Until you tap Save date, it stays {value ? prettyDay(value) : "today"}.</p>
+        </div>
+      )}
+      {draft === null && <span className="text-xs text-ash">{initial ? "Change it to backdate or start later." : "Starts today unless you change it."}</span>}
+    </div>
   );
 }
 
@@ -666,7 +745,12 @@ export function EditPlanForm({ sub }: { sub: { id: string; starts_on: string; am
 
 /** Member page: edit details and home branch. */
 export function MemberEditForm({ member, branches }: { member: Profile; branches: Branch[] }) {
-  const [state, action, pending] = useActionState(adminSaveMember, undefined);
+  const refresh = useRefreshAfterSave();
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const r = await adminSaveMember(prev, form);
+    if (r?.ok) refresh(); // "Saved" shows at once; the page updates behind it
+    return r;
+  }, undefined);
   return (
     <form noValidate onSubmit={keepFields(action)} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <input type="hidden" name="id" value={member.id} />

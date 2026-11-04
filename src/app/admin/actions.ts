@@ -3,12 +3,13 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { clearDesk } from "@/app/admin/data";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { adminDb, allRows, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { gymDate, gymDateIn, inr, LOGIN_EMAIL_DOMAIN, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
+import { gymDate, gymDateIn, inr, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
@@ -22,6 +23,7 @@ export type Created = {
   loginUrl: string | null; // one-time link for the QR: signs them in on their phone, no password typed
   plans: SoldPlan[]; // the membership and/or PT add-on sold with the account (none for "account only")
   planError?: string; // the account was made but the plan wasn't sold (still show the password and QR)
+  saveError?: string; // the account was made but its details or photo didn't save (fix them from Edit; never re-create it)
 };
 export type SoldPlan = { label: string; amount: number; state: "paid" | "pay"; subId: string; endsOn: string | null };
 
@@ -50,9 +52,30 @@ type Db = Awaited<ReturnType<typeof requireStaff>>["supabase"];
 const sees = async (supabase: Db, table: "profiles" | "subscriptions", id: string) =>
   !!(await supabase.from(table).select("id").eq("id", id).maybeSingle()).data;
 const NOT_YOURS = { error: "That member belongs to another branch." };
+/** The staff-log line, written after the reply is sent (it never changes what the desk sees). */
+const logSoon = (...args: Parameters<typeof logAction>) => after(() => logAction(...args));
+
+/**
+ * A desk save never takes the page down. Anything unexpected (Supabase storage down, a timeout, a bad row) is logged
+ * for Vercel → Logs (search "[desk]") and comes back as a message in the form, with everything the desk typed still there.
+ * redirect() and Next's other internal throws pass straight through.
+ */
+async function guard(name: string, run: () => Promise<Result>): Promise<Result> {
+  try {
+    return await run();
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error(`[desk] ${name} failed:`, e);
+    const why = e instanceof Error && e.message ? ` (${e.message.slice(0, 160)})` : "";
+    return { error: `Couldn't save${why}. Check the member list before trying again — part of it may have saved.` };
+  }
+}
 
 /** Confirm a desk payment. A photo of the payment (UPI screenshot or cash receipt) is optional. */
-export async function markPaid(_: Result, form: FormData): Promise<Result> {
+export async function markPaid(prev: Result, form: FormData): Promise<Result> {
+  return guard("markPaid", () => markPaidRun(prev, form));
+}
+async function markPaidRun(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me } = await requireStaff();
   const subId = s(form, "id");
   if (!UUID.test(subId)) return { error: "Reload and try again." };
@@ -106,7 +129,10 @@ function pickedStart(form: FormData): { start: string | null; error?: string } {
 }
 
 /** Desk sign-up: creates the member and optionally sells their first plan — paid now, or shown as a UPI QR. */
-export async function addMember(_: Result, form: FormData): Promise<Result> {
+export async function addMember(prev: Result, form: FormData): Promise<Result> {
+  return guard("addMember", () => addMemberRun(prev, form));
+}
+async function addMemberRun(_: Result, form: FormData): Promise<Result> {
   const { supabase, branchId, profile: me } = await requireStaff();
   const branch = branchId ?? s(form, "branch_id"); // staff sign people up at their own branch
   const email = s(form, "email").toLowerCase(); // optional: they sign in with their phone either way
@@ -125,59 +151,77 @@ export async function addMember(_: Result, form: FormData): Promise<Result> {
 
   const { data: existing } = email ? await supabase.from("profiles").select("id,photo_path").eq("email", email).maybeSingle() : { data: null };
   if (!photo.file && !existing?.photo_path) return { error: "Take or upload the member's photo — staff check it when they scan the pass." };
-  let userId = existing?.id as string | undefined;
+  // a new account's id is picked here, not by Supabase: the photo uploads (to <id>/…) while the account is being made,
+  // and a phone-only member gets their hidden sign-in address (it contains the id) in the same call
+  const id = (existing?.id as string | undefined) ?? crypto.randomUUID();
+  const upload = photo.file ? uploadPhoto(id, photo.file).then((path) => ({ path }), (e: Error) => ({ error: e.message })) : Promise.resolve(null);
   let password: string | null = null;
   let signInAs = email;
-  if (!userId) {
+  if (!existing) {
     // a random temporary password, shown to the desk once; they're asked to set their own when they first sign in
     password = tempPassword();
-    const { data, error } = await adminDb().auth.admin.createUser({
-      // no email: a hidden sign-in address, swapped in when they type their phone (like the GymPro imports). It needs
-      // the account's id, so the account starts on a throwaway one
-      email: email || `new-${crypto.randomUUID()}@${LOGIN_EMAIL_DOMAIN}`,
+    signInAs = email || loginEmail(id); // no email: the hidden one, swapped in when they type their phone (like the GymPro imports)
+    const { error } = await adminDb().auth.admin.createUser({
+      id,
+      email: signInAs,
       email_confirm: true,
       password,
       app_metadata: { temp_password: true, temp_kind: "random" },
       user_metadata: { full_name: s(form, "full_name"), ...read.details },
     });
-    if (error) return { error: branchId && /already/i.test(error.message) ? "That email belongs to a member of another branch — ask the owner." : error.message };
-    userId = data.user.id;
-    if (!email) {
-      signInAs = loginEmail(userId);
-      const { error: e } = await adminDb().auth.admin.updateUserById(userId, { email: signInAs, email_confirm: true });
-      if (e) {
-        await adminDb().auth.admin.deleteUser(userId);
-        return { error: e.message };
-      }
-      await adminDb().from("profiles").update({ email: null }).eq("id", userId); // nothing is ever mailed to it
-    }
-  }
-  await supabase.from("profiles").update({ ...read.details, ...(branch && { home_branch_id: branch }) }).eq("id", userId);
-  // photo taken at the desk: staff can set or replace it any time, without using up the member's own changes
-  if (photo.file) {
-    const path = await uploadPhoto(userId, photo.file);
-    const { data: old, error } = await supabase.rpc("admin_set_photo", { p_user: userId, p_path: path });
     if (error) {
-      await removePhoto(path);
-      return { error: error.message };
+      // no account, so the photo that went up alongside has nowhere to belong
+      after(async () => {
+        const u = await upload;
+        if (u && "path" in u) await removePhoto(u.path);
+      });
+      return { error: branchId && /already/i.test(error.message) ? "That email belongs to a member of another branch — ask the owner." : error.message };
     }
-    await removePhoto(old as string | null);
   }
-  await logAction(me, existing ? "Updated member" : "Added member", { memberId: userId, memberName: s(form, "full_name"), branchId: branch || null });
+  // From here the account exists, so nothing below returns a bare error: a retry would make a second account. Problems
+  // come back as saveError / planError next to the password and QR, to fix from Edit or Renew.
+  const problems: string[] = [];
+  const [profileSave, hidden, uploaded] = await Promise.all([
+    supabase.from("profiles").update({ ...read.details, ...(branch && { home_branch_id: branch }) }).eq("id", id),
+    // the hidden sign-in address is never their email on file: nothing is ever mailed to it
+    !existing && !email ? adminDb().from("profiles").update({ email: null }).eq("id", id) : null,
+    upload,
+  ]);
+  if (profileSave.error) problems.push(`details didn't save (${profileSave.error.message})`);
+  if (hidden?.error) problems.push(`sign-in details didn't save (${hidden.error.message})`);
+  if (uploaded && "error" in uploaded) problems.push(`photo didn't upload (${uploaded.error})`);
+  logSoon(me, existing ? "Updated member" : "Added member", { memberId: id, memberName: s(form, "full_name"), branchId: branch || null });
 
-  const sold = s(form, "plan_id") || s(form, "pt_plan_id") ? await sellPlans(supabase, me, userId, branch || null, form) : null;
+  // the photo, the plan and the sign-in link don't depend on each other: all at once
+  const [photoSet, sold, loginUrl] = await Promise.all([
+    // photo taken at the desk: staff can set or replace it any time, without using up the member's own changes
+    uploaded && "path" in uploaded ? supabase.rpc("admin_set_photo", { p_user: id, p_path: uploaded.path }) : null,
+    s(form, "plan_id") || s(form, "pt_plan_id") ? sellPlans(supabase, me, id, branch || null, form).catch((e: Error) => ({ error: e.message })) : null,
+    password ? loginLink(signInAs).catch(() => null) : null,
+  ]);
+  if (photoSet?.error) {
+    problems.push(`photo didn't save (${photoSet.error.message})`);
+    if (uploaded && "path" in uploaded) after(() => removePhoto(uploaded.path));
+  } else if (photoSet?.data) after(() => removePhoto(photoSet.data as string)); // the photo it replaced
   const planError = sold && "error" in sold ? sold.error : undefined;
-  revalidatePath("/admin", "layout");
-  // even when the plan fails, the account exists: always hand over its password and sign-in QR (sell the plan after)
+  // no revalidatePath here: re-rendering the whole member list made the desk wait for it. The form refreshes the list
+  // in the background once the password screen is showing.
   return {
     ok: existing ? "Member already exists — updated." : "Account created",
-    created: { name: s(form, "full_name"), email, phone: read.details.phone, password, loginUrl: password ? await loginLink(signInAs) : null, plans: sold && !("error" in sold) ? sold : [], planError },
+    created: {
+      name: s(form, "full_name"), email, phone: read.details.phone, password, loginUrl,
+      plans: sold && !("error" in sold) ? sold : [], planError,
+      saveError: problems.length ? `The account was made, but its ${problems.join(" and ")}. Open the member → Edit to fix it — don't add them again.` : undefined,
+    },
   };
 }
 
 /** Sell an existing member their next plan (from the members list). Queued after their current plan if one is running.
  *  The desk can set any price; a discount is noted in the staff log. */
-export async function renewMember(_: Result, form: FormData): Promise<Result> {
+export async function renewMember(prev: Result, form: FormData): Promise<Result> {
+  return guard("renewMember", () => renewMemberRun(prev, form));
+}
+async function renewMemberRun(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me, branchId } = await requireStaff();
   const userId = s(form, "user_id");
   if (!(await sees(supabase, "profiles", userId))) return NOT_YOURS;
@@ -189,7 +233,7 @@ export async function renewMember(_: Result, form: FormData): Promise<Result> {
     revalidatePath("/admin", "layout");
     redirect(`/pay/${qr.subId}`);
   }
-  return done(`Renewed · ${sold.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}`);
+  return { ok: `Renewed · ${sold.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}` }; // the form refreshes the page
 }
 
 /** Desk: fix a paid plan after the sale — which plan (track / length), its start date, the price paid, the PT trainer.
@@ -333,12 +377,14 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
   const made: Made[] = [];
   const dropAll = () => Promise.all(made.map((m) => adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", m.id).eq("status", "pending")));
   for (const i of items) {
-    const { data: sub, error } = await supabase.rpc("create_pending_subscription", { p_plan: i.planId, p_branch: branchId, p_method: pay === "cash" ? "cash" : "upi_qr", p_user: userId });
+    const [{ data: sub, error }, { data: plan }] = await Promise.all([
+      supabase.rpc("create_pending_subscription", { p_plan: i.planId, p_branch: branchId, p_method: pay === "cash" ? "cash" : "upi_qr", p_user: userId }),
+      supabase.from("plans").select("track,duration_days").eq("id", i.planId).maybeSingle(),
+    ]);
     if (error) {
       await dropAll();
       return { error: error.message };
     }
-    const { data: plan } = await supabase.from("plans").select("track,duration_days").eq("id", i.planId).maybeSingle();
     const dbFee = (sub.admission_paise as number | undefined) ?? 0;
     const fee = i.addOn ? 0 : dbFee; // an add-on never carries admission
     const own = i.addOn && i.trainerId ? trainerFees.get(i.trainerId) : null;
@@ -388,20 +434,18 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
   for (const m of made) {
     const what = `${m.label} · ${inr(m.total)}${m.discounted ? ` (standard ${inr(m.standard)})` : ""}`;
     const sold = { label: m.label, amount: m.total, subId: m.id, endsOn: null };
-    await logAction(me, pay === "qr" ? "Created order" : "Sold plan", { memberId: userId, branchId, detail: `${what} · ${m.method === "cash" ? "cash" : m.cashPart ? "cash + UPI" : "UPI"}` });
+    logSoon(me, pay === "qr" ? "Created order" : "Sold plan", { memberId: userId, branchId, detail: `${what} · ${m.method === "cash" ? "cash" : m.cashPart ? "cash + UPI" : "UPI"}` });
     if (pay === "qr") {
       out.push({ ...sold, state: "pay" });
       continue;
     }
-    if (proof.file) {
-      try {
-        await saveProof(m.id, proof.file);
-      } catch (e) {
-        return { error: `Couldn't save the payment photo: ${(e as Error).message}` };
-      }
-    }
-    const act = await supabase.rpc("activate_subscription", { p_sub: m.id });
+    // the payment photo and the activation don't depend on each other: both at once
+    const [saved, act] = await Promise.all([
+      proof.file ? saveProof(m.id, proof.file).then(() => null, (e: Error) => e.message) : null,
+      supabase.rpc("activate_subscription", { p_sub: m.id }),
+    ]);
     if (act.error) return { error: act.error.message };
+    if (saved) console.error(`[desk] payment photo for ${m.id} didn't save:`, saved); // optional: the sale stands without it
     const dates = await placeDates(m.id, userId, picked.start);
     if (dates.error) return { error: `Sold, but the dates didn't save: ${dates.error}` };
     out.push({ ...sold, state: "paid", endsOn: dates.ends ?? null });
@@ -491,7 +535,10 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
 
 /** Saves every plan's price and on/off switch from the pricing grid. */
 /** Staff retake a member's photo any time (members themselves set it once, then request a change). */
-export async function adminChangePhoto(_: Result, form: FormData): Promise<Result> {
+export async function adminChangePhoto(prev: Result, form: FormData): Promise<Result> {
+  return guard("adminChangePhoto", () => adminChangePhotoRun(prev, form));
+}
+async function adminChangePhotoRun(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me } = await requireStaff();
   const userId = s(form, "id");
   if (!(await sees(supabase, "profiles", userId))) return NOT_YOURS;
@@ -504,14 +551,17 @@ export async function adminChangePhoto(_: Result, form: FormData): Promise<Resul
     await removePhoto(path);
     return { error: error.message };
   }
-  await removePhoto(old as string | null);
-  await logAction(me, "Changed photo", { memberId: userId });
+  if (old) after(() => removePhoto(old as string));
+  logSoon(me, "Changed photo", { memberId: userId });
   revalidatePath(`/admin/members/${userId}`);
   return { ok: "Photo updated" };
 }
 
 /** Staff edit a member's details and home branch. */
-export async function adminSaveMember(_: Result, form: FormData): Promise<Result> {
+export async function adminSaveMember(prev: Result, form: FormData): Promise<Result> {
+  return guard("adminSaveMember", () => adminSaveMemberRun(prev, form));
+}
+async function adminSaveMemberRun(_: Result, form: FormData): Promise<Result> {
   const { supabase, branchId, profile: me } = await requireStaff();
   const read = readMemberDetails(form);
   if ("error" in read) return read;
@@ -532,9 +582,8 @@ export async function adminSaveMember(_: Result, form: FormData): Promise<Result
   // key, only after the update above proved this desk may edit this member
   const ageSave = await adminDb().from("profiles").update({ age }).eq("id", userId);
   if (ageSave.error) return { error: ageSave.error.message };
-  await logAction(me, "Edited member details", { memberId: userId, memberName: full_name });
-  revalidatePath("/admin/members", "layout"); // the list and this member's page
-  return { ok: "Saved" };
+  logSoon(me, "Edited member details", { memberId: userId, memberName: full_name });
+  return { ok: "Saved" }; // the form refreshes the page in the background (re-rendering every member here made Save slow)
 }
 
 /** New entrance QR for a branch — the old printed code stops working (use if a photo of it gets shared). */
