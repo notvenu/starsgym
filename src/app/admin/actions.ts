@@ -236,6 +236,16 @@ async function renewMemberRun(_: Result, form: FormData): Promise<Result> {
   return { ok: `Renewed · ${sold.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}` }; // the form refreshes the page
 }
 
+export type EditableSub = { id: string; starts_on: string; ends_on: string; amount_paise: number; trainer_id: string | null; plans: Plan };
+/** The member's paid plans that are running or booked (what the desk's "Edit plan" lists). RLS keeps staff to their branch. */
+export async function editablePlans(userId: string): Promise<EditableSub[]> {
+  const { supabase } = await requireStaff();
+  if (!UUID.test(userId)) return [];
+  const { data } = await supabase.from("subscriptions").select("id,starts_on,ends_on,amount_paise,trainer_id,plans(*)")
+    .eq("user_id", userId).eq("status", "active").gte("ends_on", gymDate()).not("starts_on", "is", null).order("starts_on");
+  return ((data ?? []) as unknown as EditableSub[]).filter((s) => s.plans?.duration_days > 1); // day passes / trials: nothing to edit
+}
+
 /** Desk: fix a paid plan after the sale — which plan (track / length), its start date, the price paid, the PT trainer.
  *  The end follows the plan's full length (planEnd). Every change is noted in the staff log.
  *  ponytail: plans queued after this one keep their dates; shift those too if the desk asks. */

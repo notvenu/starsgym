@@ -13,7 +13,7 @@ import type { Profile } from "@/lib/supabase";
 import type { Trainer } from "./data";
 import { waNumber } from "./kit";
 import { ageOf, GENDERS, LOGIN_EMAIL_DOMAIN, offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track, waLink } from "@/lib/gym";
-import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, editPlan, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
+import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, editPlan, editablePlans, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type EditableSub, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
 
@@ -700,18 +700,48 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
   );
 }
 
-/** Member page: fix a paid plan — plan (track / length), start date, price, PT trainer. The end date follows. */
-export function EditPlanForm({ sub }: { sub: { id: string; starts_on: string; amount_paise: number; trainer_id: string | null; plans: Plan } }) {
+/** The "Edit plan" sheet from a member's actions: each running or booked plan, loaded when it opens. */
+function EditPlansSheet({ member, onClose }: { member: Profile; onClose: () => void }) {
+  const [subs, setSubs] = useState<EditableSub[] | null>(null);
+  const load = () => void editablePlans(member.id).then(setSubs);
+  useEffect(load, [member.id]);
+  return (
+    <Sheet title={`${member.full_name || "Member"} · plans`} open onClose={onClose}>
+      {!subs ? <p className="text-ash">Loading…</p>
+        : !subs.length ? <p className="text-ash">No running or upcoming plan to edit. Sell one with Renew.</p>
+        : (
+          <div className="flex flex-col divide-y divide-line">
+            {subs.map((s) => (
+              <div key={`${s.id}-${s.plans.id}-${s.starts_on}-${s.amount_paise}-${s.trainer_id}`} className="flex flex-col gap-3 py-4 first:pt-0">
+                <p><span className="font-bold">{planName(s.plans)}</span> <span className="text-sm text-ash">· {prettyDay(s.starts_on)} – {prettyDay(s.ends_on)} · {inr(s.amount_paise)}</span></p>
+                <EditPlanForm sub={s} inline onSaved={load} />
+              </div>
+            ))}
+          </div>
+        )}
+    </Sheet>
+  );
+}
+
+/** Fix a paid plan — plan (track / length), start date, price, PT trainer. The end date follows. `inline`: the form
+ *  without its "Edit plan" toggle (inside the sheet above). */
+export function EditPlanForm({ sub, inline, onSaved }: { sub: Omit<EditableSub, "ends_on">; inline?: boolean; onSaved?: () => void }) {
   const { plans, trainers } = useContext(DeskContext);
-  const [state, action, pending] = useActionState(editPlan, undefined);
+  const refresh = useRefreshAfterSave();
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const r = await editPlan(prev, form);
+    if (r?.ok) {
+      refresh();
+      onSaved?.();
+    }
+    return r;
+  }, undefined);
   const isPt = sub.plans.track === "personal_training";
   // same kind only (membership ↔ membership, PT ↔ PT); the current plan stays listed even if it's switched off
   const choices = plans.filter((p) => (p.track === "personal_training") === isPt && p.duration_days > 1);
   if (!choices.some((p) => p.id === sub.plans.id)) choices.unshift(sub.plans);
-  return (
-    <details className="basis-full">
-      <summary className="cursor-pointer text-sm font-bold text-ash hover:text-chalk">Edit plan</summary>
-      <form noValidate onSubmit={keepFields(action)} className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+  const form = (
+      <form noValidate onSubmit={keepFields(action)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <input type="hidden" name="id" value={sub.id} />
         <label className="flex flex-col gap-1.5">
           <span className="label">Plan</span>
@@ -739,6 +769,12 @@ export function EditPlanForm({ sub }: { sub: { id: string; starts_on: string; am
           <ResultToast state={state} />
         </div>
       </form>
+  );
+  if (inline) return form;
+  return (
+    <details className="basis-full">
+      <summary className="btn-ghost inline-flex min-h-10 cursor-pointer list-none items-center px-4 text-sm [&::-webkit-details-marker]:hidden">Edit plan · dates · price</summary>
+      <div className="mt-2">{form}</div>
     </details>
   );
 }
@@ -833,6 +869,7 @@ export function MemberTools({ member, passId, cancelSubId, editExtra, className 
   const { owner, branches } = useContext(DeskContext);
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(false);
   const [pending, start] = useTransition();
   const remove = async () => {
     const ok = await confirmDialog({
@@ -852,6 +889,7 @@ export function MemberTools({ member, passId, cancelSubId, editExtra, className 
   return (
     <div className={`flex flex-wrap gap-1.5 sm:gap-2 ${pending ? "opacity-50" : ""} ${className}`}>
       <button type="button" onClick={() => setEditing(true)} aria-label="Edit details" className={ICON_CHIP}>{chipLabel("M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z", "Edit")}</button>
+      {passId && <button type="button" onClick={() => setEditingPlan(true)} aria-label="Edit plan" className={ICON_CHIP}>{chipLabel("M3 5h18v16H3zM3 10h18M8 3v4M16 3v4", "Edit plan")}</button>}
       {passId && <Link href={`/pass/${passId}`} aria-label="Show pass" className={ICON_CHIP}>{chipLabel("M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM20 14v.01M14 20v.01M17 20h4v-3", "Show pass")}</Link>}
       {member.phone && <a href={`tel:${member.phone}`} aria-label="Call" className={ICON_CHIP}>{chipLabel("M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2", "Call")}</a>}
       {owner && member.role === "member" && (
@@ -867,6 +905,7 @@ export function MemberTools({ member, passId, cancelSubId, editExtra, className 
         </button>
       )}
       {owner && member.role === "member" && <button type="button" disabled={pending} onClick={remove} aria-label="Delete member" className={`${ICON_CHIP} text-red`}>{chipLabel("M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6", "Delete")}</button>}
+      {editingPlan && <EditPlansSheet member={member} onClose={() => setEditingPlan(false)} />}
       {editing && (
         <Sheet title={member.full_name || "Edit member"} open onClose={() => setEditing(false)}>
           <div className="flex flex-col gap-6">
