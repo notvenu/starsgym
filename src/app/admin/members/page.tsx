@@ -191,7 +191,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
                   <MemberActions
                     member={m}
                     passId={m.passId}
-                    cancelSubId={m.state === "active" ? m.passId : null}
+                    cancelSubId={m.passId /* today's plan, else the upcoming one */}
                     admissionPaise={m.hadPlan ? null : fee}
                     lastPlanId={m.lastPlanId}
                     currentEnd={m.lastEnd}

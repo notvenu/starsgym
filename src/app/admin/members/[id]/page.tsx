@@ -43,6 +43,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const b = ref.branches;
   const paid = plans.filter((p) => p.status === "active" && p.ends_on);
   const current = paid.find((p) => p.starts_on && p.starts_on <= today && p.ends_on! >= today);
+  const upcoming = paid.filter((p) => p.starts_on && p.starts_on > today).sort((a, b) => a.starts_on!.localeCompare(b.starts_on!))[0];
   // back-to-back plans count as one run: days left go to the last end date
   const lastEnd = paid.reduce<string | null>((max, p) => (!max || p.ends_on! > max ? p.ends_on! : max), null);
   const daysLeft = current && lastEnd ? Math.round((Date.parse(lastEnd) - Date.parse(today)) / 864e5) + 1 : 0;
@@ -96,7 +97,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <RenewButton member={member} renew={!!lastGym} lastPlanId={lastGym?.plans.id} currentEnd={lastEnd} admissionPaise={paid.length ? null : ref.admissionPaise} className="btn-red min-h-10 px-6 max-sm:basis-full" />
           <WhatsAppButton member={member} endsOn={lastEnd} expired={!current && !!lastEnd} />
-          <MemberTools member={member} passId={current?.id ?? null} cancelSubId={current?.id ?? null}
+          <MemberTools member={member} passId={current?.id ?? upcoming?.id ?? null} cancelSubId={current?.id ?? upcoming?.id ?? null}
             editExtra={<MemberPhotoForm id={member.id} url={photo} />} />
         </div>
       </section>

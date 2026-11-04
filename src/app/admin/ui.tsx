@@ -702,8 +702,23 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
 
 /** The "Edit plan" sheet from a member's actions: each running or booked plan, loaded when it opens. */
 function EditPlansSheet({ member, onClose }: { member: Profile; onClose: () => void }) {
+  const { owner } = useContext(DeskContext);
+  const router = useRouter();
   const [subs, setSubs] = useState<EditableSub[] | null>(null);
   const load = () => void editablePlans(member.id).then(setSubs);
+  // "delete" = cancel: the plan stops and leaves every list, the payment record stays (owner only, like Cancel plan)
+  const remove = async (s: EditableSub) => {
+    const ok = await confirmDialog({ title: `Delete ${planName(s.plans)}?`, body: `${prettyDay(s.starts_on)} – ${prettyDay(s.ends_on)} · ${inr(s.amount_paise)}. The plan stops; the payment record stays in their history as cancelled. You'll have 10 seconds to undo.`, confirm: "Delete plan", danger: true });
+    if (!ok) return;
+    withUndo("Deleting the plan…", async () => {
+      const r = await cancelPlan(s.id);
+      toastResult(r);
+      if (!r?.error) {
+        load();
+        startTransition(() => router.refresh());
+      }
+    });
+  };
   useEffect(load, [member.id]);
   return (
     <Sheet title={`${member.full_name || "Member"} · plans`} open onClose={onClose}>
@@ -713,7 +728,10 @@ function EditPlansSheet({ member, onClose }: { member: Profile; onClose: () => v
           <div className="flex flex-col divide-y divide-line">
             {subs.map((s) => (
               <div key={`${s.id}-${s.plans.id}-${s.starts_on}-${s.amount_paise}-${s.trainer_id}`} className="flex flex-col gap-3 py-4 first:pt-0">
-                <p><span className="font-bold">{planName(s.plans)}</span> <span className="text-sm text-ash">· {prettyDay(s.starts_on)} – {prettyDay(s.ends_on)} · {inr(s.amount_paise)}</span></p>
+                <div className="flex items-start justify-between gap-3">
+                  <p><span className="font-bold">{planName(s.plans)}</span> <span className="text-sm text-ash">· {prettyDay(s.starts_on)} – {prettyDay(s.ends_on)} · {inr(s.amount_paise)}</span></p>
+                  {owner && <button type="button" onClick={() => remove(s)} className="btn-ghost min-h-10 shrink-0 px-4 text-sm text-red">Delete plan</button>}
+                </div>
                 <EditPlanForm sub={s} inline onSaved={load} />
               </div>
             ))}
