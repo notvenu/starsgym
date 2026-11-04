@@ -6,12 +6,12 @@ import { ageOf, GENDERS, inr, LOGIN_EMAIL_DOMAIN, payMethod, planName, recentGym
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
 import { Avatar, Empty, Panel } from "../../kit";
-import { Desk, MemberPhotoForm, MemberTools, RenewButton, WhatsAppButton } from "../../ui";
+import { Desk, MemberPhotoForm, MemberTools, EditPlanForm, RenewButton, WhatsAppButton } from "../../ui";
 import { deskRef, trainersFor } from "../../data";
 
 export const metadata = { title: "Member — Stars Gym admin" };
 
-type Sub = { id: string; status: string; method: string; cash_paise: number | null; starts_on: string | null; ends_on: string | null; amount_paise: number; created_at: string; plans: Plan };
+type Sub = { id: string; status: string; method: string; cash_paise: number | null; starts_on: string | null; ends_on: string | null; amount_paise: number; trainer_id: string | null; created_at: string; plans: Plan };
 type Visit = { day: string; session: string };
 // plan dates can be years apart, so they carry the year
 const fullDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -25,7 +25,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
 
   const [{ data: member }, subs, visits, streak, ref] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", id).maybeSingle<Profile>(),
-    supabase.from("subscriptions").select("id,status,method,cash_paise,starts_on,ends_on,amount_paise,created_at,plans(*)").eq("user_id", id).order("created_at", { ascending: false }),
+    supabase.from("subscriptions").select("id,status,method,cash_paise,starts_on,ends_on,amount_paise,trainer_id,created_at,plans(*)").eq("user_id", id).order("created_at", { ascending: false }),
     supabase.from("checkins").select("day,session").eq("user_id", id).gte("day", days[0]),
     supabase.rpc("current_streak", { uid: id }),
     deskRef(),
@@ -111,6 +111,9 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
                   </span>
                   <span className={`rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${state === "Active" ? "border-red text-red" : state === "Awaiting payment" ? "border-red bg-redwash" : "border-line text-ash"}`}>{state}</span>
                   {p.status === "pending" && <Link href={`/pay/${p.id}`} className="text-sm font-bold text-red hover:text-chalk">Take payment</Link>}
+                  {p.status === "active" && p.starts_on && p.plans.duration_days > 1 && state !== "Ended" && (
+                    <EditPlanForm key={`${p.plans.id}-${p.starts_on}-${p.amount_paise}-${p.trainer_id}`} sub={{ ...p, starts_on: p.starts_on }} />
+                  )}
                 </li>
               );
             })}

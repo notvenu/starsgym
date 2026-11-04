@@ -192,6 +192,44 @@ export async function renewMember(_: Result, form: FormData): Promise<Result> {
   return done(`Renewed · ${sold.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}`);
 }
 
+/** Desk: fix a paid plan after the sale — which plan (track / length), its start date, the price paid, the PT trainer.
+ *  The end follows the plan's full length (planEnd). Every change is noted in the staff log.
+ *  ponytail: plans queued after this one keep their dates; shift those too if the desk asks. */
+export async function editPlan(_: Result, form: FormData): Promise<Result> {
+  const { supabase, profile: me } = await requireStaff();
+  const subId = s(form, "id");
+  if (!UUID.test(subId) || !(await sees(supabase, "subscriptions", subId))) return NOT_YOURS;
+  const picked = pickedStart(form);
+  if (picked.error || !picked.start) return { error: picked.error ?? "Pick a start date." };
+  const planId = s(form, "plan_id");
+  const price = Number(s(form, "price"));
+  if (s(form, "price") === "" || !(Number.isFinite(price) && price >= 0)) return { error: "Prices must be zero or more." };
+  const trainerId = s(form, "trainer_id") || null;
+  if (trainerId && !UUID.test(trainerId)) return { error: "Pick a trainer from the list." };
+  const db = adminDb();
+  const { data: sub } = await db.from("subscriptions").select("user_id,branch_id,starts_on,amount_paise,plans(*)").eq("id", subId).eq("status", "active").maybeSingle();
+  if (!sub) return { error: "Only a paid plan can be edited." };
+  const { data: plan } = UUID.test(planId) ? await db.from("plans").select("*").eq("id", planId).maybeSingle<Plan>() : { data: null };
+  if (!plan) return { error: "Pick a plan." };
+  const old = sub.plans as unknown as Plan;
+  const isPt = plan.track === "personal_training";
+  if (isPt !== (old.track === "personal_training")) return { error: "Membership and personal training can't be swapped — sell the other one with Renew." };
+  const ends = planEnd(picked.start, plan.duration_days);
+  const amount = Math.round(price * 100);
+  const { error } = await db
+    .from("subscriptions")
+    .update({ plan_id: plan.id, starts_on: picked.start, ends_on: ends, amount_paise: amount, ...(isPt && { trainer_id: trainerId }) })
+    .eq("id", subId);
+  if (error) return { error: error.message };
+  const changes = [
+    old.id !== plan.id && `${planName(old)} → ${planName(plan)}`,
+    sub.starts_on !== picked.start && `start ${sub.starts_on ? prettyDay(sub.starts_on) : "—"} → ${prettyDay(picked.start)}`,
+    sub.amount_paise !== amount && `${inr(sub.amount_paise)} → ${inr(amount)}`,
+  ].filter(Boolean).join(" · ");
+  await logAction(me, "Edited plan", { memberId: sub.user_id, branchId: sub.branch_id, detail: changes || "trainer" });
+  return done(`Plan saved · ${prettyDay(picked.start)} – ${prettyDay(ends)}`);
+}
+
 /** Owner only. Deletes the member's account, plans, visits and photo. Staff and admin accounts can't be deleted here. */
 export async function deleteMember(id: string): Promise<Result> {
   const { supabase, profile: me } = await requireAdmin();

@@ -13,7 +13,7 @@ import type { Profile } from "@/lib/supabase";
 import type { Trainer } from "./data";
 import { waNumber } from "./kit";
 import { ageOf, GENDERS, LOGIN_EMAIL_DOMAIN, offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track, waLink } from "@/lib/gym";
-import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
+import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, editPlan, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
 
@@ -618,6 +618,49 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
         <ResultToast state={state} />
       </div>
     </form>
+  );
+}
+
+/** Member page: fix a paid plan — plan (track / length), start date, price, PT trainer. The end date follows. */
+export function EditPlanForm({ sub }: { sub: { id: string; starts_on: string; amount_paise: number; trainer_id: string | null; plans: Plan } }) {
+  const { plans, trainers } = useContext(DeskContext);
+  const [state, action, pending] = useActionState(editPlan, undefined);
+  const isPt = sub.plans.track === "personal_training";
+  // same kind only (membership ↔ membership, PT ↔ PT); the current plan stays listed even if it's switched off
+  const choices = plans.filter((p) => (p.track === "personal_training") === isPt && p.duration_days > 1);
+  if (!choices.some((p) => p.id === sub.plans.id)) choices.unshift(sub.plans);
+  return (
+    <details className="basis-full">
+      <summary className="cursor-pointer text-sm font-bold text-ash hover:text-chalk">Edit plan</summary>
+      <form noValidate onSubmit={keepFields(action)} className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <input type="hidden" name="id" value={sub.id} />
+        <label className="flex flex-col gap-1.5">
+          <span className="label">Plan</span>
+          <select name="plan_id" defaultValue={sub.plans.id} required className="field">
+            {choices.map((p) => <option key={p.id} value={p.id}>{planName(p)}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="label">Starts on</span>
+          <input type="date" name="start_on" defaultValue={sub.starts_on} min={gymDateIn(-92)} max={gymDateIn(60)} required className="field" />
+          <span className="text-xs text-ash">The end date follows the plan&apos;s length.</span>
+        </label>
+        <Field label="Price paid (₹)" name="price" type="number" min="0" step="1" inputMode="numeric" defaultValue={sub.amount_paise / 100} required />
+        {isPt && trainers.length > 0 && (
+          <label className="flex flex-col gap-1.5">
+            <span className="label">Trainer</span>
+            <select name="trainer_id" defaultValue={sub.trainer_id ?? ""} className="field">
+              <option value="">Not assigned yet</option>
+              {trainers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </label>
+        )}
+        <div className="flex items-center gap-3 sm:col-span-2">
+          <button disabled={pending} className="btn-red min-h-11 px-5 text-sm">{pending ? "Saving…" : "Save plan"}</button>
+          <ResultToast state={state} />
+        </div>
+      </form>
+    </details>
   );
 }
 
