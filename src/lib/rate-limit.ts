@@ -10,15 +10,16 @@ export async function clientIp() {
 
 /**
  * One hit on each key; false once any key is over `max` hits in `windowSeconds` (Postgres-backed, so it holds across
- * server instances). Fails open if the database call fails, so a missing migration can't lock everyone out.
+ * server instances). Fails open if the database call fails, so a missing migration can't lock everyone out — except
+ * `strict` limits (password guessing, the door's phone lookup), which fail closed: no unlimited guesses while it's down.
  */
-export async function allow(keys: string[], max: number, windowSeconds: number) {
+export async function allow(keys: string[], max: number, windowSeconds: number, strict = false) {
   const results = await Promise.all(
     keys.map((key) => adminDb().rpc("rate_limit_hit", { p_key: key, p_max: max, p_window_seconds: windowSeconds })),
   );
   const failed = results.find((r) => r.error);
   if (failed) console.error("rate limit check failed:", failed.error?.message);
-  return results.every((r) => r.error || r.data === true);
+  return results.every((r) => (r.error ? !strict : r.data === true));
 }
 
 export const SLOW_DOWN = "Too many attempts. Wait a few minutes and try again.";

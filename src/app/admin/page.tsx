@@ -31,18 +31,47 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const monthAgo = gymDateIn(-30);
 
   const newSince = gymDateIn(-6); // the last 7 days, today included
-  const [ref, checkins, active, paid, holidays, enquiries, expiring, requests, ended, joined, sold, toConfirm] = await Promise.all([
+  const monthFrom = `${monthStart}T00:00:00+05:30`;
+  const weekFrom = `${newSince}T00:00:00+05:30`;
+  // what the list rows (and their ⋯ menu / Edit form) use of a member — not every column
+  const MEMBER = "id,full_name,phone,email,home_branch_id,role,gender,date_of_birth,age,emergency_contact,photo_path";
+
+  // the headline numbers, counted in the database (0023). Before it's run: counted here, the slow way.
+  const countsP = (async () => {
+    const { data, error } = await supabase.rpc("desk_overview", { p_branch: view, p_today: today, p_month_start: monthFrom, p_week_start: weekFrom });
+    const row = (data as { active_members: number; collected_paise: number; renewals: number }[] | null)?.[0];
+    if (!error && row) return { members: Number(row.active_members), collected: Number(row.collected_paise), renewals: Number(row.renewals) };
+    const [active, paid, sold] = await Promise.all([
+      allRows(() => only(supabase.from("subscriptions").select("user_id").eq("status", "active").lte("starts_on", today).gte("ends_on", today)).order("id")),
+      isOwner ? allRows(() => only(supabase.from("subscriptions").select("amount_paise").eq("status", "active").gte("paid_at", monthFrom)).order("id")) : null,
+      allRows(() => only(supabase.from("subscriptions").select("user_id,plans!inner(track,duration_days),profiles!subscriptions_user_id_fkey(history:subscriptions!subscriptions_user_id_fkey(status,paid_at))").eq("status", "active").gte("paid_at", weekFrom).gt("plans.duration_days", 1).neq("plans.track", "personal_training")).order("id")),
+    ]);
+    const weekStart = Date.parse(weekFrom);
+    type Sold = { user_id: string; profiles: { history?: Past[] } | null };
+    return {
+      members: new Set(((active.data ?? []) as { user_id: string }[]).map((r) => r.user_id)).size,
+      collected: ((paid?.data ?? []) as { amount_paise: number }[]).reduce((sum, r) => sum + r.amount_paise, 0),
+      // bought this week, had a plan before it (imported plans have no paid_at)
+      renewals: new Set(((sold.data ?? []) as unknown as Sold[]).filter((r) => (r.profiles?.history ?? []).some((h) => h.status === "active" && (!h.paid_at || Date.parse(h.paid_at) < weekStart))).map((r) => r.user_id)).size,
+    };
+  })();
+  const restP = Promise.all([
     deskRef(),
-    only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
-    // ponytail: counts distinct members client-side (every row, 1000 per request); an SQL count past ~10k active plans
-    allRows(() => only(supabase.from("subscriptions").select("user_id").eq("status", "active").lte("starts_on", today).gte("ends_on", today)).order("id")),
-    // the month's takings are the owner's; staff see who to renew instead
-    isOwner ? allRows(() => only(supabase.from("subscriptions").select("amount_paise").eq("status", "active").gte("paid_at", `${monthStart}T00:00:00+05:30`)).order("id")) : null,
+    countsP,
     supabase.from("holidays").select("*").gte("day", today).order("day").limit(3),
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
+    // orders waiting for the desk to take the money / check the UPI screenshot
+    only(supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending")),
+    siteOrigin(),
+  ]);
+
+  // the lists the page draws. Each row's plan history comes filtered to just the plans that decide the question (an
+  // embedded filter), not the member's whole history: e.g. for "lapsed", only plans that still run today or later.
+  const [checkins, expiring, requests, ended, joined] = await Promise.all([
+    only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
     only(supabase
       .from("subscriptions")
-      .select("id,user_id,ends_on,plans(*),profiles!subscriptions_user_id_fkey(*)")
+      .select(`id,user_id,ends_on,plans(*),profiles!subscriptions_user_id_fkey(${MEMBER})`)
       .eq("status", "active")
       .gte("ends_on", today)
       .lte("ends_on", weekOut))
@@ -53,10 +82,12 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     // plans that ran out in the last 30 days — the renewal list (members who bought again are dropped below)
     only(supabase
       .from("subscriptions")
-      .select("id,user_id,ends_on,plans(*),profiles!subscriptions_user_id_fkey(*,history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))")
+      .select(`id,user_id,ends_on,plans(*),profiles!subscriptions_user_id_fkey(${MEMBER},history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))`)
       .eq("status", "active")
       .gte("ends_on", monthAgo)
-      .lt("ends_on", today))
+      .lt("ends_on", today)
+      .eq("profiles.history.status", "active")
+      .gte("profiles.history.ends_on", today))
       .order("ends_on", { ascending: false })
       .limit(300),
     // new joiners: paid plans that started in the last 7 days — the ones that are someone's first are kept below.
@@ -66,33 +97,20 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .select("id,user_id,starts_on,ends_on,plans(*),profiles!subscriptions_user_id_fkey(full_name,phone,photo_path,home_branch_id,history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))")
       .eq("status", "active")
       .gte("starts_on", newSince)
-      .lte("starts_on", today))
+      .lte("starts_on", today)
+      .eq("profiles.history.status", "active")
+      .lt("profiles.history.starts_on", newSince))
       .order("starts_on", { ascending: false })
       .limit(300),
-    // memberships sold in the last 7 days — the ones to people who'd had a plan before are renewals (counted below)
-    allRows(() => only(supabase.from("subscriptions").select("user_id,plans!inner(track,duration_days),profiles!subscriptions_user_id_fkey(history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))").eq("status", "active").gte("paid_at", `${newSince}T00:00:00+05:30`).gt("plans.duration_days", 1).neq("plans.track", "personal_training")).order("id")),
-    // orders waiting for the desk to take the money / check the UPI screenshot
-    only(supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending")),
   ]);
-  const b = ref.branches.filter((x) => x.active);
-  const deskBranches = b.filter((x) => !branchId || x.id === branchId); // staff: just theirs
-  const liveOffers = ref.offers.filter((o) => o.starts_on <= today && o.ends_on >= today);
-  const trainers = trainersFor(ref.trainers, view);
-  const members = new Set(((active.data ?? []) as { user_id: string }[]).map((r) => r.user_id)).size;
-  const collected = ((paid?.data ?? []) as { amount_paise: number }[]).reduce((sum, r) => sum + r.amount_paise, 0);
-  const origin = await siteOrigin();
   const visits = (checkins.data ?? []) as unknown as Visit[];
   const ending = (expiring.data ?? []) as unknown as Ending[];
   // lapsed: their latest plan ended in the last 30 days and nothing runs today or later
   const endedRows = (ended.data ?? []) as unknown as Ending[];
   type Joiner = { id: string; user_id: string; starts_on: string; ends_on: string | null; plans: Plan; profiles: { full_name: string; phone: string | null; photo_path: string | null; home_branch_id: string | null; history?: Past[] } | null };
   const startedRows = (joined.data ?? []) as unknown as Joiner[];
-  // each row carries the member's plan history (same query, no second round trip): who renewed after lapsing, who had a
-  // plan before this week, and whether this week's purchase is a renewal (imported plans have no paid_at)
+  // each row carries just the matching part of the member's plan history (same query, no second round trip)
   const had = (h: Past[] | undefined, test: (p: Past) => boolean) => (h ?? []).some((p) => p.status === "active" && test(p));
-  const weekStart = Date.parse(`${newSince}T00:00:00+05:30`);
-  type Sold = { user_id: string; profiles: { history?: Past[] } | null };
-  const renewals = new Set(((sold.data ?? []) as unknown as Sold[]).filter((r) => had(r.profiles?.history, (p) => !p.paid_at || Date.parse(p.paid_at) < weekStart)).map((r) => r.user_id)).size; // bought this week, had a plan before it
   const joiners = startedRows.filter((j, i) => !had(j.profiles?.history, (p) => !!p.starts_on && p.starts_on < newSince) && startedRows.findIndex((x) => x.user_id === j.user_id) === i);
   const lapsed = endedRows.filter((e, i) => !had(e.profiles?.history, (p) => !!p.ends_on && p.ends_on >= today) && endedRows.findIndex((x) => x.user_id === e.user_id) === i);
   type Req = { id: string; user_id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null; note: string | null;
@@ -101,7 +119,15 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const queue = (requests.data ?? []) as unknown as Req[];
   // an overview, not the full lists: the first few of each (with a link to all) keeps the page quick to open on a phone
   const shown = { visits: visits.slice(0, 12), ending: ending.slice(0, count.expiring), lapsed: lapsed.slice(0, count.expired), joiners: joiners.slice(0, 30) }; // a week of new joiners is short: show them all
-  const photos = await photoUrls([...shown.visits.map((v) => v.profiles?.photo_path), ...shown.ending.map((e) => e.profiles?.photo_path), ...shown.lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path]), ...shown.joiners.map((j) => j.profiles?.photo_path)]);
+  // photos are signed as soon as the lists are in, while the numbers and the rest finish
+  const [[ref, { members, collected, renewals }, holidays, enquiries, toConfirm, origin], photos] = await Promise.all([
+    restP,
+    photoUrls([...shown.visits.map((v) => v.profiles?.photo_path), ...shown.ending.map((e) => e.profiles?.photo_path), ...shown.lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path]), ...shown.joiners.map((j) => j.profiles?.photo_path)]),
+  ]);
+  const b = ref.branches.filter((x) => x.active);
+  const deskBranches = b.filter((x) => !branchId || x.id === branchId); // staff: just theirs
+  const liveOffers = ref.offers.filter((o) => o.starts_on <= today && o.ends_on >= today);
+  const trainers = trainersFor(ref.trainers, view);
   const more = (total: number, showing: number, href: string, what: string) =>
     total > showing && <Link href={href} className="block border-t border-line px-5 py-3 text-sm font-bold text-red hover:bg-steel/60 hover:text-chalk">All {total} {what} →</Link>;
   // the renewal lists grow 10 at a time right here — the members list counts "expired" differently (ever, not 30 days)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { checkPayment, parseReceipt, type PaymentCheck } from "@/lib/receipt";
+import { checkPayment, type PaymentCheck } from "@/lib/receipt";
 
 /** A phone photo shrunk to a JPEG of at most 1600 px (~200–400 KB), so it uploads fast and stays under the 2 MB cap. */
 export async function shrink(file: File): Promise<File> {
@@ -63,15 +63,6 @@ export function ProofInput({ required, hint }: { required?: boolean; hint?: stri
   );
 }
 
-/** Sets a field's value so React sees it too (controlled inputs keep their own copy of the value). */
-function fill(el: Element | null, value: string) {
-  if (!(el instanceof HTMLInputElement) || !value) return false;
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-  return true;
-}
-const tick = () => new Promise((r) => setTimeout(r, 50));
-
 /** Reads the text in an image on this device (Tesseract: ~5 MB of reader + English data, fetched on first use only). */
 async function readText(image: Blob, onProgress?: (pct: number) => void) {
   const { createWorker } = await import("tesseract.js");
@@ -81,68 +72,6 @@ async function readText(image: Blob, onProgress?: (pct: number) => void) {
   } finally {
     await worker.terminate();
   }
-}
-
-/**
- * New member from a paper receipt: photograph it, read it on the phone (Tesseract, no upload), and fill in what was
- * found — name, phone, email, plan length and amount — for the desk to check. The photo is only read, never saved.
- * ponytail: printed and neat handwriting only; messy handwriting needs a vision model (the Claude API) instead.
- */
-export function ReceiptScan() {
-  const box = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function scan(file: File | undefined) {
-    const form = box.current?.closest("form");
-    if (!file || !form) return;
-    setBusy(true);
-    setStatus("Loading the reader…");
-    try {
-      const photo = await shrink(file);
-      const r = parseReceipt(await readText(photo, (pct) => setStatus(`Reading… ${pct}%`)));
-      const q = (name: string) => form.querySelector(`[name="${name}"]`);
-      const found: string[] = [];
-      if (fill(q("full_name"), r.name ?? "")) found.push("name");
-      if (fill(q("phone"), r.phone ?? "")) found.push("phone");
-      if (fill(q("email"), r.email ?? "")) found.push("email");
-      if (r.days) {
-        // membership, then the plan length: each re-renders the price block, so wait a moment between them
-        (form.querySelector('input[name="kind"][value="membership"]') as HTMLInputElement | null)?.click();
-        await tick();
-        const labels: Record<number, string> = { 30: "Monthly", 90: "Quarterly", 180: "Half-yearly", 365: "Yearly" };
-        [...form.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Length"] button')].find((b) => b.textContent === labels[r.days!])?.click();
-        await tick();
-        found.push("plan length");
-      }
-      if (r.amount) {
-        // the receipt's total usually includes admission: the plan price is what's left after it
-        const admission = Number((q("admission") as HTMLInputElement | null)?.value) || 0;
-        if (fill(q("price"), String(r.amount > admission ? r.amount - admission : r.amount))) found.push(`₹${r.amount.toLocaleString("en-IN")} total`);
-      }
-      setStatus(found.length ? `Filled in ${found.join(", ")} — check them before saving.` : "Couldn't read anything useful — type the details in.");
-    } catch {
-      setStatus("Couldn't read that photo — type the details in.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div ref={box} className="flex flex-col gap-2 rounded-lg border border-dashed border-strong p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-bold">Have a paper receipt?</p>
-          <p className="text-sm text-ash">Photograph it to fill this form in.</p>
-        </div>
-        <label className={`btn-ghost min-h-11 shrink-0 cursor-pointer px-4 text-xs ${busy ? "pointer-events-none opacity-50" : ""}`}>
-          {busy ? "Reading…" : "Scan receipt"}
-          <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy} onChange={(e) => { void scan(e.target.files?.[0]); e.target.value = ""; }} />
-        </label>
-      </div>
-      {status && <p role="status" className="text-sm text-body">{status}</p>}
-    </div>
-  );
 }
 
 /**

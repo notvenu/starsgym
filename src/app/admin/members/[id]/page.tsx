@@ -6,7 +6,7 @@ import { ageOf, GENDERS, inr, LOGIN_EMAIL_DOMAIN, payMethod, planName, recentGym
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
 import { Avatar, Empty, Panel } from "../../kit";
-import { Desk, MemberPhotoForm, MemberTools, EditPlanForm, RenewButton, WhatsAppButton } from "../../ui";
+import { Desk, DeletePlanButton, MemberPhotoForm, MemberTools, EditPlanForm, RenewButton, WhatsAppButton } from "../../ui";
 import { deskRef, trainersFor } from "../../data";
 
 export const metadata = { title: "Member — Stars Gym admin" };
@@ -115,6 +115,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
                   </span>
                   <span className={`rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${state === "Active" ? "border-red text-red" : state === "Awaiting payment" ? "border-red bg-redwash" : "border-line text-ash"}`}>{state}</span>
                   {p.status === "pending" && <Link href={`/pay/${p.id}`} className="text-sm font-bold text-red hover:text-chalk">Take payment</Link>}
+                  {p.status !== "cancelled" && <DeletePlanButton sub={p} unpaid={p.status === "pending"} />}
                   {p.status === "active" && p.starts_on && p.plans.duration_days > 1 && state !== "Ended" && (
                     <EditPlanForm key={`${p.plans.id}-${p.starts_on}-${p.amount_paise}-${p.trainer_id}`} sub={{ ...p, starts_on: p.starts_on }} />
                   )}

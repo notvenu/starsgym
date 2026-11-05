@@ -9,7 +9,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { adminDb, allRows, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { gymDate, gymDateIn, inr, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, starterPassword, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
+import { gymDate, gymDateIn, inr, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
@@ -40,7 +40,9 @@ async function loginLink(email: string) {
   return `${await siteOrigin()}/auth/confirm?${q}`;
 }
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const done = (ok: string): Result => (revalidatePath("/admin", "layout"), revalidatePath("/"), clearDesk(), { ok });
+const done = (ok: string): Result => (revalidatePath("/admin", "layout"), revalidatePath("/"), { ok });
+/** done(), for saves that change the cached desk data (branches, prices, offers, admission): every desk page re-reads it. */
+const doneDesk = <T,>(r: T): T => (clearDesk(), r);
 /** done(), after a line in the staff log. */
 const logged = async (me: Profile, action: string, ok: string, opts?: Parameters<typeof logAction>[2]): Promise<Result> => {
   await logAction(me, action, opts);
@@ -49,8 +51,15 @@ const logged = async (me: Profile, action: string, ok: string, opts?: Parameters
 type Db = Awaited<ReturnType<typeof requireStaff>>["supabase"];
 // Staff act only on their branch. The signed-in client can't see other branches' members or orders (RLS, 0011), so
 // "can I see it?" is the check — needed before database functions that run with elevated rights.
-const sees = async (supabase: Db, table: "profiles" | "subscriptions", id: string) =>
-  !!(await supabase.from(table).select("id").eq("id", id).maybeSingle()).data;
+// The branch is checked here too (service key), so a gap in the database policies can't let staff reach another branch.
+const sees = async (supabase: Db, table: "profiles" | "subscriptions", id: string, branchId: string | null) => {
+  if (!UUID.test(id) || !(await supabase.from(table).select("id").eq("id", id).maybeSingle()).data) return false;
+  if (!branchId) return true; // the owner and both-branch staff
+  if (table === "profiles") return (await adminDb().from("profiles").select("home_branch_id").eq("id", id).maybeSingle()).data?.home_branch_id === branchId;
+  const { data } = await adminDb().from("subscriptions").select("branch_id,profiles!subscriptions_user_id_fkey(home_branch_id)").eq("id", id).maybeSingle();
+  const member = data?.profiles as unknown as { home_branch_id: string | null } | null;
+  return data?.branch_id === branchId || member?.home_branch_id === branchId;
+};
 const NOT_YOURS = { error: "That member belongs to another branch." };
 /** The staff-log line, written after the reply is sent (it never changes what the desk sees). */
 const logSoon = (...args: Parameters<typeof logAction>) => after(() => logAction(...args));
@@ -76,11 +85,11 @@ export async function markPaid(prev: Result, form: FormData): Promise<Result> {
   return guard("markPaid", () => markPaidRun(prev, form));
 }
 async function markPaidRun(_: Result, form: FormData): Promise<Result> {
-  const { supabase, profile: me } = await requireStaff();
+  const { supabase, profile: me, branchId } = await requireStaff();
   const subId = s(form, "id");
   if (!UUID.test(subId)) return { error: "Reload and try again." };
   const { data: sub } = await supabase.from("subscriptions").select("user_id,amount_paise,approval,branch_id,method,starts_on").eq("id", subId).maybeSingle();
-  if (!sub) return NOT_YOURS;
+  if (!sub || !(await sees(supabase, "subscriptions", subId, branchId))) return NOT_YOURS;
   if (sub.approval === "pending") return { error: "The owner hasn't approved this price yet." };
   const proof = formPhoto(form, "proof");
   if (proof.error) return { error: proof.error };
@@ -101,19 +110,22 @@ async function markPaidRun(_: Result, form: FormData): Promise<Result> {
   return done("Marked paid");
 }
 
-/** Owner: stop a paid plan that is running or booked (a mistaken sale, a refund). */
+/** Desk: stop (delete) a paid plan — a mistaken sale, a refund. Staff only for their branch's members; every one is in
+ *  the staff log. The payment record stays, as cancelled. */
 export async function cancelPlan(subId: string): Promise<Result> {
-  const { supabase, profile: me } = await requireAdmin();
-  const { data, error } = await supabase.from("subscriptions").update({ status: "cancelled" }).eq("id", subId).eq("status", "active").select("user_id,amount_paise").maybeSingle();
+  const { supabase, profile: me, branchId } = await requireStaff();
+  if (!UUID.test(subId) || !(await sees(supabase, "subscriptions", subId, branchId))) return NOT_YOURS;
+  const { data, error } = await adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", subId).eq("status", "active").select("user_id,amount_paise").maybeSingle();
   if (error) return { error: error.message };
   if (data) await logAction(me, "Cancelled plan", { memberId: data.user_id, detail: inr(data.amount_paise) });
-  return done("Plan cancelled");
+  return done("Plan deleted");
 }
 
-/** Owner: drop an unpaid order. */
+/** Desk: drop an unpaid order (staff: their branch's). */
 export async function cancelSub(subId: string): Promise<Result> {
-  const { supabase, profile: me } = await requireAdmin();
-  const { data, error } = await supabase.from("subscriptions").update({ status: "cancelled" }).eq("id", subId).eq("status", "pending").select("user_id,amount_paise").maybeSingle();
+  const { supabase, profile: me, branchId } = await requireStaff();
+  if (!UUID.test(subId) || !(await sees(supabase, "subscriptions", subId, branchId))) return NOT_YOURS;
+  const { data, error } = await adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", subId).eq("status", "pending").select("user_id,amount_paise").maybeSingle();
   if (error) return { error: error.message };
   if (data) await logAction(me, "Cancelled order", { memberId: data.user_id, detail: inr(data.amount_paise) });
   return done("Cancelled");
@@ -149,7 +161,9 @@ async function addMemberRun(_: Result, form: FormData): Promise<Result> {
     if (s(form, "payment") === "qr" && s(form, "plan_id") && s(form, "pt_plan_id")) return { error: "With personal training, take the payment at the desk (cash or UPI) — a QR covers one plan." };
   }
 
-  const { data: existing } = email ? await supabase.from("profiles").select("id,photo_path").eq("email", email).maybeSingle() : { data: null };
+  const { data: existing } = email ? await supabase.from("profiles").select("id,photo_path,role").eq("email", email).maybeSingle() : { data: null };
+  // a desk or owner account is never "updated" from here (its details, photo and plans would be overwritten)
+  if (existing && existing.role !== "member") return { error: "That email belongs to a staff account — use another email." };
   if (!photo.file && !existing?.photo_path) return { error: "Take or upload the member's photo — staff check it when they scan the pass." };
   // a new account's id is picked here, not by Supabase: the photo uploads (to <id>/…) while the account is being made,
   // and a phone-only member gets their hidden sign-in address (it contains the id) in the same call
@@ -224,7 +238,7 @@ export async function renewMember(prev: Result, form: FormData): Promise<Result>
 async function renewMemberRun(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me, branchId } = await requireStaff();
   const userId = s(form, "user_id");
-  if (!(await sees(supabase, "profiles", userId))) return NOT_YOURS;
+  if (!(await sees(supabase, "profiles", userId, branchId))) return NOT_YOURS;
   const sold = await sellPlans(supabase, me, userId, branchId ?? (s(form, "branch_id") || null), form);
   if ("error" in sold) return sold;
   // a QR still has to be shown to the member; a paid renewal just confirms — the pass is the member's, not the desk's
@@ -250,9 +264,9 @@ export async function editablePlans(userId: string): Promise<EditableSub[]> {
  *  The end follows the plan's full length (planEnd). Every change is noted in the staff log.
  *  ponytail: plans queued after this one keep their dates; shift those too if the desk asks. */
 export async function editPlan(_: Result, form: FormData): Promise<Result> {
-  const { supabase, profile: me } = await requireStaff();
+  const { supabase, profile: me, branchId } = await requireStaff();
   const subId = s(form, "id");
-  if (!UUID.test(subId) || !(await sees(supabase, "subscriptions", subId))) return NOT_YOURS;
+  if (!UUID.test(subId) || !(await sees(supabase, "subscriptions", subId, branchId))) return NOT_YOURS;
   const picked = pickedStart(form);
   if (picked.error || !picked.start) return { error: picked.error ?? "Pick a start date." };
   const planId = s(form, "plan_id");
@@ -540,7 +554,7 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
     ({ error } = await save({ ...row, upi_id: undefined }));
     if (!error) return { error: "Saved — but run 0022 in Supabase to store a UPI ID per branch." };
   }
-  return error ? { error: error.message } : logged(me, id ? "Edited branch" : "Added branch", id ? "Branch saved" : "Branch added", { detail: row.name });
+  return error ? { error: error.message } : doneDesk(await logged(me, id ? "Edited branch" : "Added branch", id ? "Branch saved" : "Branch added", { detail: row.name }));
 }
 
 /** Saves every plan's price and on/off switch from the pricing grid. */
@@ -549,9 +563,9 @@ export async function adminChangePhoto(prev: Result, form: FormData): Promise<Re
   return guard("adminChangePhoto", () => adminChangePhotoRun(prev, form));
 }
 async function adminChangePhotoRun(_: Result, form: FormData): Promise<Result> {
-  const { supabase, profile: me } = await requireStaff();
+  const { supabase, profile: me, branchId } = await requireStaff();
   const userId = s(form, "id");
-  if (!(await sees(supabase, "profiles", userId))) return NOT_YOURS;
+  if (!(await sees(supabase, "profiles", userId, branchId))) return NOT_YOURS;
   const photo = formPhoto(form);
   if (photo.error) return { error: photo.error };
   if (!photo.file) return { error: "Take or upload a photo first." };
@@ -614,7 +628,7 @@ export async function savePrices(_: Result, form: FormData): Promise<Result> {
     rows.map((r) => supabase.from("plans").update({ price_paise: Math.round(r.rupees * 100), active: r.active }).eq("id", r.id)),
   );
   const failed = results.find((r) => r.error);
-  return failed?.error ? { error: failed.error.message } : logged(me, "Changed prices", "Prices saved — live on the website now.");
+  return failed?.error ? { error: failed.error.message } : doneDesk(await logged(me, "Changed prices", "Prices saved — live on the website now."));
 }
 
 /** Owner: change what a pending order will cost (a price agreed at the desk). Admission stays as it was. */
@@ -634,7 +648,7 @@ export async function saveAdmission(_: Result, form: FormData): Promise<Result> 
   const rupees = Number(s(form, "admission"));
   if (!Number.isFinite(rupees) || rupees < 0) return { error: "Enter 0 or more." };
   const { error } = await supabase.from("site_settings").update({ admission_fee_paise: Math.round(rupees * 100) }).eq("id", 1);
-  return error ? { error: error.message } : logged(me, "Changed admission fee", rupees ? "Admission fee saved" : "Admission fee switched off", { detail: inr(Math.round(rupees * 100)) });
+  return error ? { error: error.message } : doneDesk(await logged(me, "Changed admission fee", rupees ? "Admission fee saved" : "Admission fee switched off", { detail: inr(Math.round(rupees * 100)) }));
 }
 
 /** Closes one branch (or all) on a date. Members see it on the site and dashboard. Staff can add one for their own
@@ -703,13 +717,13 @@ export async function saveOffer(_: Result, form: FormData): Promise<Result> {
     notifyAfter(async () => (await allRows(() => adminDb().from("profiles").select("id").eq("role", "member").order("id"))).data.map((p) => p.id as string),
       { title: `${row.title} · ${percent}% off`, body: `${row.description || "A new offer on memberships"} · till ${prettyDay(row.ends_on)}.`, url: "/#plans", tag: "offer" });
   }
-  return error ? { error: error.message } : logged(me, "Added offer", "Offer live", { detail: `${row.title} · ${perDays ? Object.entries(perDays).map(([d, v]) => `${v}% ${d}d`).join(", ") : `${percent}%`} · ${row.starts_on} → ${row.ends_on}` });
+  return error ? { error: error.message } : doneDesk(await logged(me, "Added offer", "Offer live", { detail: `${row.title} · ${perDays ? Object.entries(perDays).map(([d, v]) => `${v}% ${d}d`).join(", ") : `${percent}%`} · ${row.starts_on} → ${row.ends_on}` }));
 }
 
 export async function setOfferActive(id: string, active: boolean): Promise<Result> {
   const { supabase, profile: me } = await requireAdmin();
   const { error } = await supabase.from("offers").update({ active }).eq("id", id);
-  return error ? { error: error.message } : logged(me, active ? "Resumed offer" : "Paused offer", active ? "Offer resumed" : "Offer paused");
+  return error ? { error: error.message } : doneDesk(await logged(me, active ? "Resumed offer" : "Paused offer", active ? "Offer resumed" : "Offer paused"));
 }
 
 /**
@@ -772,17 +786,17 @@ export async function assignTrainer(subId: string, trainerId: string): Promise<R
 }
 
 
-/** Owner: a member forgot their password. Back to the starting one (name + phone); they're asked to change it again. */
+/** Owner: a member forgot their password. A random temporary one, shown once — never one worked out from their name and
+ *  phone, which anyone who knows both could use first. They're asked to set their own when they sign in. */
 export async function resetPassword(userId: string): Promise<Result> {
   const { supabase, profile: me } = await requireAdmin();
   if (!UUID.test(userId)) return { error: "Reload and try again." };
   if (!(await allow([`reset:${me.id}`], 30, 3600))) return { error: SLOW_DOWN };
-  const { data: m } = await supabase.from("profiles").select("full_name,phone,role").eq("id", userId).maybeSingle();
+  const { data: m } = await supabase.from("profiles").select("full_name,role").eq("id", userId).maybeSingle();
   if (!m) return NOT_YOURS;
   if (m.role !== "member") return { error: "Staff passwords are reset on the Team page." };
-  const password = starterPassword(m.full_name, m.phone);
-  if (!password) return { error: "Add their phone number first — the starting password uses it." };
-  const { error } = await adminDb().auth.admin.updateUserById(userId, { password, app_metadata: { temp_password: true } });
+  const password = tempPassword();
+  const { error } = await adminDb().auth.admin.updateUserById(userId, { password, app_metadata: { temp_password: true, temp_kind: "random" } });
   if (error) return { error: error.message };
   await logAction(me, "Reset password", { memberId: userId, memberName: m.full_name });
   return { ok: `Password reset to ${password} — tell them, they'll be asked to change it.` };

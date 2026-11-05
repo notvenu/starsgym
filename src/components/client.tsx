@@ -353,7 +353,8 @@ export function WeekHolidays({ holidays }: { holidays: Holiday[] }) {
 
 /** Gender, phone, date of birth, emergency contact — validated by readMemberDetails(). */
 /** `phone={false}`: the form puts the phone field somewhere else (the desk's new-member form starts with it). */
-export function MemberDetailsFields({ d, phone = true }: { d?: { [K in keyof MemberDetails]?: MemberDetails[K] | null } | null; phone?: boolean }) {
+export function MemberDetailsFields({ d, phone = true, closedEmergency = false }: { d?: { [K in keyof MemberDetails]?: MemberDetails[K] | null } | null; phone?: boolean; closedEmergency?: boolean }) {
+  const emergency = <Field label="Emergency contact (optional)" name="emergency_contact" placeholder="Name & phone" maxLength={120} defaultValue={d?.emergency_contact ?? ""} />;
   return (
     <>
       <fieldset className="flex flex-col gap-1.5">
@@ -369,13 +370,21 @@ export function MemberDetailsFields({ d, phone = true }: { d?: { [K in keyof Mem
       </fieldset>
       {phone && <PhoneField defaultValue={d?.phone ?? ""} />}
       <Field label="Date of birth (optional)" name="date_of_birth" type="date" min="1900-01-01" max={gymDate()} defaultValue={d?.date_of_birth ?? ""} />
-      <Field label="Emergency contact (optional)" name="emergency_contact" placeholder="Name & phone" maxLength={120} defaultValue={d?.emergency_contact ?? ""} />
+      {closedEmergency ? (
+        // closed by default; a closed <details> still submits what's inside
+        <details className="group">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 font-bold text-ash hover:text-chalk [&::-webkit-details-marker]:hidden">
+            <span aria-hidden="true" className="group-open:rotate-45 transition-transform">+</span> Add emergency contact
+          </summary>
+          <div className="pt-1">{emergency}</div>
+        </details>
+      ) : emergency}
     </>
   );
 }
 
-export const PhoneField = ({ defaultValue = "" }: { defaultValue?: string }) => (
-  <Field label="Phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" defaultValue={defaultValue} required />
+export const PhoneField = ({ defaultValue = "", autoComplete = "tel" }: { defaultValue?: string; autoComplete?: string }) => (
+  <Field label="Phone" name="phone" type="tel" autoComplete={autoComplete} inputMode="tel" defaultValue={defaultValue} required />
 );
 
 export function Field({ label, ...props }: { label: string; ref?: React.Ref<HTMLInputElement> } & React.InputHTMLAttributes<HTMLInputElement>) {

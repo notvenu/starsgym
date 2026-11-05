@@ -23,7 +23,7 @@ export async function signIn(_: AuthState, form: FormData): Promise<AuthState> {
   if (!byEmail && digits.length < 10) return { error: "Enter your email, or your 10-digit phone number." };
   // per visitor, and per account so a botnet can't spread guesses on one member across IPs
   const ip = await clientIp();
-  if (!(await allow([`signin:ip:${ip}`], 20, 600)) || !(await allow([`signin:id:${byEmail ? id : digits}`], 8, 900))) return { error: SLOW_DOWN };
+  if (!(await allow([`signin:ip:${ip}`], 20, 600, true)) || !(await allow([`signin:id:${byEmail ? id : digits}`], 8, 900, true))) return { error: SLOW_DOWN };
 
   let emails = [id];
   if (!byEmail) {

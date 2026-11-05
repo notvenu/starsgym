@@ -8,7 +8,7 @@ import { createContext, startTransition, useActionState, useContext, useEffect, 
 import { Field, MemberDetailsFields, PhoneField } from "@/components/client";
 import { confirmDialog, ResultToast, toast, toastResult, keepFields, withUndo } from "@/components/feedback";
 import { PhotoCapture } from "@/components/photo";
-import { ProofCheck, ProofInput, ReceiptScan } from "@/components/receipt";
+import { ProofCheck, ProofInput } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
 import type { Trainer } from "./data";
 import { waNumber } from "./kit";
@@ -20,10 +20,13 @@ const Status = ResultToast; // results show as toasts
 /** A button that opens its content in a pop-up (a sheet from the bottom on phones). `startOpen` for deep links like ?new=1. */
 export function AdminModal({ label, title, className = "btn-red", children }: { label: React.ReactNode; title: string; className?: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  // the form mounts on first open, then stays (closing by mistake keeps what was typed). Mounted up front, the
+  // new-member form's photo picker fetched the 13 MB face checker on every Overview / Members visit.
+  const [opened, setOpened] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={className}>{label}</button>
-      <Sheet title={title} open={open} onClose={() => setOpen(false)}>{children}</Sheet>
+      <button type="button" onClick={() => { setOpened(true); setOpen(true); }} className={className}>{label}</button>
+      <Sheet title={title} open={open} onClose={() => setOpen(false)}>{opened && children}</Sheet>
     </>
   );
 }
@@ -151,15 +154,15 @@ function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, 
   if (state?.created) return <AccountCreated c={state.created} onAnother={onAnother} />;
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
-      <ReceiptScan />
       <Step n="01" title="Member details">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* phone first: it's how they sign in, and what the desk asks for first */}
-          <PhoneField />
+          {/* phone first: it's how they sign in, and what the desk asks for first. No autofill: it's someone else's
+              number, and the browser would fill in the staff member's own */}
+          <PhoneField autoComplete="off" />
           <Field label="Full name" name="full_name" required />
           <Field label="Email (optional)" name="email" type="email" inputMode="email" autoComplete="off" placeholder="They can sign in with their phone" />
           <Select label="Branch" name="branch_id" options={branches.map((b) => [b.id, b.name])} />
-          <MemberDetailsFields phone={false} />
+          <MemberDetailsFields phone={false} closedEmergency />
           <div className="sm:col-span-2">
             <PhotoCapture label="Member photo · staff check it when they scan the pass" required back />
           </div>
@@ -391,10 +394,14 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
           />
         )}
         {kind === "membership" && plan && ptPlans.length > 0 && (
-          <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md border border-line px-4 has-checked:border-red has-checked:bg-redwash">
-            <input type="checkbox" checked={withPt} onChange={(e) => { setWithPt(e.target.checked); setPtDays(days); }} className="size-5 shrink-0 accent-red" />
-            <span className="min-w-0"><span className="block font-bold">Add personal training</span><span className="block text-xs text-ash">A trainer, with its own fee on top of the plan</span></span>
-          </label>
+          // only the switch takes the tap: the whole card used to, and scrolling the form toggled it by accident
+          <div className={`flex min-h-12 items-center justify-between gap-3 rounded-md border px-4 py-2 ${withPt ? "border-red bg-redwash" : "border-line"}`}>
+            <span id="pt-addon" className="min-w-0"><span className="block font-bold">Add personal training</span><span className="block text-xs text-ash">A trainer, with its own fee on top of the plan</span></span>
+            <button type="button" role="switch" aria-checked={withPt} aria-labelledby="pt-addon" onClick={() => { setWithPt(!withPt); setPtDays(days); }}
+              className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors ${withPt ? "bg-red" : "bg-strong"}`}>
+              <span className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white transition-transform duration-200 ease-lift ${withPt ? "translate-x-5" : ""}`} />
+            </button>
+          </div>
         )}
         {(kind === "pt" || (kind === "membership" && withPt && !!plan)) && (
           <div className="flex flex-col gap-3 rounded-md border border-redline bg-redwash/40 p-4">
@@ -455,9 +462,10 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
               <span className="text-xs text-ash">The rest is recorded as UPI.</span>
             </label>
           )}
-          {/* UPI taken now can have its screenshot (optional); cash needs nothing. A QR (or an owner approval) is paid later */}
-          {pay !== "qr" && pay !== "cash" && (
-            <ProofInput hint="Screenshot of the UPI payment on their phone or yours." />
+          {/* optional: the paper receipt for cash, the UPI screenshot otherwise — kept with the payment. A QR (or an owner
+              approval) is paid later */}
+          {pay !== "qr" && (
+            <ProofInput hint={pay === "cash" ? "Photo of the paper receipt, if you gave one." : "Screenshot of the UPI payment, or the paper receipt."} />
           )}
         </Step>
       )}
@@ -700,25 +708,32 @@ export function MemberPhotoForm({ id, url }: { id: string; url: string | null })
   );
 }
 
-/** The "Edit plan" sheet from a member's actions: each running or booked plan, loaded when it opens. */
-function EditPlansSheet({ member, onClose }: { member: Profile; onClose: () => void }) {
-  const { owner } = useContext(DeskContext);
+/** Delete a plan (staff and owner): a paid one is cancelled — it stops and leaves every list, the payment record stays in
+ *  their history as cancelled; an unpaid order is dropped. Confirmed first, with 10 s to undo. */
+export function DeletePlanButton({ sub, unpaid, onDeleted }: {
+  sub: { id: string; plans: Plan; starts_on: string | null; ends_on: string | null; amount_paise: number }; unpaid?: boolean; onDeleted?: () => void;
+}) {
   const router = useRouter();
-  const [subs, setSubs] = useState<EditableSub[] | null>(null);
-  const load = () => void editablePlans(member.id).then(setSubs);
-  // "delete" = cancel: the plan stops and leaves every list, the payment record stays (owner only, like Cancel plan)
-  const remove = async (s: EditableSub) => {
-    const ok = await confirmDialog({ title: `Delete ${planName(s.plans)}?`, body: `${prettyDay(s.starts_on)} – ${prettyDay(s.ends_on)} · ${inr(s.amount_paise)}. The plan stops; the payment record stays in their history as cancelled. You'll have 10 seconds to undo.`, confirm: "Delete plan", danger: true });
+  const remove = async () => {
+    const when = sub.starts_on && sub.ends_on ? `${prettyDay(sub.starts_on)} – ${prettyDay(sub.ends_on)} · ` : "";
+    const ok = await confirmDialog({ title: `Delete ${planName(sub.plans)}?`, body: `${when}${inr(sub.amount_paise)}. ${unpaid ? "The unpaid order is dropped." : "The plan stops; the payment record stays in their history as cancelled."} You'll have 10 seconds to undo.`, confirm: "Delete plan", danger: true });
     if (!ok) return;
     withUndo("Deleting the plan…", async () => {
-      const r = await cancelPlan(s.id);
+      const r = await (unpaid ? cancelSub : cancelPlan)(sub.id);
       toastResult(r);
       if (!r?.error) {
-        load();
+        onDeleted?.();
         startTransition(() => router.refresh());
       }
     });
   };
+  return <button type="button" onClick={remove} className="btn-ghost min-h-10 shrink-0 px-4 text-sm text-red">Delete plan</button>;
+}
+
+/** The "Edit plan" sheet from a member's actions: each running or booked plan, loaded when it opens. */
+function EditPlansSheet({ member, onClose }: { member: Profile; onClose: () => void }) {
+  const [subs, setSubs] = useState<EditableSub[] | null>(null);
+  const load = () => void editablePlans(member.id).then(setSubs);
   useEffect(load, [member.id]);
   return (
     <Sheet title={`${member.full_name || "Member"} · plans`} open onClose={onClose}>
@@ -730,7 +745,7 @@ function EditPlansSheet({ member, onClose }: { member: Profile; onClose: () => v
               <div key={`${s.id}-${s.plans.id}-${s.starts_on}-${s.amount_paise}-${s.trainer_id}`} className="flex flex-col gap-3 py-4 first:pt-0">
                 <div className="flex items-start justify-between gap-3">
                   <p><span className="font-bold">{planName(s.plans)}</span> <span className="text-sm text-ash">· {prettyDay(s.starts_on)} – {prettyDay(s.ends_on)} · {inr(s.amount_paise)}</span></p>
-                  {owner && <button type="button" onClick={() => remove(s)} className="btn-ghost min-h-10 shrink-0 px-4 text-sm text-red">Delete plan</button>}
+                  <DeletePlanButton sub={s} onDeleted={load} />
                 </div>
                 <EditPlanForm sub={s} inline onSaved={load} />
               </div>
@@ -878,8 +893,8 @@ export function MemberActions({ member, passId, cancelSubId, admissionPaise, las
   );
 }
 
-/** Everything the desk does to one member besides selling and WhatsApp (the green button): edit, pass, call, and (owner) reset password,
- *  cancel plan, delete — each risky one confirmed first, cancel and delete with 10 s to undo. Icons on phones, words
+/** Everything the desk does to one member besides selling and WhatsApp (the green button): edit, pass, call, cancel plan,
+ *  and (owner) reset password and delete — each risky one confirmed first, cancel and delete with 10 s to undo. Icons on phones, words
  *  from sm up. Used under a member row and on their profile; `editExtra` adds to the edit pop-up (the profile's photo). */
 export function MemberTools({ member, passId, cancelSubId, editExtra, className = "" }: {
   member: Profile; passId: string | null; cancelSubId?: string | null; editExtra?: React.ReactNode; className?: string;
@@ -912,11 +927,11 @@ export function MemberTools({ member, passId, cancelSubId, editExtra, className 
       {member.phone && <a href={`tel:${member.phone}`} aria-label="Call" className={ICON_CHIP}>{chipLabel("M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2", "Call")}</a>}
       {owner && member.role === "member" && (
         <button type="button" disabled={pending} aria-label="Reset password" className={ICON_CHIP}
-          onClick={async () => (await confirmDialog({ title: `Reset ${member.full_name}'s password?`, body: "It goes back to the starting password (first 4 letters of their name, without initials, + last 4 phone digits). You'll see it next. They'll be asked to change it.", confirm: "Reset password" })) && start(async () => toastResult(await resetPassword(member.id)))}>
+          onClick={async () => (await confirmDialog({ title: `Reset ${member.full_name}'s password?`, body: "They get a new random temporary password — you'll see it next, once. They'll be asked to set their own when they sign in.", confirm: "Reset password" })) && start(async () => toastResult(await resetPassword(member.id)))}>
           {chipLabel("M7 15a4 4 0 1 1 3.9-5H21v3h-3v3h-3v-3h-4.1A4 4 0 0 1 7 15z", "Reset password")}
         </button>
       )}
-      {owner && cancelSubId && (
+      {cancelSubId && (
         <button type="button" disabled={pending} aria-label="Cancel plan" className={`${ICON_CHIP} text-red`}
           onClick={async () => (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops. Payment records stay. You'll have 10 seconds to undo.", confirm: "Cancel plan", danger: true })) && withUndo("Cancelling the plan…", () => start(async () => toastResult(await cancelPlan(cancelSubId))))}>
           {chipLabel("M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8", "Cancel plan")}
