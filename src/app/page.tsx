@@ -1,4 +1,5 @@
 import type React from "react";
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Footer, Nav, OfferBanner, offerHeadline } from "@/components/site";
@@ -8,8 +9,18 @@ import { Arrow, Reels, ReviewsSection, STOCK, StreakWall } from "@/components/se
 import { getLanding, getSettings } from "@/lib/data";
 import { siteImg } from "@/lib/img";
 import { bestOffer, gymHours, inr, itemImage, type SiteItem } from "@/lib/gym";
+import { areaLine, getArea, gymGraph, JsonLd } from "@/lib/seo";
 
 export const revalidate = 300;
+
+export async function generateMetadata(): Promise<Metadata> {
+  const area = await getArea();
+  return {
+    title: area ? `Stars Gym | Gym in ${area}` : "Stars Gym — The Fitness Arena",
+    description: `Strength, cardio and personal training${area ? ` in ${area}` : ""}. See fees and timings, buy your plan online and book a trial day at Stars Gym.`,
+    alternates: { canonical: "/" },
+  };
+}
 
 // Unsplash (free licence). Swap for a shot from your own gym when you have one.
 const HERO_PHOTO = "https://images.unsplash.com/photo-1623874514711-0f321325f318?auto=format&fit=crop&w=2400&q=85";
@@ -35,6 +46,7 @@ export default async function Home() {
 
   return (
     <main>
+      <JsonLd data={gymGraph(branches, settings, plans)} />
       {/* holidays and offers rotate in the top bar (a strip here would hide behind the fixed header) */}
       <Nav overlay status={<BranchTicker branches={branches} holidays={holidays} offers={offers} />} />
 
@@ -93,7 +105,7 @@ export default async function Home() {
               )}
               <p className="font-display text-[clamp(30px,3.2vw,48px)] leading-none uppercase">Earn your <span className="text-red">star.</span></p>
               <p className="text-base leading-relaxed text-body sm:text-lg">
-                Strength, cardio and personal training{branches.length > 1 ? ` at ${branches.map((b) => b.name).join(" & ")}` : ""}. Buy online, check in at the door, climb the streak wall.
+                Gym, cardio and personal training{branches.length ? ` in ${areaLine(branches)}` : ""}. Buy online, check in at the door, climb the streak wall.
               </p>
             </div>
             {/* one row on phones too, so the band stays short and never runs into the title above it */}
@@ -201,7 +213,7 @@ export default async function Home() {
               <figure key={g.id} data-reveal style={{ transitionDelay: `${i * 70}ms` }}
                 className={`group relative overflow-hidden rounded-lg border border-line ${i === 0 ? "col-span-2 max-md:aspect-[16/10] md:row-span-2" : "max-md:aspect-square"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img {...siteImg(itemImage(g.image_path) ?? "", i === 0 ? "(min-width: 768px) 50vw, 100vw" : "(min-width: 768px) 25vw, 50vw")} alt={g.title} loading="lazy" decoding="async" className="size-full object-cover transition-transform duration-700 ease-lift group-hover:scale-105" />
+                <img {...siteImg(itemImage(g.image_path) ?? "", i === 0 ? "(min-width: 768px) 50vw, 100vw" : "(min-width: 768px) 25vw, 50vw")} alt={g.title || "Inside Stars Gym"} loading="lazy" decoding="async" className="size-full object-cover transition-transform duration-700 ease-lift group-hover:scale-105" />
                 {g.title && <figcaption className="absolute bottom-3 left-3 rounded-full bg-ink/70 px-3 py-1 text-xs font-bold tracking-wider uppercase can-hover:opacity-0 backdrop-blur transition-opacity group-hover:opacity-100">{g.title}</figcaption>}
               </figure>
             ))}

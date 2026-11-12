@@ -27,6 +27,11 @@ export type Branch = {
   upi_id?: string | null; // this branch's UPI ID for desk QR codes (0022); none = NEXT_PUBLIC_UPI_ID
 };
 
+// ponytail: slug from the name, no column — renaming a branch changes its URL; add a slug column if that starts to hurt
+export const branchSlug = (b: Pick<Branch, "name">) => b.name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+/** The branch's own page: /branches/kukatpally */
+export const branchPath = (b: Pick<Branch, "name">) => `/branches/${branchSlug(b)}`;
+
 /** The UPI ID payments for this branch go to: its own, or the gym-wide one. */
 export const branchUpi = (b?: { upi_id?: string | null } | null) => b?.upi_id?.trim() || process.env.NEXT_PUBLIC_UPI_ID || "";
 /** Who an order is paid to: a PT order's trainer when they've set a UPI ID, else the branch (then the gym-wide one). */
@@ -153,7 +158,28 @@ export const DAY_NAMES =["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function planName(p: Pick<Plan, "track" | "duration_days">) {
   const d = DURATIONS.find((x) => x.days === p.duration_days);
-  return d ? `${TRACKS[p.track]} · ${d.label}` : TRACKS[p.track];
+  return d ? `${TRACKS[p.track]} · ${d.label}` : p.duration_days > 1 ? `${TRACKS[p.track]} · ${p.duration_days} days` : TRACKS[p.track];
+}
+
+/** The price-list lengths (one-day passes + monthly…yearly). Any other length is a custom plan the desk sold. */
+export const isStandard = (p: Pick<Plan, "duration_days">) => p.duration_days === 1 || DURATIONS.some((d) => d.days === p.duration_days);
+/** Custom lengths the desk can sell: a week-and-a-bit, a partial month, 45 days… */
+export const CUSTOM_DAYS = { min: 2, max: 364 };
+/** Short-stay markup on custom lengths when the owner hasn't set one (Pricing page). */
+export const DEFAULT_MARKUP = 20;
+export const markupOf = (s?: { custom_markup_pct?: number | null } | null) => s?.custom_markup_pct ?? DEFAULT_MARKUP;
+
+/**
+ * A custom length's price: the per-day rate of the longest standard plan that fits (20 days → monthly, 120 → quarterly),
+ * × the days, + the short-stay markup — never more than the next standard plan up, so a full month stays the better
+ * deal. Rounded to ₹10. null = that track has no standard prices.
+ */
+export function customPrice(plans: Plan[], track: Track, days: number, markupPct: number) {
+  const std = plans.filter((p) => p.track === track && p.duration_days > 1 && isStandard(p)).sort((a, b) => a.duration_days - b.duration_days);
+  if (!std.length) return null;
+  const base = std.filter((p) => p.duration_days <= days).at(-1) ?? std[0];
+  const cap = std.find((p) => p.duration_days >= days)?.price_paise ?? Infinity;
+  return Math.round(Math.min((base.price_paise / base.duration_days) * days * (1 + markupPct / 100), cap) / 1000) * 1000;
 }
 
 export const inr = (paise: number) =>
@@ -377,6 +403,7 @@ export type Settings = {
   email: string | null;
   branch_access?: "any" | "home"; // "home" = members check in only at their home branch
   admission_fee_paise?: number; // one-time, added to a member's first membership
+  custom_markup_pct?: number; // short-stay markup % on custom-length plans; unset (column not added yet) = DEFAULT_MARKUP
 };
 
 /** Item photos are either uploads in the "site" bucket or full URLs. */
@@ -396,6 +423,29 @@ export function videoEmbed(url: string | null) {
   if (yt) return { type: "youtube" as const, src: `https://www.youtube-nocookie.com/embed/${yt[1]}` };
   if (/\.(mp4|webm)(\?|$)/i.test(url)) return { type: "file" as const, src: url };
   return null;
+}
+
+/** The desk's WhatsApp renewal reminder (the gym's own wording; *bold* is WhatsApp's). "3 Months Strength", "16/10/2026". */
+export function reminderText(name: string, plan: Pick<Plan, "track" | "duration_days"> | null | undefined, endsOn: string, today = gymDate()) {
+  const days = Math.round((Date.parse(endsOn) - Date.parse(today)) / 864e5);
+  const left = days > 1 ? `${days} days remaining` : days === 1 ? "1 day remaining" : days === 0 ? "Expires today" : `Expired ${days === -1 ? "yesterday" : `${-days} days ago`}`;
+  const d = plan?.duration_days ?? 0;
+  const length = d === 365 ? "1 Year" : d >= 30 && d % 30 === 0 ? `${d / 30} Month${d === 30 ? "" : "s"}` : `${d} Days`;
+  const [y, m, day] = endsOn.split("-");
+  return [
+    "🏋️ *STARS GYM Membership Reminder*",
+    "",
+    `Hi *${name || "there"}*,`,
+    `⏰ *${left}*`,
+    "",
+    ...(plan ? [`📋 Plan: *${length} ${TRACKS[plan.track]}*`] : []),
+    `📅 Expiry: *${day}/${m}/${y}*`,
+    "",
+    "Please renew your membership to continue your fitness journey without interruption. 💪",
+    "",
+    "Contact us to renew today!",
+    "- STARS GYM Management",
+  ].join("\n");
 }
 
 export const waLink = (digits: string, text = "Hi Stars Gym!") => `https://wa.me/${digits.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;

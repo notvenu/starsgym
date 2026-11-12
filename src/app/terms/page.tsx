@@ -2,7 +2,7 @@ import Link from "next/link";
 import { LegalPage } from "@/components/legal";
 
 export const revalidate = 300;
-export const metadata = { title: "Terms & conditions — Stars Gym" };
+export const metadata = { title: "Terms & conditions — Stars Gym", description: "Stars Gym membership terms: plans, payments, refunds, check-in rules and gym conduct.", alternates: { canonical: "/terms" } };
 
 // Template terms for a typical Indian gym — have them reviewed before relying on them.
 export default function TermsPage() {

@@ -12,8 +12,8 @@ import { ProofCheck, ProofInput } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
 import type { Trainer } from "./data";
 import { waNumber } from "./kit";
-import { ageOf, GENDERS, LOGIN_EMAIL_DOMAIN, offerLabel, OFFER_LENGTHS, bestOffer, DAY_NAMES, discounted, DURATIONS, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track, waLink } from "@/lib/gym";
-import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, editPlan, editablePlans, setOrderPrice, saveAdmission, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type EditableSub, type Result } from "./actions";
+import { ageOf, GENDERS, LOGIN_EMAIL_DOMAIN, offerLabel, OFFER_LENGTHS, bestOffer, CUSTOM_DAYS, customPrice, DAY_NAMES, DEFAULT_MARKUP, discounted, DURATIONS, isStandard, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, reminderText, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track, waLink } from "@/lib/gym";
+import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, editPlan, editablePlans, setOrderPrice, saveAdmission, saveMarkup, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type EditableSub, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
 
@@ -141,7 +141,7 @@ const GYM_TRACKS: Track[] = ["strength", "strength_cardio", "couples"];
 const PT_ONLY: [Kind, string, string] = ["pt", "PT only", "Add-on to their plan"];
 
 /** Desk onboarding: details → pass → payment, then straight to the member's ticket. */
-type NewMemberProps = { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; admissionPaise?: number };
+type NewMemberProps = { branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; admissionPaise?: number; markup?: number };
 
 /** "+ New member": the form, then the account-created screen. "Add another" starts a fresh, empty form. */
 export function AddMemberForm(props: NewMemberProps) {
@@ -149,7 +149,7 @@ export function AddMemberForm(props: NewMemberProps) {
   return <NewMemberForm key={round} {...props} onAnother={() => setRound((n) => n + 1)} />;
 }
 
-function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, onAnother }: NewMemberProps & { onAnother: () => void }) {
+function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, markup, onAnother }: NewMemberProps & { onAnother: () => void }) {
   const [state, action, pending] = useActionState(addMember, undefined);
   if (state?.created) return <AccountCreated c={state.created} onAnother={onAnother} />;
   return (
@@ -168,7 +168,7 @@ function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, 
           </div>
         </div>
       </Step>
-      <PlanSteps plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} markup={markup} admissionPaise={admissionPaise} kinds={KINDS} first={2} verb="Create" pending={pending} state={state} />
     </form>
   );
 }
@@ -274,7 +274,7 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
   );
 }
 
-type DeskData = { owner: boolean; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[] };
+type DeskData = { owner: boolean; branches: Branch[]; plans: Plan[]; offers: Offer[]; trainers: Trainer[]; markup?: number };
 const DeskContext = createContext<DeskData>({ owner: false, branches: [], plans: [], offers: [], trainers: [] });
 /** What every row's Renew / Edit needs (prices, offers, trainers, branches), sent once per page instead of once per row. */
 export function Desk({ children, ...value }: DeskData & { children: React.ReactNode }) {
@@ -314,7 +314,7 @@ export function RenewButton({ member, renew, lastPlanId, currentEnd, admissionPa
 
 /** Sell an existing member their next plan. Starts the day after their current one ends. */
 function RenewForm({ userId, branchId, lastPlanId, currentEnd, admissionPaise, onDone }: { userId: string; branchId: string | null; lastPlanId?: string | null; currentEnd?: string | null; admissionPaise: number | null; onDone?: () => void }) {
-  const { plans, offers, trainers } = useContext(DeskContext);
+  const { plans, offers, trainers, markup } = useContext(DeskContext);
   // the day after their current plan (or run of plans) ends; today when nothing is running
   const today = gymDate();
   const startOn = currentEnd && currentEnd >= today ? new Date(Date.parse(`${currentEnd}T12:00:00Z`) + 864e5).toISOString().slice(0, 10) : today;
@@ -330,21 +330,34 @@ function RenewForm({ userId, branchId, lastPlanId, currentEnd, admissionPaise, o
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
       <input type="hidden" name="user_id" value={userId} />
       <input type="hidden" name="branch_id" value={branchId ?? ""} />
-      <PlanSteps plans={plans} offers={offers} trainers={trainers} admissionPaise={admissionPaise} kinds={[...KINDS.filter(([k]) => k === "membership" || k === "day_pass"), PT_ONLY]} first={1} verb="Renew" pending={pending} state={state} start={plans.find((p) => p.id === lastPlanId)} startOn={startOn} />
+      <PlanSteps plans={plans} offers={offers} trainers={trainers} markup={markup} admissionPaise={admissionPaise} kinds={[...KINDS.filter(([k]) => k === "membership" || k === "day_pass"), PT_ONLY]} first={1} verb="Renew" pending={pending} state={state} start={plans.find((p) => p.id === lastPlanId)} startOn={startOn} />
     </form>
   );
 }
 
 /** Pass → payment → submit. admissionPaise null = they've had a membership, so no admission field. `start` pre-picks
  *  the track and length (their last plan). */
-function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb, pending, state, start, startOn }: {
-  plans: Plan[]; offers: Offer[]; trainers: Trainer[]; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result; start?: Plan; startOn?: string;
+function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admissionPaise, kinds, first, verb, pending, state, start, startOn }: {
+  plans: Plan[]; offers: Offer[]; trainers: Trainer[]; markup?: number; admissionPaise: number | null; kinds: typeof KINDS; first: number; verb: string; pending: boolean; state: Result; start?: Plan; startOn?: string;
 }) {
   const pre = start && GYM_TRACKS.includes(start.track) ? start : undefined;
   const [kind, setKind] = useState<Kind>("membership");
   const [picking, setPicking] = useState(!pre); // a renewal starts on their last plan; "Change" opens the full chooser
   const [track, setTrack] = useState<Track>(pre?.track ?? "strength");
   const [days, setDays] = useState(pre?.duration_days ?? 30);
+  // custom length (20 days, 45 days…): priced off the standard plans, the row is made when it's sold (sellPlans)
+  const [customOn, setCustomOn] = useState(!!pre && !isStandard(pre));
+  const [customText, setCustomText] = useState(String(pre && !isStandard(pre) ? pre.duration_days : 20));
+  const customDays = Number(customText);
+  const customOk = Number.isInteger(customDays) && customDays >= CUSTOM_DAYS.min && customDays <= CUSTOM_DAYS.max;
+  const custom = kind === "membership" && customOn;
+  const customPlan = (): Plan | undefined => {
+    if (!customOk) return undefined;
+    const row = plans.find((p) => p.track === track && p.duration_days === customDays);
+    if (isStandard({ duration_days: customDays })) return row; // typed 30 → just the monthly plan
+    const price = customPrice(plans, track, customDays, markup);
+    return price === null ? undefined : { id: row?.id ?? "", track, duration_days: customDays, price_paise: price, active: true };
+  };
   const [payment, setPayment] = useState("cash");
   const [withPt, setWithPt] = useState(false); // membership + personal training add-on
   const [ptDays, setPtDays] = useState(pre?.duration_days ?? 30);
@@ -352,7 +365,9 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
   const [gymTotal, setGymTotal] = useState(0);
   const [ptTotal, setPtTotal] = useState(0);
   const plan =
-    kind === "none" || kind === "pt" ? undefined : plans.find((p) => (kind === "membership" ? p.track === track && p.duration_days === days : p.track === kind));
+    kind === "none" || kind === "pt" ? undefined : custom ? customPlan() : plans.find((p) => (kind === "membership" ? p.track === track && p.duration_days === days : p.track === kind));
+  // a custom length the desk hasn't sold before has no row yet: the server makes it from these two fields
+  const sendCustom = custom && !!plan && !isStandard(plan);
   const ptPlans = plans.filter((p) => p.track === "personal_training");
   const ptPlan = kind === "pt" || (kind === "membership" && withPt) ? ptPlans.find((p) => p.duration_days === ptDays) : undefined;
   const fee = trainers.find(([id]) => id === trainerId)?.[2];
@@ -381,12 +396,33 @@ function PlanSteps({ plans, offers, trainers, admissionPaise, kinds, first, verb
         {picking && kind === "membership" && (
           <div className="flex flex-col gap-2">
             <Segmented label="Track" options={GYM_TRACKS.map((t) => [t, TRACKS[t]])} value={track} onChange={(v) => setTrack(v as Track)} />
-            <Segmented label="Length" options={DURATIONS.map((d) => [String(d.days), d.label])} value={String(days)} onChange={(v) => { setDays(Number(v)); if (!withPt) setPtDays(Number(v)); }} />
+            <Segmented label="Length" options={[...DURATIONS.map((d) => [String(d.days), d.label] as [string, string]), ["custom", "Custom days"]]} value={customOn ? "custom" : String(days)}
+              onChange={(v) => {
+                if (v === "custom") return setCustomOn(true);
+                setCustomOn(false);
+                setDays(Number(v));
+                if (!withPt) setPtDays(Number(v));
+              }} />
+            {customOn && (
+              <label className="flex flex-col gap-1.5 sm:w-64">
+                <span className="label">Number of days</span>
+                <input type="number" inputMode="numeric" min={CUSTOM_DAYS.min} max={CUSTOM_DAYS.max} step="1" value={customText} onChange={(e) => setCustomText(e.target.value)} className="field font-bold" />
+                <span className={`text-xs ${customOk ? "text-ash" : "text-red"}`}>
+                  {customOk ? `Priced from the ${TRACKS[track]} plans + ${markup}% short-stay markup, never above the next full plan.` : `${CUSTOM_DAYS.min}–${CUSTOM_DAYS.max} days.`}
+                </span>
+              </label>
+            )}
           </div>
+        )}
+        {sendCustom && plan && (
+          <>
+            <input type="hidden" name="custom_track" value={plan.track} />
+            <input type="hidden" name="custom_days" value={plan.duration_days} />
+          </>
         )}
         {plan && (
           <NegotiatedPrice
-            key={plan.id}
+            key={plan.id || `custom-${plan.track}-${plan.duration_days}-${plan.price_paise}`}
             standard={discounted(plan.price_paise, bestOffer(offers, plan.track, plan.duration_days), plan.duration_days)}
             list={plan.price_paise}
             admission={MEMBERSHIPS.includes(plan.track) ? admissionPaise : null}
@@ -771,7 +807,8 @@ export function EditPlanForm({ sub, inline, onSaved }: { sub: Omit<EditableSub, 
   }, undefined);
   const isPt = sub.plans.track === "personal_training";
   // same kind only (membership ↔ membership, PT ↔ PT); the current plan stays listed even if it's switched off
-  const choices = plans.filter((p) => (p.track === "personal_training") === isPt && p.duration_days > 1);
+  // custom lengths (20 days…) aren't listed for switching to — only the one this plan already is
+  const choices = plans.filter((p) => (p.track === "personal_training") === isPt && p.duration_days > 1 && isStandard(p));
   if (!choices.some((p) => p.id === sub.plans.id)) choices.unshift(sub.plans);
   const form = (
       <form noValidate onSubmit={keepFields(action)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -953,14 +990,9 @@ export function MemberTools({ member, passId, cancelSubId, editExtra, className 
 
 /** The green button on a member row and their profile: opens WhatsApp with a message ready — a renewal reminder when
  *  their plan ends within a week or has ended, else a hello. `endsOn`: their plan's (last) end date. */
-export function WhatsAppButton({ member, endsOn, expired }: { member: Profile; endsOn: string | null; expired: boolean }) {
+export function WhatsAppButton({ member, endsOn, expired, plan }: { member: Profile; endsOn: string | null; expired: boolean; plan?: Pick<Plan, "track" | "duration_days"> | null }) {
   if (!member.phone) return null;
-  const first = member.full_name.split(" ")[0] || "there";
-  const text = endsOn && expired
-    ? `Hi ${first}! We miss you at Stars Gym. Your plan ended on ${prettyDay(endsOn)} — renew and pick up where you left off.`
-    : endsOn && endsOn <= gymDateIn(7)
-      ? `Hi ${first}! Your Stars Gym plan ends on ${prettyDay(endsOn)}. Renew to keep your streak going.`
-      : `Hi ${first}!`;
+  const text = endsOn && (expired || endsOn <= gymDateIn(7)) ? reminderText(member.full_name, plan, endsOn) : `Hi ${member.full_name.split(" ")[0] || "there"}!`;
   return (
     <a href={waLink(waNumber(member.phone), text)} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${member.full_name}`} title="WhatsApp"
       className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-ink transition-transform hover:scale-105">
@@ -1208,6 +1240,24 @@ export function AdmissionForm({ paise }: { paise: number }) {
       </label>
       <button disabled={pending} className="btn-red min-h-11">{pending ? "Saving…" : "Save"}</button>
       <Status state={state} />
+    </form>
+  );
+}
+
+/** Short-stay markup on the desk's custom lengths, with what it makes 20 days of Strength cost. */
+export function MarkupForm({ pct, plans }: { pct: number; plans: Plan[] }) {
+  const [state, action, pending] = useActionState(saveMarkup, undefined);
+  const [value, setValue] = useState(String(pct));
+  const example = customPrice(plans.filter((p) => p.active), "strength", 20, Number(value) || 0);
+  return (
+    <form noValidate onSubmit={keepFields(action)} className="flex flex-wrap items-end gap-3">
+      <label className="flex flex-col gap-1.5">
+        <span className="label">Markup (%)</span>
+        <input name="markup" type="number" inputMode="numeric" min="0" max="200" step="1" value={value} onChange={(e) => setValue(e.target.value)} className="field w-32 font-bold" />
+      </label>
+      <button disabled={pending} className="btn-red min-h-11">{pending ? "Saving…" : "Save"}</button>
+      <Status state={state} />
+      {example !== null && <p className="w-full text-sm text-ash">e.g. 20 days of Strength = {inr(example)}</p>}
     </form>
   );
 }

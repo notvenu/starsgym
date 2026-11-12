@@ -21,7 +21,7 @@ export default async function MemberLayout({ children }: LayoutProps<"/dashboard
       <AccountPrompt />
       <Nav>
         <HeaderTabs />
-        <form action={signOut}><button className="btn-ghost">Sign out</button></form>
+        <form action={signOut}><button className="btn-ghost max-sm:min-h-10 max-sm:px-4 max-sm:text-xs">Sign out</button></form>
       </Nav>
       {children}
       <BottomTabs />

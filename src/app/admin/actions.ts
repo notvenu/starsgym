@@ -9,7 +9,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { adminDb, allRows, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { gymDate, gymDateIn, inr, loginEmail, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, trainerFee, UPI_ID, type Plan, type Track } from "@/lib/gym";
+import { CUSTOM_DAYS, customPrice, gymDate, gymDateIn, inr, isStandard, loginEmail, markupOf, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, trainerFee, TRACKS, UPI_ID, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
@@ -210,7 +210,7 @@ async function addMemberRun(_: Result, form: FormData): Promise<Result> {
   const [photoSet, sold, loginUrl] = await Promise.all([
     // photo taken at the desk: staff can set or replace it any time, without using up the member's own changes
     uploaded && "path" in uploaded ? supabase.rpc("admin_set_photo", { p_user: id, p_path: uploaded.path }) : null,
-    s(form, "plan_id") || s(form, "pt_plan_id") ? sellPlans(supabase, me, id, branch || null, form).catch((e: Error) => ({ error: e.message })) : null,
+    s(form, "plan_id") || s(form, "custom_days") || s(form, "pt_plan_id") ? sellPlans(supabase, me, id, branch || null, form).catch((e: Error) => ({ error: e.message })) : null,
     password ? loginLink(signInAs).catch(() => null) : null,
   ]);
   if (photoSet?.error) {
@@ -324,12 +324,37 @@ function saleItems(form: FormData): { error: string } | SaleItem[] {
   return items;
 }
 
+/**
+ * The plans row for a custom length (Strength × 20 days): made the first time the desk sells it, its price re-set to
+ * today's formula each sale so the order's standard matches what the desk saw. getPlans / checkout skip these rows,
+ * so it never shows on the website. Service key: staff can't write plans, and only this desk-only path does.
+ * ponytail: two desks selling the same new length at the same moment can make twin rows; both work.
+ */
+async function customPlanId(track: string, days: number): Promise<{ id: string } | { error: string }> {
+  if (!["strength", "strength_cardio", "couples"].includes(track)) return { error: "Custom lengths are for gym memberships." };
+  if (!Number.isInteger(days) || days < CUSTOM_DAYS.min || days > CUSTOM_DAYS.max) return { error: `Custom length: ${CUSTOM_DAYS.min}–${CUSTOM_DAYS.max} days.` };
+  const db = adminDb();
+  const [{ data: rows }, { data: settings }] = await Promise.all([db.from("plans").select("*").eq("track", track), db.from("site_settings").select("*").eq("id", 1).maybeSingle()]);
+  const all = (rows ?? []) as Plan[];
+  const row = all.find((p) => p.duration_days === days);
+  if (isStandard({ duration_days: days })) return row?.active ? { id: row.id } : { error: "That plan isn't on sale." };
+  const price = customPrice(all.filter((p) => p.active), track as Track, days, markupOf(settings));
+  if (price === null) return { error: `Set the ${TRACKS[track as Track]} prices on the Pricing page first.` };
+  const { data, error } = row
+    ? await db.from("plans").update({ price_paise: price, active: true }).eq("id", row.id).select("id").single()
+    : await db.from("plans").insert({ track, duration_days: days, price_paise: price, active: true }).select("id").single();
+  if (error) return { error: `Couldn't set up the ${days}-day plan: ${error.message}` };
+  if (!row) clearDesk(); // the desk's plan list (renewals, member list) picks the new row up
+  return { id: data.id as string };
+}
+
 const dayAfter = (iso: string, n = 1) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
 /** The last day of a plan: monthly plans (30/90/180/365 days) run by calendar months to the day before the same date —
- *  28 Jun + 6 months ends 27 Dec; 31 Jan + 1 month has no 31 Feb, so it ends 28/29 Feb. Shorter plans count days. */
+ *  28 Jun + 6 months ends 27 Dec; 31 Jan + 1 month has no 31 Feb, so it ends 28/29 Feb. Day passes and custom lengths
+ *  (20 days, 45 days) count days. */
 function planEnd(start: string, days: number) {
-  if (days < 28) return dayAfter(start, days - 1);
+  if (days === 1 || !isStandard({ duration_days: days })) return dayAfter(start, days - 1);
   const [y, m, d] = start.split("-").map(Number);
   const target = new Date(Date.UTC(y, m - 1 + Math.round(days / 30), 1)); // 365 days → 12 months
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
@@ -376,6 +401,11 @@ async function placeDates(subId: string, userId: string, picked: string | null):
  * A cash part covers the membership first, then the PT.
  */
 async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: string | null, form: FormData): Promise<{ error: string } | SoldPlan[]> {
+  if (s(form, "custom_days")) {
+    const custom = await customPlanId(s(form, "custom_track"), Number(s(form, "custom_days")));
+    if ("error" in custom) return custom;
+    form.set("plan_id", custom.id);
+  }
   const items = saleItems(form);
   if ("error" in items) return items;
   const pay = s(form, "payment"); // "cash" | "upi_paid" | "split" (part cash, rest UPI) | "qr"
@@ -649,6 +679,16 @@ export async function saveAdmission(_: Result, form: FormData): Promise<Result> 
   if (!Number.isFinite(rupees) || rupees < 0) return { error: "Enter 0 or more." };
   const { error } = await supabase.from("site_settings").update({ admission_fee_paise: Math.round(rupees * 100) }).eq("id", 1);
   return error ? { error: error.message } : doneDesk(await logged(me, "Changed admission fee", rupees ? "Admission fee saved" : "Admission fee switched off", { detail: inr(Math.round(rupees * 100)) }));
+}
+
+/** Owner: the short-stay markup on custom lengths (the desk's "Custom days"). Needs site_settings.custom_markup_pct. */
+export async function saveMarkup(_: Result, form: FormData): Promise<Result> {
+  const { supabase, profile: me } = await requireAdmin();
+  const pct = Number(s(form, "markup"));
+  if (!Number.isInteger(pct) || pct < 0 || pct > 200) return { error: "Enter a whole number from 0 to 200." };
+  const { error } = await supabase.from("site_settings").update({ custom_markup_pct: pct }).eq("id", 1);
+  if (error) return { error: /custom_markup_pct/.test(error.message) ? "Run the custom-days SQL in Supabase first (it adds the markup setting)." : error.message };
+  return doneDesk(await logged(me, "Changed custom-length markup", "Markup saved", { detail: `${pct}%` }));
 }
 
 /** Closes one branch (or all) on a date. Members see it on the site and dashboard. Staff can add one for their own

@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/supabase";
 import { getPass } from "./data";
 import { Ticket } from "./ticket";
 
-export const metadata = { title: "Your pass — Stars Gym" };
+export const metadata = { title: "Your pass — Stars Gym", robots: { index: false } };
 
 /** Stand-alone pass page — where onboarding lands and what shared links open. The dashboard shows the same ticket in a pop-up. */
 export default async function PassPage({ params, searchParams }: PageProps<"/pass/[subId]">) {

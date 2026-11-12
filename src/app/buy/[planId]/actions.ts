@@ -4,7 +4,7 @@ import { adminDb, requireUser } from "@/lib/supabase";
 import { allow, SLOW_DOWN } from "@/lib/rate-limit";
 import QRCode from "qrcode";
 import { proofUrls } from "@/lib/photo";
-import { branchUpi, upiLink } from "@/lib/gym";
+import { branchUpi, isStandard, upiLink } from "@/lib/gym";
 
 type Pending = { id: string; amount_paise: number };
 
@@ -13,6 +13,9 @@ async function createPending(planId: string, branchId: string, method: "upi_qr")
   if (!(await allow([`order:${user.id}`], 10, 3600))) return { error: SLOW_DOWN } as const; // unpaid orders pile up at the desk
   // one request at a time: picking again replaces the unpaid one (an edit) — unless its screenshot is already with the
   // desk, which must settle it first (money may have been sent for it)
+  // custom lengths are desk-only: the database would price any active plan id it's handed
+  const { data: plan } = await supabase.from("plans").select("duration_days").eq("id", planId).maybeSingle();
+  if (!plan || !isStandard(plan)) return { error: "That plan isn't available online." } as const;
   const { data: open } = await supabase.from("subscriptions").select("id").eq("user_id", user.id).eq("status", "pending");
   const ids = (open ?? []).map((o) => o.id as string);
   if ((await proofUrls(ids)).size) return { error: "You've already sent a payment for your last request — the desk is checking it. You can renew again once they confirm it." } as const;
@@ -38,7 +41,7 @@ export async function startUpi(planId: string, branchId: string) {
   const upi = branchUpi(branch);
   if (!upi) {
     await adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", sub.id).eq("status", "pending");
-    return { error: "UPI isn't set up for this branch yet — ask at the desk." };
+    return { error: "Online payment isn't set up for this branch yet — please contact us." };
   }
   const ref = sub.id.slice(0, 8).toUpperCase();
   const link = upiLink(sub.amount_paise, ref, upi);

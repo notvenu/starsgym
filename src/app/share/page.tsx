@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/supabase";
 import { inr, planName, type Plan } from "@/lib/gym";
 import { SharedProof } from "./ui";
 
-export const metadata = { title: "Send payment screenshot — Stars Gym" };
+export const metadata = { title: "Send payment screenshot — Stars Gym", robots: { index: false } };
 
 /**
  * Where a screenshot lands when it's shared into the app ("Share → Stars Gym" from a UPI app, or "Open with" on a

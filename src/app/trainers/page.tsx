@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { getArea } from "@/lib/seo";
 import Link from "next/link";
 import { PageHero, Shell } from "@/components/site";
 import { FinalCta, STOCK, TrainerCard } from "@/components/sections";
@@ -5,7 +7,14 @@ import { getBranches, getItems } from "@/lib/data";
 import { coachesAt } from "@/lib/gym";
 
 export const revalidate = 300;
-export const metadata = { title: "Our trainers — Stars Gym", description: "Meet the certified coaches on the Stars Gym floor." };
+export async function generateMetadata(): Promise<Metadata> {
+  const area = await getArea();
+  return {
+    title: `Gym Trainers${area ? ` in ${area}` : ""} — Stars Gym`,
+    description: `Meet the certified coaches at Stars Gym${area ? `, ${area}` : ""}. Pick a trainer for 1:1 personal training or ask for a form check.`,
+    alternates: { canonical: "/trainers" },
+  };
+}
 
 export default async function TrainersPage() {
   const [{ trainer }, branches] = await Promise.all([getItems(["trainer"]), getBranches()]);

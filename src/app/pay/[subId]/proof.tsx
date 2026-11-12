@@ -22,7 +22,7 @@ export function ProofUpload({ subId, sent, onSent }: { subId: string; sent: stri
           <p className="min-w-0 text-sm"><b className="block text-chalk">Screenshot sent</b><span className="text-ash">The desk is checking it. Your plan starts once they confirm.</span></p>
         </div>
       ) : (
-        <p className="text-sm text-body"><b className="block text-chalk">Paid by UPI?</b>Send the payment screenshot. The desk checks it and starts your plan.</p>
+        <p className="text-sm text-body"><b className="block text-chalk">Payment screenshot · required</b>Your plan starts only after the desk checks it against the payment.</p>
       )}
       <ProofInput required hint={sent ? "Wrong one? Send it again." : "The screen your UPI app shows after paying, with the amount and UTR."} />
       <div className="flex flex-wrap items-center gap-3">

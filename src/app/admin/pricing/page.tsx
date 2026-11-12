@@ -1,7 +1,7 @@
 import { requireAdmin } from "@/lib/supabase";
-import type { Plan } from "@/lib/gym";
+import { markupOf, type Plan } from "@/lib/gym";
 import { PageHeader, Panel, PRICING_TABS, Tabs } from "../kit";
-import { AdmissionForm, PriceForm } from "../ui";
+import { AdmissionForm, MarkupForm, PriceForm } from "../ui";
 
 export const metadata = { title: "Pricing — Stars Gym admin" };
 
@@ -20,6 +20,9 @@ export default async function PricingPage() {
       </Panel>
       <Panel title="Admission" intro="Once, on a first membership. 0 = off.">
         <AdmissionForm paise={settings?.admission_fee_paise ?? 19900} />
+      </Panel>
+      <Panel title="Custom lengths" intro="The desk can sell any number of days (Length → Custom days). The price is the per-day rate of the plan that fits, plus this markup, and never more than the next full plan.">
+        <MarkupForm pct={markupOf(settings)} plans={(data ?? []) as Plan[]} />
       </Panel>
     </>
   );

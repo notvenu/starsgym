@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { getBranches, getNotices, getSettings } from "@/lib/data";
 import { BranchTicker } from "@/components/client";
-import { gymDate, OFFER_LENGTHS, prettyDay, TRACKS, waLink, type Branch, type Holiday, type Offer, type Settings } from "@/lib/gym";
+import { branchPath, gymDate, OFFER_LENGTHS, prettyDay, TRACKS, waLink, type Branch, type Holiday, type Offer, type Settings } from "@/lib/gym";
 
 export function Logo({ size = 72 }: { size?: number }) {
   // transparent mark, ~1.47:1 — `size` is its height
@@ -92,9 +92,21 @@ export function Star({ size = 20 }: { size?: number }) {
 }
 
 export async function Footer() {
-  const settings = await getSettings();
+  const [settings, branches] = await Promise.all([getSettings(), getBranches()]);
   return (
     <footer className="border-t border-line">
+      {/* name, address, phone on every page — keep it word-for-word the same as each Google Business Profile */}
+      {branches.length > 0 && (
+        <address className="wrap grid gap-6 border-b border-line py-10 not-italic sm:grid-cols-2 lg:grid-cols-3">
+          {branches.map((b) => (
+            <div key={b.id} className="flex flex-col gap-1.5 text-[15px]">
+              <Link href={branchPath(b)} className="font-display text-2xl uppercase hover:text-red">Stars Gym {b.name}</Link>
+              <span className="text-ash">{b.address}</span>
+              {settings.phone && <a href={`tel:${settings.phone.replace(/[^\d+]/g, "")}`} className="text-ash hover:text-chalk">{settings.phone}</a>}
+            </div>
+          ))}
+        </address>
+      )}
       <div className="wrap flex flex-wrap items-start justify-between gap-10 py-14">
         <div className="flex flex-col gap-5">
           <Logo size={150} />

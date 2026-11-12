@@ -69,7 +69,7 @@ export function CheckInPanel(props: {
 
   if (logging) {
     return (
-      <section className="flex flex-col gap-5 rounded-lg border border-line bg-panel p-6 sm:p-9">
+      <section className="flex flex-col gap-5 rounded-lg border border-line bg-panel p-5 sm:p-9">
         <div className="flex items-center justify-between gap-3">
           <p className="flex items-center gap-2 font-label text-sm font-bold tracking-widest text-ash uppercase"><Check /> Checked in</p>
           <p className="font-label text-sm font-bold tracking-widest text-red uppercase">{streak}-day streak</p>
@@ -80,7 +80,7 @@ export function CheckInPanel(props: {
   }
 
   return (
-    <section className="flex flex-col gap-7 rounded-lg border border-line bg-panel p-6 sm:p-9">
+    <section className="flex flex-col gap-5 rounded-lg border border-line bg-panel p-5 sm:gap-7 sm:p-9">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {/* the member's photo — the same face staff see when they scan the pass */}
@@ -97,7 +97,7 @@ export function CheckInPanel(props: {
         {branch && <p className="font-label text-sm font-bold uppercase tracking-[0.12em]"><OpenStatus branch={branch} holidays={props.holidays} withHours /></p>}
       </div>
 
-      <div className="relative mx-auto flex size-56 items-center justify-center">
+      <div className="relative mx-auto flex size-44 items-center justify-center sm:size-56">
         <svg viewBox="0 0 200 200" className="absolute inset-0 -rotate-90" aria-hidden="true">
           <circle cx="100" cy="100" r={R} fill="none" stroke="#1e1e1e" strokeWidth="12" />
           <circle cx="100" cy="100" r={R} fill="none" stroke="var(--color-red)" strokeWidth="12" strokeLinecap="round"
@@ -105,7 +105,7 @@ export function CheckInPanel(props: {
             className="transition-[stroke-dashoffset] duration-900 ease-lift" />
         </svg>
         <div className="text-center">
-          <p key={streak} className="animate-rise font-display text-[84px] leading-none [animation-duration:.5s]">{streak}</p>
+          <p key={streak} className="animate-rise font-display text-[64px] leading-none [animation-duration:.5s] sm:text-[84px]">{streak}</p>
           <p className="label">Day streak</p>
           <p className="mt-1 text-[13px] text-ash">{goal - streak} to {goal}-day badge</p>
         </div>

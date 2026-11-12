@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { getArea, JsonLd } from "@/lib/seo";
 import Link from "next/link";
 import { PageHero, Shell } from "@/components/site";
 import { Price } from "@/components/client";
@@ -6,7 +8,14 @@ import { getBranches, getItems, getNotices, getPlans } from "@/lib/data";
 import { bestOffer, DURATIONS, coachesAt } from "@/lib/gym";
 
 export const revalidate = 300;
-export const metadata = { title: "Personal training & client results — Stars Gym", description: "1:1 coaching with a plan built around you — and the transformations to prove it." };
+export async function generateMetadata(): Promise<Metadata> {
+  const area = await getArea();
+  return {
+    title: `Personal Trainer${area ? ` in ${area}` : ""} — Stars Gym`,
+    description: `1:1 personal training at Stars Gym${area ? `, ${area}` : ""}. A coach and a plan built around you, real client transformations, and a free first session.`,
+    alternates: { canonical: "/personal-training" },
+  };
+}
 
 const STEPS = [
   ["Assess", "A free first session: goals, injuries, a movement screen and where your strength is today."],
@@ -27,6 +36,7 @@ export default async function PersonalTrainingPage() {
 
   return (
     <Shell>
+      <JsonLd data={{ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: FAQ.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) }} />
       <PageHero eyebrow="Personal training" title="One coach." accent="One plan. You." intro="Coaching that fits your goals, your body and your calendar — with the accountability that actually gets you there." image={STOCK.curl} />
 
       <section className="wrap grid gap-5 py-20 md:grid-cols-3">

@@ -4,10 +4,10 @@ import { requireUser } from "@/lib/supabase";
 import { Price } from "@/components/client";
 import { getNotices, getSettings } from "@/lib/data";
 import Link from "next/link";
-import { bestOffer, discounted, DURATIONS, inr, MEMBERSHIP, planName, savings, type Branch, type Plan } from "@/lib/gym";
+import { bestOffer, discounted, DURATIONS, inr, isStandard, MEMBERSHIP, planName, savings, type Branch, type Plan } from "@/lib/gym";
 import { Checkout } from "./checkout";
 
-export const metadata = { title: "Checkout — Stars Gym" };
+export const metadata = { title: "Checkout — Stars Gym", robots: { index: false } };
 
 export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
   const { planId } = await params;
@@ -20,7 +20,7 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
     supabase.from("subscriptions").select("id,plans!inner(track)").eq("user_id", user.id).eq("status", "active").in("plans.track", MEMBERSHIP).limit(1),
     supabase.from("plans").select("*").eq("active", true),
   ]);
-  if (!plan) notFound();
+  if (!plan || !isStandard(plan)) notFound(); // custom lengths: desk only
   // personal training is an add-on the desk sells on top of a membership, not a plan of its own
   if (plan.track === "personal_training") redirect("/personal-training");
   // on a monthly plan, offer the longer ones of the same track with what they save

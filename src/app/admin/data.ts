@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminDb } from "@/lib/supabase";
 import { unstable_cache, revalidateTag } from "next/cache";
-import { inr, orderUpi, planName, type Branch, type Offer, type Plan } from "@/lib/gym";
+import { inr, markupOf, orderUpi, planName, type Branch, type Offer, type Plan } from "@/lib/gym";
 
 type PendingSub = { branches: { upi_id?: string | null } | null; trainer_id: string | null; id: string; amount_paise: number; method: string; created_at: string; approval: string | null; standard_paise: number | null; plans: Plan; profiles: { full_name: string; email: string | null }; requester: { full_name: string } | null };
 
@@ -49,7 +49,7 @@ export const deskRef = unstable_cache(
       db.from("branches").select("*").order("created_at"),
       db.from("plans").select("*").eq("active", true).order("track").order("duration_days"),
       db.from("offers").select("*").eq("active", true),
-      db.from("site_settings").select("admission_fee_paise").eq("id", 1).maybeSingle(),
+      db.from("site_settings").select("*").eq("id", 1).maybeSingle(), // *: still works before custom_markup_pct exists
       // ponytail: * so the picker still works before the pt_fee_paise column is added
       db.from("site_items").select("*").eq("kind", "trainer").order("sort"),
     ]);
@@ -58,6 +58,7 @@ export const deskRef = unstable_cache(
       plans: (plans.data ?? []) as Plan[],
       offers: (offers.data ?? []) as Offer[],
       admissionPaise: (settings.data?.admission_fee_paise as number | undefined) ?? 0,
+      markupPct: markupOf(settings.data),
       trainers: (trainers.data ?? []).map((t) => ({ id: t.id as string, name: (t.title as string) || "Trainer", fee: (t.pt_fee_paise as number | null) ?? null, branchId: (t.branch_id as string | null) ?? null })),
     };
   },

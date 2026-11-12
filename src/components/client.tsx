@@ -431,7 +431,7 @@ export function Gallery({ items }: { items: SiteItem[] }) {
               ) : img ? (
                 <button type="button" onClick={() => setOpen(item)} className="block w-full cursor-zoom-in" aria-label={`Open ${item.title || "photo"}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img {...siteImg(img, "(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw")} alt={item.title} loading="lazy" decoding="async" className="w-full transition-transform duration-700 ease-lift group-hover:scale-105" />
+                  <img {...siteImg(img, "(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw")} alt={item.title || "Inside Stars Gym"} loading="lazy" decoding="async" className="w-full transition-transform duration-700 ease-lift group-hover:scale-105" />
                 </button>
               ) : null}
               {item.title && <figcaption className="dark-zone pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-ink/90 to-transparent p-4 pt-10 font-label text-sm font-bold tracking-[0.14em] uppercase can-hover:opacity-0 transition-opacity group-hover:opacity-100">{item.title}</figcaption>}
@@ -448,7 +448,7 @@ export function Gallery({ items }: { items: SiteItem[] }) {
         {open && (
           <figure className="flex flex-col items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img {...siteImg(itemImage(open.image_path)!, "94vw")} alt={open.title} className="max-h-[84dvh] w-auto rounded-md" />
+            <img {...siteImg(itemImage(open.image_path)!, "94vw")} alt={open.title || "Inside Stars Gym"} className="max-h-[84dvh] w-auto rounded-md" />
             <figcaption className="flex items-center gap-4 text-chalk">
               {open.title}
               <button type="button" onClick={() => dialog.current?.close()} className="btn-ghost">Close</button>

@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { allRows, requireStaff, type Profile } from "@/lib/supabase";
-import { GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, waLink, type Holiday, type Plan } from "@/lib/gym";
+import { GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, reminderText, waLink, type Holiday, type Plan } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
 import { AddMemberForm, AdminModal, Desk, MemberActions, RequestRow } from "./ui";
 import { deskRef, trainersFor } from "./data";
-import { siteOrigin } from "@/lib/pass";
 import { ScanButton } from "@/components/scanner";
 import { NotificationToggle } from "@/components/push";
 
@@ -62,7 +61,6 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
     // orders waiting for the desk to take the money / check the UPI screenshot
     only(supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending")),
-    siteOrigin(),
   ]);
 
   // the lists the page draws. Each row's plan history comes filtered to just the plans that decide the question (an
@@ -120,7 +118,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   // an overview, not the full lists: the first few of each (with a link to all) keeps the page quick to open on a phone
   const shown = { visits: visits.slice(0, 12), ending: ending.slice(0, count.expiring), lapsed: lapsed.slice(0, count.expired), joiners: joiners.slice(0, 30) }; // a week of new joiners is short: show them all
   // photos are signed as soon as the lists are in, while the numbers and the rest finish
-  const [[ref, { members, collected, renewals }, holidays, enquiries, toConfirm, origin], photos] = await Promise.all([
+  const [[ref, { members, collected, renewals }, holidays, enquiries, toConfirm], photos] = await Promise.all([
     restP,
     photoUrls([...shown.visits.map((v) => v.profiles?.photo_path), ...shown.ending.map((e) => e.profiles?.photo_path), ...shown.lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path]), ...shown.joiners.map((j) => j.profiles?.photo_path)]),
   ]);
@@ -146,12 +144,10 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
   // one row for the renewal lists: who, which plan, a badge, a one-tap WhatsApp renewal message, Renew, and the ⋯ menu
-  const renewRow = (e: Ending, badge: string, message: string, runningSubId: string | null) => {
+  const renewRow = (e: Ending, badge: string, runningSubId: string | null) => {
     const m = e.profiles;
     if (!m) return null;
-    // the same plan, bought online (they sign in with their phone first); a plan since switched off → all plans
-    const renew = `${origin}${e.plans.active ? `/buy/${e.plans.id}` : "/#plans"}`;
-    const wa = m.phone ? waLink(waNumber(m.phone), `Hi ${m.full_name.split(" ")[0] || "there"}! ${message} Renew online: ${renew} — or at the desk.`) : null;
+    const wa = m.phone ? waLink(waNumber(m.phone), reminderText(m.full_name, e.plans, e.ends_on, today)) : null;
     return (
       // name and phone get the full width; the badge and the buttons sit on the line below
       <li key={e.id} className="flex flex-wrap items-center gap-1.5 pr-2 pb-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
@@ -182,7 +178,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       <PageHeader title={`Hi, ${profile.full_name.split(" ")[0] || "coach"}`} intro={`Here's Stars Gym on ${prettyDay(today)}.`}>
         {/* the desk's everyday jobs, one tap each */}
         <AdminModal label="+ New member" title="New member">
-          <AddMemberForm branches={deskBranches} plans={ref.plans} offers={ref.offers} trainers={trainers} admissionPaise={ref.admissionPaise} />
+          <AddMemberForm branches={deskBranches} plans={ref.plans} offers={ref.offers} trainers={trainers} admissionPaise={ref.admissionPaise} markup={ref.markupPct} />
         </AdminModal>
         <Link href="/admin/payments" className="btn-ghost">Confirm payments</Link>
         <Link href="/admin/branches?holiday=1#holidays" className="btn-ghost">Add holiday</Link>
@@ -227,13 +223,13 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         </Panel>
       )}
 
-      <Desk owner={isOwner} branches={deskBranches} plans={ref.plans} offers={ref.offers} trainers={trainers}>
+      <Desk owner={isOwner} branches={deskBranches} plans={ref.plans} offers={ref.offers} trainers={trainers} markup={ref.markupPct}>
       <Panel id="expiring" title={`Expiring soon · ${ending.length}`} intro="Ending in the next 7 days." flush>
         {ending.length ? (
           <ul className="divide-y divide-line">
             {shown.ending.map((e) => {
               const days = Math.round((Date.parse(e.ends_on) - Date.parse(today)) / 864e5) + 1;
-              return renewRow(e, days <= 1 ? "Ends today" : `${days}d left`, `Your Stars Gym ${planName(e.plans)} plan ends on ${prettyDay(e.ends_on)}. Renew to keep your streak going.`, e.id);
+              return renewRow(e, days <= 1 ? "Ends today" : `${days}d left`, e.id);
             })}
           </ul>
         ) : (
@@ -247,7 +243,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
           <ul className="divide-y divide-line">
             {shown.lapsed.map((e) => {
               const ago = Math.round((Date.parse(today) - Date.parse(e.ends_on)) / 864e5);
-              return renewRow(e, ago <= 1 ? "Ended yesterday" : `${ago}d ago`, `We miss you at Stars Gym! Your ${planName(e.plans)} plan ended on ${prettyDay(e.ends_on)}. Renew and pick up where you left off.`, null);
+              return renewRow(e, ago <= 1 ? "Ended yesterday" : `${ago}d ago`, null);
             })}
           </ul>
         ) : (

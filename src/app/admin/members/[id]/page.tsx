@@ -73,7 +73,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   ];
 
   return (
-    <Desk owner={isOwner} branches={b.filter((x) => x.active && (!branchId || x.id === branchId))} plans={ref.plans} offers={ref.offers} trainers={trainersFor(ref.trainers, view)}>
+    <Desk owner={isOwner} branches={b.filter((x) => x.active && (!branchId || x.id === branchId))} plans={ref.plans} offers={ref.offers} trainers={trainersFor(ref.trainers, view)} markup={ref.markupPct}>
       <Link href={`/admin/members${back.startsWith("?") ? back : ""}`} className="-mb-2 self-start text-sm font-bold text-ash hover:text-chalk">← Members</Link>
 
       {/* who, are they paid up, the numbers at a glance, and the things the desk does next */}
@@ -96,7 +96,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
         </dl>
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <RenewButton member={member} renew={!!lastGym} lastPlanId={lastGym?.plans.id} currentEnd={lastEnd} admissionPaise={paid.length ? null : ref.admissionPaise} className="btn-red min-h-10 px-6 max-sm:basis-full" />
-          <WhatsAppButton member={member} endsOn={lastEnd} expired={!current && !!lastEnd} />
+          <WhatsAppButton member={member} endsOn={lastEnd} expired={!current && !!lastEnd} plan={current?.plans ?? lastGym?.plans} />
           <MemberTools member={member} passId={current?.id ?? upcoming?.id ?? null} cancelSubId={current?.id ?? upcoming?.id ?? null}
             editExtra={<MemberPhotoForm id={member.id} url={photo} />} />
         </div>

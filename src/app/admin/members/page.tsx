@@ -129,11 +129,11 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
       <PageHeader title="Members">
         {isOwner && <a href="/admin/members/export" download className="btn-ghost">Download CSV</a>}
         <AdminModal label="+ New member" title="New member">
-          <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} admissionPaise={fee} />
+          <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} admissionPaise={fee} markup={ref.markupPct} />
         </AdminModal>
       </PageHeader>
 
-      <Desk owner={isOwner} branches={branchList} plans={planList} offers={offerList} trainers={trainers}>
+      <Desk owner={isOwner} branches={branchList} plans={planList} offers={offerList} trainers={trainers} markup={ref.markupPct}>
       <Panel
         title={params.q ? `Results for “${params.q}”` : "Members"}
         intro={`${filtered.length} of ${everyone.length} members`}
@@ -187,7 +187,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
                       </span>
                     )}
                   </span>
-                  <WhatsAppButton member={m} endsOn={m.endsOn ?? m.lastEnd} expired={m.state === "expired"} />
+                  <WhatsAppButton member={m} endsOn={m.endsOn ?? m.lastEnd} expired={m.state === "expired"} plan={planList.find((p) => p.id === m.lastPlanId)} />
                   <MemberActions
                     member={m}
                     passId={m.passId}

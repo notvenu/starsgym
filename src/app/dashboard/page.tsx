@@ -3,7 +3,7 @@ import { Flame, Notices } from "@/components/site";
 import { getNotices, getSettings } from "@/lib/data";
 import { requireUser } from "@/lib/supabase";
 import { NotificationToggle } from "@/components/push";
-import { DAY_NAMES, inr, MEMBERSHIP, monthDates, recentGymDates, shiftMonth, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
+import { DAY_NAMES, inr, MEMBERSHIP, monthDates, prettyDay, recentGymDates, shiftMonth, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
 import { PASS_FIELDS, type PassData } from "../pass/[subId]/data";
 import { Ticket } from "../pass/[subId]/ticket";
 import { PassDialog } from "../pass/[subId]/ui";
@@ -81,7 +81,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
     <>
       <Notices holidays={notices.holidays} offers={notices.offers} branches={(branches.data ?? []) as Branch[]} />
 
-      <div className="wrap flex flex-col gap-10 pt-6">
+      <div className="wrap flex flex-col gap-6 pt-4 sm:gap-10 sm:pt-6">
         <div>
           <p className="text-ash">Hey,</p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -109,7 +109,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
 
           <div className="flex flex-col gap-5">
             <NotificationToggle />
-            <section className="card flex flex-col gap-3 p-6">
+            <section className="card flex flex-col gap-3 p-5 sm:p-6">
               <p className="label">Your plan</p>
               {active ? (
                 <>
@@ -117,10 +117,10 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
                   <div className="h-1.5 overflow-hidden rounded-full bg-strong">
                     <div className="h-full bg-red" style={{ width: `${Math.min(100, (daysLeft / active.plans.duration_days) * 100)}%` }} />
                   </div>
-                  <p className="text-sm text-ash">Started {active.starts_on} · {daysLeft} day{daysLeft === 1 ? "" : "s"} left · ends {active.ends_on}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {passes.has(active.id) && <PassDialog label="Show my pass" className="btn-red" startOpen={openPass === active.id}><Ticket pass={passes.get(active.id)!} /></PassDialog>}
-                    {renew("Renew / upgrade")}
+                  <p className="text-sm text-ash"><b className="text-chalk">{daysLeft} day{daysLeft === 1 ? "" : "s"} left</b> · {prettyDay(active.starts_on!)} → {prettyDay(active.ends_on!)}</p>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap [&>button:only-of-type]:col-span-2">
+                    {passes.has(active.id) && <PassDialog label="Show my pass" className="btn-red max-sm:px-3" startOpen={openPass === active.id}><Ticket pass={passes.get(active.id)!} /></PassDialog>}
+                    {renew("Renew", "btn-ghost max-sm:px-3")}
                   </div>
                 </>
               ) : (
@@ -132,20 +132,20 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
               )}
               {upcoming.map((s) => (
                 passes.has(s.id) && (
-                  <PassDialog key={s.id} startOpen={openPass === s.id} label={<>Next: {planName(s.plans)} from {s.starts_on} · pass →</>} className="cursor-pointer self-start text-left text-sm text-ash hover:text-chalk">
+                  <PassDialog key={s.id} startOpen={openPass === s.id} label={<>Next: {planName(s.plans)} from {prettyDay(s.starts_on!)} · pass →</>} className="cursor-pointer self-start text-left text-sm text-ash hover:text-chalk">
                     <Ticket pass={passes.get(s.id)!} />
                   </PassDialog>
                 )
               ))}
               {pending.map((s) => (
-                <Link key={s.id} href={`/pay/${s.id}`} className="flex items-center justify-between rounded border border-dashed border-red px-4 py-3 text-sm hover:bg-redwash">
-                  <span>Awaiting payment · {planName(s.plans)} · {inr(s.amount_paise)}</span>
-                  <span className="font-bold text-red">Pay →</span>
+                <Link key={s.id} href={`/pay/${s.id}`} className="flex items-center justify-between gap-3 rounded border border-dashed border-red px-4 py-3 text-sm hover:bg-redwash">
+                  <span className="min-w-0">Awaiting payment · {planName(s.plans)} · {inr(s.amount_paise)}</span>
+                  <span className="shrink-0 font-bold text-red">Pay →</span>
                 </Link>
               ))}
             </section>
 
-            <section className="card flex flex-col gap-4 p-6">
+            <section className="card flex flex-col gap-4 p-5 sm:p-6">
               <div className="flex items-center justify-between">
                 <p className="label">Streak Wall</p>
                 {rank > 0 && <p className="flex items-center gap-1.5 font-label font-bold tracking-widest text-red"><Flame size={15} /> Ranked #{rank}</p>}
@@ -162,7 +162,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
           </div>
         </div>
 
-        <section id="log" className="card flex scroll-mt-20 flex-col gap-4 p-6">
+        <section id="log" className="card flex scroll-mt-20 flex-col gap-4 p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="label">{log ? new Date(`${log}-01T12:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : "Your last 30 days"}</p>

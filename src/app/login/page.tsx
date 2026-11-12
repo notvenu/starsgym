@@ -6,7 +6,7 @@ import { Logo } from "@/components/site";
 import { AuthForm } from "./form";
 import { signInWithGoogle } from "./actions";
 
-export const metadata = { title: "Sign in — Stars Gym" };
+export const metadata = { title: "Sign in — Stars Gym", robots: { index: false } };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;

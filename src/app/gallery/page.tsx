@@ -1,10 +1,19 @@
+import type { Metadata } from "next";
+import { getArea } from "@/lib/seo";
 import { PageHero, Shell } from "@/components/site";
 import { Gallery } from "@/components/client";
 import { FinalCta, Reels, STOCK } from "@/components/sections";
 import { getItems, getSettings } from "@/lib/data";
 
 export const revalidate = 300;
-export const metadata = { title: "Gallery — Stars Gym", description: "Photos and videos from inside Stars Gym." };
+export async function generateMetadata(): Promise<Metadata> {
+  const area = await getArea();
+  return {
+    title: `Gym Photos & Videos${area ? ` — ${area}` : ""} | Stars Gym`,
+    description: `Photos and videos from inside Stars Gym${area ? `, ${area}` : ""}: the floor, the equipment and the people who train here.`,
+    alternates: { canonical: "/gallery" },
+  };
+}
 
 export default async function GalleryPage() {
   const [{ gallery, reel }, settings] = await Promise.all([getItems(["gallery", "reel"]), getSettings()]);

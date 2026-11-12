@@ -2,7 +2,7 @@ import Link from "next/link";
 import { SiteNav } from "@/components/site";
 import { requireUser } from "@/lib/supabase";
 
-export const metadata = { title: "Staff only — Stars Gym" };
+export const metadata = { title: "Staff only — Stars Gym", robots: { index: false } };
 
 /** Where members land if they open /admin (and staff with no branch set yet). */
 export default async function StaffOnly() {

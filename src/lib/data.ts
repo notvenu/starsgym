@@ -1,6 +1,6 @@
 import "server-only";
 import { publicDb } from "./supabase";
-import { gymDate, type Branch, type Holiday, type ItemKind, type Offer, type Plan, type Settings, type SiteItem } from "./gym";
+import { gymDate, isStandard, type Branch, type Holiday, type ItemKind, type Offer, type Plan, type Settings, type SiteItem } from "./gym";
 
 export type ShowcaseItem = {
   id: string;
@@ -42,7 +42,7 @@ export async function getBranches(supabase = publicDb()) {
 
 export async function getPlans(supabase = publicDb()) {
   const { data } = await supabase.from("plans").select("*").eq("active", true);
-  return (data ?? []) as Plan[];
+  return ((data ?? []) as Plan[]).filter(isStandard); // custom lengths are sold at the desk only
 }
 
 export async function getShowcase(supabase = publicDb()) {

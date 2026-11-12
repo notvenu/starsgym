@@ -1,10 +1,20 @@
+import type { Metadata } from "next";
+import { getArea } from "@/lib/seo";
 import { OpenStatus } from "@/components/client";
 import { PageHero, Shell, Socials } from "@/components/site";
 import { getBranches, getNotices, getSettings } from "@/lib/data";
-import { DAY_NAMES, hoursLabel, ladiesLabel, waLink } from "@/lib/gym";
+import Link from "next/link";
+import { branchPath, DAY_NAMES, hoursLabel, ladiesLabel, waLink } from "@/lib/gym";
 import { EnquiryForm } from "./form";
 
-export const metadata = { title: "Contact us — Stars Gym", description: "Call, WhatsApp or visit either Stars Gym branch." };
+export async function generateMetadata(): Promise<Metadata> {
+  const area = await getArea();
+  return {
+    title: `Contact Stars Gym${area ? ` — ${area}` : ""}: Address, Timings & Phone`,
+    description: `Call, WhatsApp or visit Stars Gym${area ? ` in ${area}` : ""}. Branch addresses, opening hours, ladies' hours and directions.`,
+    alternates: { canonical: "/contact" },
+  };
+}
 
 export default async function ContactPage({ searchParams }: PageProps<"/contact">) {
   const topic = String((await searchParams).topic ?? "general");
@@ -32,7 +42,7 @@ export default async function ContactPage({ searchParams }: PageProps<"/contact"
           {branches.map((b) => (
             <div key={b.id} className="flex flex-col gap-2 border-t border-line pt-6">
               <p className="font-label text-[13px] font-bold uppercase tracking-[0.18em]"><OpenStatus branch={b} holidays={holidays} /></p>
-              <h2 className="font-display text-4xl uppercase">{b.name}</h2>
+              <h2 className="font-display text-4xl uppercase"><Link href={branchPath(b)} className="hover:text-red">{b.name}</Link></h2>
               <p className="text-body">{b.address}</p>
               <p className="text-ash">
                 {hoursLabel(b)}

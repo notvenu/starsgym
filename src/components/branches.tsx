@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { DAY_NAMES, gymClock, gymDate, holidayFor, hoursLabel, ladiesLabel, ladiesSessions, prettyDay, sessions, type Branch, type Holiday } from "@/lib/gym";
+import { branchPath, DAY_NAMES, gymClock, gymDate, holidayFor, hoursLabel, ladiesLabel, ladiesSessions, prettyDay, sessions, type Branch, type Holiday } from "@/lib/gym";
 
 const mins = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 const span = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h ${m % 60 ? `${m % 60}m` : ""}`.trim() : `${m}m`);
@@ -166,6 +166,7 @@ export function BranchExplorer({ branches, holidays }: { branches: Branch[]; hol
               Get directions
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9" /></svg>
             </a>
+            <Link href={branchPath(b)} className="btn-ghost">Fees & timings</Link>
             <Link href="/dashboard" className="btn-ghost">Check in here</Link>
             <Link href="/contact" className="btn-ghost">Contact</Link>
           </div>

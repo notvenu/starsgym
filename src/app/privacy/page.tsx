@@ -3,7 +3,7 @@ import { LegalPage } from "@/components/legal";
 import { getSettings } from "@/lib/data";
 
 export const revalidate = 300;
-export const metadata = { title: "Privacy policy — Stars Gym" };
+export const metadata = { title: "Privacy policy — Stars Gym", description: "How Stars Gym collects, uses and protects your personal data: account details, check-ins, payments and photos.", alternates: { canonical: "/privacy" } };
 
 // Template written for India's DPDP Act 2023 — have it reviewed before relying on it.
 export default async function PrivacyPage() {
