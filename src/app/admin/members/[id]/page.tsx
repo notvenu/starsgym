@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { requireStaff, type Profile } from "@/lib/supabase";
+import { adminDb, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { ageOf, GENDERS, inr, LOGIN_EMAIL_DOMAIN, payMethod, planName, recentGymDates, type Plan } from "@/lib/gym";
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
-import { Avatar, Empty, Panel } from "../../kit";
+import { Avatar, Empty, Panel, SESSION_LABEL } from "../../kit";
+import { FollowUpForm } from "../../follow-ups/ui";
 import { Desk, DeletePlanButton, MemberPhotoForm, MemberTools, EditPlanForm, RenewButton, WhatsAppButton } from "../../ui";
 import { deskRef, trainersFor } from "../../data";
 
@@ -14,8 +15,10 @@ export const metadata = { title: "Member — Stars Gym admin" };
 export const maxDuration = 60;
 
 
-type Sub = { id: string; status: string; method: string; cash_paise: number | null; starts_on: string | null; ends_on: string | null; amount_paise: number; trainer_id: string | null; created_at: string; plans: Plan };
-type Visit = { day: string; session: string };
+type Sub = { id: string; status: string; method: string; cash_paise: number | null; starts_on: string | null; ends_on: string | null; amount_paise: number; trainer_id: string | null; created_at: string; paid_at: string | null; plans: Plan };
+type Visit = { day: string; session: string; created_at: string };
+type LogRow = { at: string; actor_name: string | null; action: string; detail: string | null };
+type Event = { at: string; kind: "paid" | "visit" | "desk"; title: string; sub?: string };
 // plan dates can be years apart, so they carry the year
 const fullDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
@@ -26,12 +29,14 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const days = recentGymDates(30);
   const today = days.at(-1)!;
 
-  const [{ data: member }, subs, visits, streak, ref] = await Promise.all([
+  const [{ data: member }, subs, visits, streak, ref, log] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", id).maybeSingle<Profile>(),
-    supabase.from("subscriptions").select("id,status,method,cash_paise,starts_on,ends_on,amount_paise,trainer_id,created_at,plans(*)").eq("user_id", id).order("created_at", { ascending: false }),
-    supabase.from("checkins").select("day,session").eq("user_id", id).gte("day", days[0]),
+    supabase.from("subscriptions").select("id,status,method,cash_paise,starts_on,ends_on,amount_paise,trainer_id,created_at,paid_at,plans(*)").eq("user_id", id).order("created_at", { ascending: false }),
+    supabase.from("checkins").select("day,session,created_at").eq("user_id", id).gte("day", days[0]),
     supabase.rpc("current_streak", { uid: id }),
     deskRef(),
+    // what the desk did for them (follow-ups, edits…) — the owner's log, read with the service key for the timeline
+    UUID.test(id) ? adminDb().from("staff_log").select("at,actor_name,action,detail").eq("member_id", id).order("at", { ascending: false }).limit(40) : null,
   ]);
   if (!member) notFound();
   // back to the list as they left it (saved by the list's filters); only ever a query string
@@ -58,6 +63,14 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
       ? { text: `Expired ${fullDay(lastEnd)}`, cls: "border-red bg-red text-white" }
       : { text: "No plan yet", cls: "border-line text-ash" };
   const streakDays = (streak.data as number) ?? 0;
+  // one story, newest first: payments, visits, and what the desk did (sales are already in as payments)
+  const timeline: Event[] = [
+    ...paid.filter((p) => p.paid_at).map((p) => ({ at: p.paid_at!, kind: "paid" as const, title: `Paid ${inr(p.amount_paise)} · ${planName(p.plans)}`, sub: payMethod(p) })),
+    ...v.map((x) => ({ at: x.created_at, kind: "visit" as const, title: `Checked in · ${SESSION_LABEL[x.session] ?? x.session}` })),
+    ...((log?.data ?? []) as LogRow[]).filter((l) => !["Sold plan", "Created order"].includes(l.action))
+      .map((l) => ({ at: l.at, kind: "desk" as const, title: l.detail ? `${l.action}: ${l.detail}` : l.action, sub: l.actor_name ?? undefined })),
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 25);
+  const stamp = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
   const lastVisit = v.reduce<string | null>((max, x) => (!max || x.day > max ? x.day : max), null);
   const email = member.email && !member.email.endsWith(`@${LOGIN_EMAIL_DOMAIN}`) ? member.email : null; // not the hidden sign-in one
   // the numbers the desk asks about, in one strip
@@ -125,6 +138,29 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
           </ul>
         ) : (
           <Empty>No plans yet.</Empty>
+        )}
+      </Panel>
+
+      <Panel title="Timeline" intro="Payments, visits and what the desk did — newest first." flush>
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3">
+          <span className="flex-1 text-sm text-ash">Called or messaged them?</span>
+          <FollowUpForm memberId={member.id} />
+        </div>
+        {timeline.length ? (
+          <ol className="divide-y divide-line">
+            {timeline.map((e, i) => (
+              <li key={i} className="flex items-start gap-3 px-5 py-2.5 text-sm">
+                <span className={`mt-1.5 size-2 shrink-0 rounded-full ${e.kind === "paid" ? "bg-red" : e.kind === "desk" ? "bg-chalk" : "bg-strong"}`} aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className={`block ${e.kind === "visit" ? "text-ash" : "font-semibold"}`}>{e.title}</span>
+                  {e.sub && <span className="block text-xs text-ash">{e.sub}</span>}
+                </span>
+                <time dateTime={e.at} className="shrink-0 text-xs text-ash tabular-nums">{stamp(e.at)}</time>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <Empty>Nothing yet.</Empty>
         )}
       </Panel>
 

@@ -76,6 +76,9 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
       current={active ? { track: active.plans.track, days: active.plans.duration_days } : null} admissionPaise={hadMembership ? 0 : settings.admission_fee_paise ?? 0} />
   );
   const daysLeft = active ? Math.round((Date.parse(active.ends_on!) - Date.parse(today)) / 864e5) + 1 : 0;
+  // for the check-in card: days covered, a renewal already queued included
+  const coveredTill = [active, ...upcoming].reduce<string | null>((max, s) => (s?.ends_on && (!max || s.ends_on > max) ? s.ends_on : max), null);
+  const covered = active && coveredTill ? { plan: planName(active.plans), days: Math.round((Date.parse(coveredTill) - Date.parse(today)) / 864e5) + 1, till: prettyDay(coveredTill) } : null;
 
   return (
     <>
@@ -101,6 +104,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
               photo={photo}
               name={profile.full_name}
               hasPlan={!!active}
+              covered={covered}
               week={last7}
               monthVisits={(week.data ?? []).filter((c) => (c.day as string).startsWith(thisMonth) && c.day !== today).length}
               rank={rank}
@@ -109,7 +113,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
 
           <div className="flex flex-col gap-5">
             <NotificationToggle />
-            <section className="card flex flex-col gap-3 p-5 sm:p-6">
+            <section id="plan" className="card flex scroll-mt-20 flex-col gap-3 p-5 sm:p-6">
               <p className="label">Your plan</p>
               {active ? (
                 <>

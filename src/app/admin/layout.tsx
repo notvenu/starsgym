@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/supabase";
 import { AccountPrompt } from "@/components/account-prompt";
 import { BranchSwitch } from "./ui";
 import { deskRef, openEnquiries } from "./data";
+import { loadFollowUps } from "./follow-ups/data";
 import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
@@ -15,11 +16,12 @@ export const metadata = { title: "Admin — Stars Gym" };
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const { supabase, profile, isOwner, view, canSwitch, branchId } = await requireStaff();
   const pendingCount = supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending");
-  const [pending, enquiries, ref, requests] = await Promise.all([
+  const [pending, enquiries, ref, requests, lapsed] = await Promise.all([
     view ? pendingCount.eq("branch_id", view) : pendingCount, // staff: their branch (RLS)
     openEnquiries(branchId, view), // staff: their branch's (and any-branch) enquiries
     deskRef(),
     supabase.from("profile_requests").select("id", { count: "exact", head: true }).eq("status", "pending"), // RLS: what this desk can see
+    loadFollowUps(view, 60), // lapsed members nobody has contacted yet
   ]);
   const branchName = ref.branches.find((x) => x.id === view)?.name;
   const branchList = canSwitch ? ref.branches.filter((x) => x.active) : null;
@@ -31,6 +33,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       { href: "/admin", label: "Overview", icon: "overview", badge: requests.count ?? 0 },
       { href: "/admin/members", label: "Members", icon: "members" },
       { href: "/admin/payments", label: "Payments", icon: "payments", badge: pending.count ?? 0 },
+      { href: "/admin/follow-ups", label: "Follow-ups", icon: "phone", badge: lapsed.untouched },
       { href: "/admin/checkins", label: "Check-ins", icon: "scan" },
       { href: "/admin/summary", label: "Daily summary", icon: "summary" },
       { href: "/admin/enquiries", label: "Enquiries", icon: "enquiries", badge: enquiries.count ?? 0 },

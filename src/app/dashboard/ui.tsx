@@ -32,6 +32,7 @@ export function CheckInPanel(props: {
   photo: string | null;
   name: string;
   hasPlan: boolean;
+  covered: { plan: string; days: number; till: string } | null; // the running plan, and days left including a queued renewal
   week: { iso: string; label: string; done: boolean; today: boolean }[];
   monthVisits: number; // check-ins this calendar month, before today
   rank: number; // on the Streak Wall, 0 = not on it
@@ -67,6 +68,17 @@ export function CheckInPanel(props: {
     });
   }
 
+  // just checked in, in the last 3 days of their plan (nothing queued after it): the moment to ask them to renew
+  const renewNudge = visits.length > 0 && props.covered && props.covered.days <= 3 && (
+    <a href="#plan" className="flex items-center justify-between gap-3 rounded-md border border-red bg-redwash px-4 py-3">
+      <span className="min-w-0 text-sm">
+        <b className="block text-chalk">{props.covered.days === 1 ? "Your plan ends today" : `Your plan ends in ${props.covered.days} days`}</b>
+        <span className="text-ash">Renew now to keep your {streak}-day streak going.</span>
+      </span>
+      <span className="shrink-0 font-bold text-red">Renew →</span>
+    </a>
+  );
+
   if (logging) {
     return (
       <section className="flex flex-col gap-5 rounded-lg border border-line bg-panel p-5 sm:p-9">
@@ -74,6 +86,7 @@ export function CheckInPanel(props: {
           <p className="flex items-center gap-2 font-label text-sm font-bold tracking-widest text-ash uppercase"><Check /> Checked in</p>
           <p className="font-label text-sm font-bold tracking-widest text-red uppercase">{streak}-day streak</p>
         </div>
+        {renewNudge}
         <TodayLog plan={props.workout!.plan} logs={props.workout!.logs} today={today} level={props.workout!.level} onSkip={() => setSkipped(true)} />
       </section>
     );
@@ -97,7 +110,21 @@ export function CheckInPanel(props: {
         {branch && <p className="font-label text-sm font-bold uppercase tracking-[0.12em]"><OpenStatus branch={branch} holidays={props.holidays} withHours /></p>}
       </div>
 
-      <div className="relative mx-auto flex size-44 items-center justify-center sm:size-56">
+      {/* how long they're covered — red in the last week, so renewing is never a surprise */}
+      {props.covered && (
+        <a href="#plan" className={`flex items-center justify-between gap-3 rounded-md border px-4 py-3 ${props.covered.days <= 7 ? "border-red bg-redwash" : "border-line"}`}>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold">{props.covered.plan}</span>
+            <span className="block text-xs text-ash">Valid till {props.covered.till}{props.covered.days <= 7 && " · renew now"}</span>
+          </span>
+          <span className="shrink-0 text-right leading-none">
+            <span className={`font-display text-4xl ${props.covered.days <= 7 ? "text-red" : ""}`}>{props.covered.days}</span>
+            <span className="label ml-1.5 text-xs">day{props.covered.days === 1 ? "" : "s"} left</span>
+          </span>
+        </a>
+      )}
+
+      <div className="relative mx-auto flex size-36 items-center justify-center sm:size-56">
         <svg viewBox="0 0 200 200" className="absolute inset-0 -rotate-90" aria-hidden="true">
           <circle cx="100" cy="100" r={R} fill="none" stroke="#1e1e1e" strokeWidth="12" />
           <circle cx="100" cy="100" r={R} fill="none" stroke="var(--color-red)" strokeWidth="12" strokeLinecap="round"
@@ -105,7 +132,7 @@ export function CheckInPanel(props: {
             className="transition-[stroke-dashoffset] duration-900 ease-lift" />
         </svg>
         <div className="text-center">
-          <p key={streak} className="animate-rise font-display text-[64px] leading-none [animation-duration:.5s] sm:text-[84px]">{streak}</p>
+          <p key={streak} className="animate-rise font-display text-[52px] leading-none [animation-duration:.5s] sm:text-[84px]">{streak}</p>
           <p className="label">Day streak</p>
           <p className="mt-1 text-[13px] text-ash">{goal - streak} to {goal}-day badge</p>
         </div>
@@ -164,6 +191,7 @@ export function CheckInPanel(props: {
           {pending ? "Checking in…" : props.hasPlan ? "Check in now" : "Buy a plan to check in"}
         </button>
       )}
+      {renewNudge}
       {/* after check-in: today's workout, logged or still to do */}
       {props.workout && visits.length > 0 && (logged ? (
         <Link href="/dashboard/workouts" className="-mt-3 flex items-center justify-center gap-2 text-sm text-ash hover:text-chalk">

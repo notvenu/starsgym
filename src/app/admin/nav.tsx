@@ -26,6 +26,7 @@ const ICONS = {
   menu: "M4 6h16M4 12h16M4 18h16",
   scan: "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16",
   close: "M6 6l12 12M18 6L6 18",
+  phone: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2",
 };
 
 const lit = (path: string, it: Item) => [it.href, ...(it.match ?? [])].some((h) => (h === "/admin" ? path === "/admin" : path.startsWith(h)));

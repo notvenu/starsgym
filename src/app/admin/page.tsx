@@ -5,6 +5,7 @@ import { photoUrls } from "@/lib/photo";
 import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
 import { AddMemberForm, AdminModal, Desk, MemberActions, RequestRow } from "./ui";
 import { deskRef, trainersFor } from "./data";
+import { loadFollowUps, wonBackThisMonth } from "./follow-ups/data";
 import { ScanButton } from "@/components/scanner";
 import { NotificationToggle } from "@/components/push";
 
@@ -61,6 +62,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
     // orders waiting for the desk to take the money / check the UPI screenshot
     only(supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending")),
+    loadFollowUps(view, 60),
+    wonBackThisMonth(view),
   ]);
 
   // the lists the page draws. Each row's plan history comes filtered to just the plans that decide the question (an
@@ -118,7 +121,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   // an overview, not the full lists: the first few of each (with a link to all) keeps the page quick to open on a phone
   const shown = { visits: visits.slice(0, 12), ending: ending.slice(0, count.expiring), lapsed: lapsed.slice(0, count.expired), joiners: joiners.slice(0, 30) }; // a week of new joiners is short: show them all
   // photos are signed as soon as the lists are in, while the numbers and the rest finish
-  const [[ref, { members, collected, renewals }, holidays, enquiries, toConfirm], photos] = await Promise.all([
+  const [[ref, { members, collected, renewals }, holidays, enquiries, toConfirm, followUps, wonBack], photos] = await Promise.all([
     restP,
     photoUrls([...shown.visits.map((v) => v.profiles?.photo_path), ...shown.ending.map((e) => e.profiles?.photo_path), ...shown.lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path]), ...shown.joiners.map((j) => j.profiles?.photo_path)]),
   ]);
@@ -188,7 +191,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       <NotificationToggle nudge />
 
       {/* phones: an odd last tile spans the row */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-5 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2">
         <Stat label="Active members" value={members} href="/admin/members?show=active" />
         <Stat label="Check-ins today" value={visits.length} href="#today" />
         <Stat label="New joiners · 7 days" value={joiners.length} href="#joiners" />
@@ -199,6 +202,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         {isOwner
           ? <Stat label="Collected this month" value={inr(collected)} href="/admin/payments" />
           : <Stat label="New enquiries" value={enquiries.count ?? 0} href="/admin/enquiries" tone={enquiries.count ? "red" : undefined} />}
+        <Stat label="Won back · this month" value={wonBack} href="/admin/follow-ups?show=done" />
+        <Stat label="Lapsed · not contacted" value={followUps.untouched} href="/admin/follow-ups" tone={followUps.untouched ? "red" : undefined} />
         <Stat label="Payments to confirm" value={toConfirm.count ?? 0} href="/admin/payments" tone={toConfirm.count ? "red" : undefined} />
       </div>
 
@@ -238,7 +243,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         {toggle("expiring", ending.length)}
       </Panel>
 
-      <Panel id="expired" title={`Expired · ${lapsed.length}`} intro="Ended in the last 30 days, not renewed." flush>
+      <Panel id="expired" title={`Expired · ${lapsed.length}`} intro="Ended in the last 30 days, not renewed." flush
+        action={<Link href="/admin/follow-ups" className="text-sm font-bold text-red hover:text-chalk">Follow-ups →</Link>}>
         {lapsed.length ? (
           <ul className="divide-y divide-line">
             {shown.lapsed.map((e) => {
