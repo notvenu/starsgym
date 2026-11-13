@@ -1,5 +1,5 @@
 import "server-only";
-import { publicDb } from "./supabase";
+import { adminDb, publicDb } from "./supabase";
 import { gymDate, isStandard, type Branch, type Holiday, type ItemKind, type Offer, type Plan, type Settings, type SiteItem } from "./gym";
 
 export type ShowcaseItem = {
@@ -138,4 +138,21 @@ async function googleReviews(branches: Branch[]) {
     .slice(0, 6);
 
   return { rating, count, reviews, sample: false, writeUrl: ok[0].place.googleMapsUri as string | undefined };
+}
+
+/**
+ * How busy each branch is: check-ins in the last hour (a session runs about that long). Counts only, never who.
+ * A branch is left out until it has 5 app check-ins today — before members use app check-in, "Quiet" would be a guess.
+ */
+export async function busyNow(): Promise<Record<string, number>> {
+  const { data } = await adminDb().from("checkins").select("branch_id,created_at").eq("day", gymDate()).limit(2000);
+  const hourAgo = Date.now() - 3600e3;
+  const today: Record<string, number> = {};
+  const hour: Record<string, number> = {};
+  for (const c of data ?? []) {
+    const b = c.branch_id as string;
+    today[b] = (today[b] ?? 0) + 1;
+    if (Date.parse(c.created_at as string) >= hourAgo) hour[b] = (hour[b] ?? 0) + 1;
+  }
+  return Object.fromEntries(Object.keys(today).filter((b) => today[b] >= 5).map((b) => [b, hour[b] ?? 0]));
 }

@@ -2,11 +2,11 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { adminDb, requireStaff, UUID, type Profile } from "@/lib/supabase";
-import { ageOf, GENDERS, inr, LOGIN_EMAIL_DOMAIN, payMethod, planName, recentGymDates, type Plan } from "@/lib/gym";
+import { ageOf, GENDERS, inr, LOGIN_EMAIL_DOMAIN, payMethod, planName, recentGymDates, reminderText, type Plan } from "@/lib/gym";
 import { photoUrl } from "@/lib/photo";
 import { Attendance } from "@/components/attendance";
 import { Avatar, Empty, Panel, SESSION_LABEL } from "../../kit";
-import { FollowUpForm } from "../../follow-ups/ui";
+import { FollowUpQueue } from "../../follow-ups/queue";
 import { Desk, DeletePlanButton, MemberPhotoForm, MemberTools, EditPlanForm, RenewButton, WhatsAppButton } from "../../ui";
 import { deskRef, trainersFor } from "../../data";
 
@@ -143,8 +143,11 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
 
       <Panel title="Timeline" intro="Payments, visits and what the desk did — newest first." flush>
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3">
-          <span className="flex-1 text-sm text-ash">Called or messaged them?</span>
-          <FollowUpForm memberId={member.id} />
+          <span className="flex-1 text-sm text-ash">Reach out: add a note, then WhatsApp or call — it shows here.</span>
+          <FollowUpQueue items={[{
+            memberId: member.id, name: member.full_name, phone: member.phone, sub: lastGym && lastEnd ? `${planName(lastGym.plans)} · ${lastEnd >= today ? "ends" : "ended"} ${fullDay(lastEnd)}` : "No plan yet",
+            text: lastEnd ? reminderText(member.full_name, lastGym?.plans, lastEnd, today) : `Hi ${member.full_name.split(" ")[0] || "there"}!`,
+          }]} label="Follow up" />
         </div>
         {timeline.length ? (
           <ol className="divide-y divide-line">

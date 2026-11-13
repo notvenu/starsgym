@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { allRows, requireStaff, type Profile } from "@/lib/supabase";
-import { GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, reminderText, waLink, type Holiday, type Plan } from "@/lib/gym";
+import { GENDERS, gymDate, gymDateIn, inr, planName, prettyDay, reminderText, type Holiday, type Plan } from "@/lib/gym";
 import { photoUrls } from "@/lib/photo";
-import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat, waNumber } from "./kit";
+import { Avatar, Empty, PageHeader, Panel, SESSION_LABEL, Stat } from "./kit";
 import { AddMemberForm, AdminModal, Desk, MemberActions, RequestRow } from "./ui";
 import { deskRef, trainersFor } from "./data";
-import { loadFollowUps, wonBackThisMonth } from "./follow-ups/data";
+import { loadFollowUps, recentNotes, wonBackThisMonth } from "./follow-ups/data";
+import { FollowUpQueue, type FollowItem } from "./follow-ups/queue";
 import { ScanButton } from "@/components/scanner";
 import { NotificationToggle } from "@/components/push";
 
@@ -29,6 +30,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const monthStart = `${today.slice(0, 7)}-01`;
   const weekOut = gymDateIn(7);
   const monthAgo = gymDateIn(-30);
+  const weekAgo = gymDateIn(-7);
 
   const newSince = gymDateIn(-6); // the last 7 days, today included
   const monthFrom = `${monthStart}T00:00:00+05:30`;
@@ -68,7 +70,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
 
   // the lists the page draws. Each row's plan history comes filtered to just the plans that decide the question (an
   // embedded filter), not the member's whole history: e.g. for "lapsed", only plans that still run today or later.
-  const [checkins, expiring, requests, ended, joined] = await Promise.all([
+  const [checkins, expiring, requests, ended, joined, notes] = await Promise.all([
     only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
     only(supabase
       .from("subscriptions")
@@ -103,9 +105,13 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .lt("profiles.history.starts_on", newSince))
       .order("starts_on", { ascending: false })
       .limit(300),
+    recentNotes(), // who the desk has already followed up — they sort to the bottom
   ]);
   const visits = (checkins.data ?? []) as unknown as Visit[];
-  const ending = (expiring.data ?? []) as unknown as Ending[];
+  // contacted: a follow-up in the last week (expiring), or since their plan ended (expired) — they go to the bottom
+  const contactOf = (e: Ending, since: string) => ((n) => (n && n.at.slice(0, 10) >= since ? n : null))(notes.get(e.user_id));
+  const last = <T,>(list: T[], done: (x: T) => boolean) => [...list.filter((x) => !done(x)), ...list.filter(done)];
+  const ending = last((expiring.data ?? []) as unknown as Ending[], (e) => !!contactOf(e, weekAgo));
   // lapsed: their latest plan ended in the last 30 days and nothing runs today or later
   const endedRows = (ended.data ?? []) as unknown as Ending[];
   type Joiner = { id: string; user_id: string; starts_on: string; ends_on: string | null; plans: Plan; profiles: { full_name: string; phone: string | null; photo_path: string | null; home_branch_id: string | null; history?: Past[] } | null };
@@ -113,7 +119,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   // each row carries just the matching part of the member's plan history (same query, no second round trip)
   const had = (h: Past[] | undefined, test: (p: Past) => boolean) => (h ?? []).some((p) => p.status === "active" && test(p));
   const joiners = startedRows.filter((j, i) => !had(j.profiles?.history, (p) => !!p.starts_on && p.starts_on < newSince) && startedRows.findIndex((x) => x.user_id === j.user_id) === i);
-  const lapsed = endedRows.filter((e, i) => !had(e.profiles?.history, (p) => !!p.ends_on && p.ends_on >= today) && endedRows.findIndex((x) => x.user_id === e.user_id) === i);
+  const lapsed = last(endedRows.filter((e, i) => !had(e.profiles?.history, (p) => !!p.ends_on && p.ends_on >= today) && endedRows.findIndex((x) => x.user_id === e.user_id) === i), (e) => !!contactOf(e, e.ends_on));
   type Req = { id: string; user_id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null; note: string | null;
     phone?: string | null; email?: string | null;
     profiles: { full_name: string; photo_path: string | null; gender: string | null; home_branch_id: string | null; phone: string | null; email: string | null } | null };
@@ -146,11 +152,25 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const where = (h: Holiday) => (h.branch_id ? b.find((x) => x.id === h.branch_id)?.name ?? "One branch" : "All branches");
   const time = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
-  // one row for the renewal lists: who, which plan, a badge, a one-tap WhatsApp renewal message, Renew, and the ⋯ menu
-  const renewRow = (e: Ending, badge: string, runningSubId: string | null) => {
+  // each list's badge, and when a follow-up counts as "contacted" — shared by the rows and the follow-up popup
+  const endingBadge = (e: Ending) => ((d) => (d <= 1 ? "Ends today" : `${d}d left`))(Math.round((Date.parse(e.ends_on) - Date.parse(today)) / 864e5) + 1);
+  const lapsedBadge = (e: Ending) => ((d) => (d <= 1 ? "Ended yesterday" : `${d}d ago`))(Math.round((Date.parse(today) - Date.parse(e.ends_on)) / 864e5));
+  const ago = (iso: string) => ((m) => (m < 60 ? `${Math.max(1, m)}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`))(Math.round((Date.parse(new Date().toISOString()) - Date.parse(iso)) / 6e4));
+  const followItem = (e: Ending, badge: string, since: string): FollowItem => ({
+    memberId: e.user_id, name: e.profiles!.full_name || "Member", phone: e.profiles!.phone, badge,
+    sub: `${planName(e.plans)} · ${e.ends_on >= today ? "ends" : "ended"} ${prettyDay(e.ends_on)}`,
+    last: ((n) => n && `${n.detail} — ${n.actor_name ?? "Desk"}, ${ago(n.at)}`)(contactOf(e, since)),
+    text: reminderText(e.profiles!.full_name, e.plans, e.ends_on, today),
+  });
+  // "Follow up one by one": the whole list (not just the rows shown), not contacted yet, in list order
+  const queueOf = (list: Ending[], badge: (e: Ending) => string, since: (e: Ending) => string) =>
+    list.filter((e) => e.profiles && !contactOf(e, since(e))).map((e) => followItem(e, badge(e), since(e)));
+
+  // one row for the renewal lists: who, a badge, whether the desk has followed up, the follow-up popup, and the ⋯ menu
+  const renewRow = (e: Ending, badge: string, runningSubId: string | null, since: string) => {
     const m = e.profiles;
     if (!m) return null;
-    const wa = m.phone ? waLink(waNumber(m.phone), reminderText(m.full_name, e.plans, e.ends_on, today)) : null;
+    const done = contactOf(e, since);
     return (
       // name and phone get the full width; the badge and the buttons sit on the line below
       <li key={e.id} className="flex flex-wrap items-center gap-1.5 pr-2 pb-2 transition-colors hover:bg-steel/60 sm:gap-2 sm:pr-5">
@@ -161,15 +181,12 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
             {m.phone && <span className="block truncate text-sm text-ash">{m.phone}</span>}
           </span>
         </Link>
-        <span className="flex min-w-0 flex-1 pl-3 sm:pl-[4.5rem]">
-          <span className="truncate rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-red uppercase">{badge}</span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 pl-3 sm:pl-[4.5rem]">
+          <span className="shrink-0 rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-red uppercase">{badge}</span>
+          {done && <span className="min-w-0 truncate text-xs text-ash" title={done.detail ?? ""}><b className="text-[#25d366]">✓ Contacted</b> · {done.detail} · {ago(done.at)}</span>}
         </span>
-        {wa && (
-          <a href={wa} target="_blank" rel="noreferrer" aria-label={`Send ${m.full_name} a renewal message on WhatsApp`} title="Renewal message on WhatsApp"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-ink transition-transform hover:scale-105">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.4z" /><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8a5 5 0 0 1-2.8-2.8l.8-1-1-2z" /></svg>
-          </a>
-        )}
+        <FollowUpQueue items={[followItem(e, badge, since)]} label={done ? "Again" : "Follow up"}
+          className={`${done ? "btn-ghost" : "btn-red"} min-h-9 shrink-0 px-3 text-xs`} />
         <MemberActions member={m} passId={runningSubId} cancelSubId={runningSubId} admissionPaise={null} lastPlanId={e.plans.id} currentEnd={runningSubId ? e.ends_on : null} />
       </li>
     );
@@ -229,13 +246,11 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       )}
 
       <Desk owner={isOwner} branches={deskBranches} plans={ref.plans} offers={ref.offers} trainers={trainers} markup={ref.markupPct}>
-      <Panel id="expiring" title={`Expiring soon · ${ending.length}`} intro="Ending in the next 7 days." flush>
+      <Panel id="expiring" title={`Expiring soon · ${ending.length}`} intro="Ending in the next 7 days." flush
+        action={((q) => <FollowUpQueue items={q} label={`Follow up one by one · ${q.length}`} />)(queueOf(ending, endingBadge, () => weekAgo))}>
         {ending.length ? (
           <ul className="divide-y divide-line">
-            {shown.ending.map((e) => {
-              const days = Math.round((Date.parse(e.ends_on) - Date.parse(today)) / 864e5) + 1;
-              return renewRow(e, days <= 1 ? "Ends today" : `${days}d left`, e.id);
-            })}
+            {shown.ending.map((e) => renewRow(e, endingBadge(e), e.id, weekAgo))}
           </ul>
         ) : (
           <Empty>No plans ending in the next 7 days.</Empty>
@@ -244,13 +259,15 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       </Panel>
 
       <Panel id="expired" title={`Expired · ${lapsed.length}`} intro="Ended in the last 30 days, not renewed." flush
-        action={<Link href="/admin/follow-ups" className="text-sm font-bold text-red hover:text-chalk">Follow-ups →</Link>}>
+        action={
+          <span className="flex flex-wrap items-center justify-end gap-3">
+            {((q) => <FollowUpQueue items={q} label={`Follow up one by one · ${q.length}`} />)(queueOf(lapsed, lapsedBadge, (e) => e.ends_on))}
+            <Link href="/admin/follow-ups" className="text-sm font-bold text-red hover:text-chalk">Follow-ups →</Link>
+          </span>
+        }>
         {lapsed.length ? (
           <ul className="divide-y divide-line">
-            {shown.lapsed.map((e) => {
-              const ago = Math.round((Date.parse(today) - Date.parse(e.ends_on)) / 864e5);
-              return renewRow(e, ago <= 1 ? "Ended yesterday" : `${ago}d ago`, null);
-            })}
+            {shown.lapsed.map((e) => renewRow(e, lapsedBadge(e), null, e.ends_on))}
           </ul>
         ) : (
           <Empty>Nobody lapsed in the last 30 days.</Empty>

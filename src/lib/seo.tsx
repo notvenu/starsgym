@@ -3,7 +3,8 @@ import { getBranches } from "./data";
 import { branchPath, inr, sessions, type Branch, type Plan, type Settings } from "./gym";
 
 /** The live domain — canonicals, sitemap, JSON-LD and share cards are built on it. Set NEXT_PUBLIC_SITE_URL in production. */
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+// a value saved without "https://" (e.g. "starsgym.vercel.app") gets it added — new URL() would fail the whole build
+export const SITE_URL = ((s) => (/^https?:\/\//i.test(s) ? s : `https://${s}`))(process.env.NEXT_PUBLIC_SITE_URL?.trim() || "http://localhost:3000").replace(/\/+$/, "");
 /** The city the branches are in ("Hyderabad"); branch names are the areas. Optional: titles just use the branch names without it. */
 export const CITY = process.env.NEXT_PUBLIC_GYM_CITY?.trim() ?? "";
 

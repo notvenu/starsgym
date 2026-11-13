@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Field, OpenStatus, Price, WeekHolidays } from "@/components/client";
 import type { Profile } from "@/lib/supabase";
-import { bestOffer, DURATIONS, GENDERS, inr, ladiesLabel, locate, TRACKS, weekHolidays, type Branch, type Holiday, type Offer, type Plan, type Session, type Track } from "@/lib/gym";
+import { bestOffer, busyLabel, DURATIONS, GENDERS, inr, ladiesLabel, locate, TRACKS, weekHolidays, type Branch, type Holiday, type Offer, type Plan, type Session, type Track } from "@/lib/gym";
 import { UpiPay, type UpiOrder } from "../buy/[planId]/checkout";
 import { startUpi } from "../buy/[planId]/actions";
 import { PhotoCapture } from "@/components/photo";
@@ -29,6 +29,7 @@ export function CheckInPanel(props: {
   streak: number;
   todaySessions: Session[];
   nowSession: Record<string, Session | "ladies_only" | null>;
+  busy: Record<string, number>; // check-ins in the last hour, per branch (only branches using app check-in today)
   photo: string | null;
   name: string;
   hasPlan: boolean;
@@ -108,6 +109,13 @@ export function CheckInPanel(props: {
           </div>
         </div>
         {branch && <p className="font-label text-sm font-bold uppercase tracking-[0.12em]"><OpenStatus branch={branch} holidays={props.holidays} withHours /></p>}
+        {/* open now: how crowded it is, from the last hour's check-ins */}
+        {branch && sess && props.busy[branch.id] !== undefined && ((n) => (
+          <p className="flex items-center gap-1.5 text-sm text-ash" title={`${n} check-in${n === 1 ? "" : "s"} in the last hour`}>
+            <span className={`size-2 rounded-full ${n < 10 ? "bg-[#25d366]" : n < 25 ? "bg-[#f5b301]" : "bg-red"}`} aria-hidden="true" />
+            <b className="text-chalk">{busyLabel(n)}</b> right now
+          </p>
+        ))(props.busy[branch.id])}
       </div>
 
       {/* how long they're covered — red in the last week, so renewing is never a surprise */}

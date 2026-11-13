@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { Flame, Notices } from "@/components/site";
-import { getNotices, getSettings } from "@/lib/data";
-import { requireUser } from "@/lib/supabase";
+import { busyNow, getNotices, getSettings } from "@/lib/data";
+import { adminDb, requireUser } from "@/lib/supabase";
+import { siteOrigin } from "@/lib/pass";
+import { inviteLink, REFERRALS_ON } from "@/lib/referral";
+import { FirstWeek, InviteCard } from "./extras";
 import { NotificationToggle } from "@/components/push";
 import { DAY_NAMES, inr, MEMBERSHIP, monthDates, prettyDay, recentGymDates, shiftMonth, planName, sessionNow, showcaseUrl, type Branch, type Plan, type Session } from "@/lib/gym";
 import { PASS_FIELDS, type PassData } from "../pass/[subId]/data";
@@ -28,7 +31,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const log = typeof sp.log === "string" && /^\d{4}-\d{2}$/.test(sp.log) && sp.log < thisMonth ? sp.log : null;
   const logDays = log ? monthDates(log) : month;
 
-  const [branches, subs, streak, week, post, feed, notices, photo, settings, lastRequest, older, firstVisit, plans, workouts] = await Promise.all([
+  const [branches, subs, streak, week, post, feed, notices, photo, settings, lastRequest, older, firstVisit, plans, workouts, busy, origin, invited, push] = await Promise.all([
     supabase.from("branches").select("*").eq("active", true).order("created_at"),
     supabase.from("subscriptions").select(PASS_FIELDS).eq("user_id", user.id).neq("status", "cancelled").order("created_at", { ascending: false }),
     supabase.rpc("current_streak", { uid: user.id }),
@@ -43,6 +46,10 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
     supabase.from("checkins").select("day").eq("user_id", user.id).order("day").limit(1).maybeSingle(), // how far back "Older" goes
     supabase.from("plans").select("*").eq("active", true),
     loadWorkouts(supabase), // for logging right in the check-in card
+    busyNow(), // "quiet / busy / packed" on the check-in card
+    siteOrigin(), // for their invite link
+    adminDb().from("staff_log").select("id", { count: "exact", head: true }).eq("action", "Referred").eq("actor_id", user.id), // friends who signed up with it
+    adminDb().from("push_subscriptions").select("user_id", { count: "exact", head: true }).eq("user_id", user.id), // first-week checklist
   ]);
   const olderMonth = shiftMonth(log ?? thisMonth, -1);
   const newerMonth = log && shiftMonth(log, 1);
@@ -79,6 +86,15 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   // for the check-in card: days covered, a renewal already queued included
   const coveredTill = [active, ...upcoming].reduce<string | null>((max, s) => (s?.ends_on && (!max || s.ends_on > max) ? s.ends_on : max), null);
   const covered = active && coveredTill ? { plan: planName(active.plans), days: Math.round((Date.parse(coveredTill) - Date.parse(today)) / 864e5) + 1, till: prettyDay(coveredTill) } : null;
+  // first-week checklist: new accounts (30 days), or anyone who has never checked in
+  const joinedAt = (profile as typeof profile & { created_at?: string }).created_at;
+  const isNew = !firstVisit.data || (!!joinedAt && Date.parse(today) - Date.parse(joinedAt.slice(0, 10)) < 30 * 864e5);
+  const firstWeek = [
+    { label: "Check in for the first time", hint: "Tap Check in now at the gym, or scan the QR by the entrance.", done: !!firstVisit.data || todaySessions.length > 0 },
+    ...(workouts ? [{ label: "Log a workout", hint: "After you check in, log what you trained — it builds your Insights.", done: workouts.logs.length > 0 }] : []),
+    { label: "Turn on notifications", hint: "Plan reminders, payment confirmations and holiday closures.", done: (push.count ?? 0) > 0 },
+    { label: "Add an emergency contact", hint: "Edit (next to your name) → Emergency contact.", done: !!profile.emergency_contact },
+  ];
 
   return (
     <>
@@ -101,6 +117,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
               streak={(streak.data as number) ?? 0}
               todaySessions={todaySessions}
               nowSession={nowSession}
+              busy={busy}
               photo={photo}
               name={profile.full_name}
               hasPlan={!!active}
@@ -112,6 +129,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             />
 
           <div className="flex flex-col gap-5">
+            {isNew && <FirstWeek items={firstWeek} />}
             <NotificationToggle />
             <section id="plan" className="card flex scroll-mt-20 flex-col gap-3 p-5 sm:p-6">
               <p className="label">Your plan</p>
@@ -148,6 +166,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
                 </Link>
               ))}
             </section>
+
+            {REFERRALS_ON && <InviteCard link={inviteLink(origin, user.id)} joined={invited.count ?? 0} />}
 
             <section className="card flex flex-col gap-4 p-5 sm:p-6">
               <div className="flex items-center justify-between">

@@ -1,7 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { currentUserId, db } from "@/lib/supabase";
+import { adminDb, currentUserId, db, UUID, type Profile } from "@/lib/supabase";
+import { logAction } from "@/lib/log";
+import { REF_COOKIE, REFERRALS_ON } from "@/lib/referral";
 import { readMemberDetails, safeNext } from "@/lib/gym";
 import { formPhoto, setMyPhoto } from "@/lib/photo";
 import { isLevel } from "@/lib/workouts";
@@ -31,6 +34,24 @@ export async function saveDetails(_: WelcomeState, form: FormData): Promise<Welc
     const res = await setMyPhoto(supabase, uid, file);
     if (res.error) return { error: res.error };
   }
+  if (REFERRALS_ON) await creditReferral(uid, full_name);
   redirect(safeNext(form.get("next")));
+}
+
+/** Came in through a member's invite link (/r/…): log who invited them, once — the desk rewards it after they join. */
+async function creditReferral(uid: string, name: string) {
+  const jar = await cookies();
+  const inviter = jar.get(REF_COOKIE)?.value;
+  if (!inviter) return;
+  jar.delete(REF_COOKIE);
+  if (!UUID.test(inviter) || inviter === uid) return;
+  const admin = adminDb();
+  const [{ data: who }, { data: already }] = await Promise.all([
+    admin.from("profiles").select("id,full_name,home_branch_id,role").eq("id", inviter).maybeSingle(),
+    admin.from("staff_log").select("id").eq("action", "Referred").eq("member_id", uid).limit(1).maybeSingle(),
+  ]);
+  if (!who || who.role !== "member" || already) return;
+  // the inviter is the log's actor: "<inviter> Referred <friend>"
+  await logAction(who as Pick<Profile, "id" | "full_name" | "home_branch_id">, "Referred", { memberId: uid, memberName: name, detail: "Invited a friend" });
 }
 

@@ -534,3 +534,6 @@ export function offerLabel(o: Offer) {
   if (!o.percent_by_days) return `${o.percent_off}% off`;
   return OFFER_LENGTHS.filter(([d]) => o.percent_by_days![String(d)]).map(([d, label]) => `${o.percent_by_days![String(d)]}% ${label}`).join(" · ");
 }
+
+/** "Quiet" / "Busy" / "Packed" from check-ins in the last hour. ponytail: fixed cut-offs; per-branch capacity if they differ a lot. */
+export const busyLabel = (n: number) => (n < 10 ? "Quiet" : n < 25 ? "Busy" : "Packed");
