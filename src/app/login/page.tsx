@@ -6,7 +6,7 @@ import { Logo } from "@/components/site";
 import { AuthForm } from "./form";
 import { signInWithGoogle } from "./actions";
 
-export const metadata = { title: "Sign in — Stars Gym", robots: { index: false } };
+export const metadata = { title: "Sign in — Stars Gym", robots: { index: false }, alternates: { canonical: "./" } };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
@@ -17,12 +17,12 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   if (await signedIn()) redirect(next || "/dashboard");
 
   return (
-    <main className="grid min-h-dvh lg:grid-cols-2">
+    <main id="main" className="grid min-h-dvh lg:grid-cols-2">
       <section className="relative hidden overflow-hidden border-r border-line bg-panel lg:flex lg:flex-col lg:justify-between lg:p-14">
         <Logo size={96} />
         <div aria-hidden="true" className="outline-text pointer-events-none absolute -bottom-10 -left-6 font-display text-[260px] leading-none">ARENA</div>
         <h1 className="relative font-display text-[120px] leading-[0.9] uppercase">
-          Earn<span className="block">your</span><span className="block text-red">star.</span>
+          Earn<span className="block">your</span><span className="block text-redtext">star.</span>
         </h1>
       </section>
 
@@ -52,9 +52,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           <h2 className="text-center font-display text-[clamp(44px,11vw,64px)] leading-[0.95] uppercase lg:text-left">
             {mode === "signup" ? "Join the arena." : "Welcome back."}
           </h2>
-          {sp.error === "link" && <p className="text-red">That link expired or was already used. Sign in with your password instead.</p>}
-          {sp.error === "qr" && <p className="text-red">That sign-in QR has expired or was already used. Sign in with the temporary password, or ask the desk for a new one.</p>}
-        {sp.error === "google" && <p className="text-red">Google sign-in didn&apos;t go through. Try again, or use your email or phone.</p>}
+          {sp.error === "link" && <p className="text-redtext">That link expired or was already used. Sign in with your password instead.</p>}
+          {sp.error === "qr" && <p className="text-redtext">That sign-in QR has expired or was already used. Sign in with the temporary password, or ask the desk for a new one.</p>}
+        {sp.error === "google" && <p className="text-redtext">Google sign-in didn&apos;t go through. Try again, or use your email or phone.</p>}
           <form action={signInWithGoogle}>
             <input type="hidden" name="next" value={next} />
             <button className="btn min-h-14 w-full gap-3 border border-strong bg-chalk text-[15px] whitespace-nowrap text-ink normal-case tracking-normal hover:bg-white sm:text-base">

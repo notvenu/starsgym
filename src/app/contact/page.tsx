@@ -10,7 +10,7 @@ import { EnquiryForm } from "./form";
 export async function generateMetadata(): Promise<Metadata> {
   const area = await getArea();
   return {
-    title: `Contact Stars Gym${area ? ` — ${area}` : ""}: Address, Timings & Phone`,
+    title: `Contact Stars Gym${area ? `, ${area}` : ""}: Address & Timings`,
     description: `Call, WhatsApp or visit Stars Gym${area ? ` in ${area}` : ""}. Branch addresses, opening hours, ladies' hours and directions.`,
     alternates: { canonical: "/contact" },
   };
@@ -29,11 +29,11 @@ export default async function ContactPage({ searchParams }: PageProps<"/contact"
           {(settings.phone || settings.whatsapp || settings.email) && (
             <div className="flex flex-col gap-3">
               {settings.phone && (
-                <a href={`tel:${settings.phone.replace(/[^\d+]/g, "")}`} className="font-display text-[clamp(36px,5vw,56px)] leading-none hover:text-red">{settings.phone}</a>
+                <a href={`tel:${settings.phone.replace(/[^\d+]/g, "")}`} className="font-display text-[clamp(36px,5vw,56px)] leading-none hover:text-redtext">{settings.phone}</a>
               )}
-              {settings.email && <a href={`mailto:${settings.email}`} className="text-xl text-body hover:text-red">{settings.email}</a>}
+              {settings.email && <a href={`mailto:${settings.email}`} className="text-xl text-body hover:text-redtext">{settings.email}</a>}
               {settings.whatsapp && (
-                <a href={waLink(settings.whatsapp)} target="_blank" rel="noreferrer" className="btn-red self-start">Chat on WhatsApp</a>
+                <a href={waLink(settings.whatsapp)} target="_blank" rel="noopener noreferrer" className="btn-red self-start">Chat on WhatsApp</a>
               )}
             </div>
           )}
@@ -42,7 +42,7 @@ export default async function ContactPage({ searchParams }: PageProps<"/contact"
           {branches.map((b) => (
             <div key={b.id} className="flex flex-col gap-2 border-t border-line pt-6">
               <p className="font-label text-[13px] font-bold uppercase tracking-[0.18em]"><OpenStatus branch={b} holidays={holidays} /></p>
-              <h2 className="font-display text-4xl uppercase"><Link href={branchPath(b)} className="hover:text-red">{b.name}</Link></h2>
+              <h2 className="font-display text-4xl uppercase"><Link href={branchPath(b)} className="hover:text-redtext">{b.name}</Link></h2>
               <p className="text-body">{b.address}</p>
               <p className="text-ash">
                 {hoursLabel(b)}
@@ -50,7 +50,7 @@ export default async function ContactPage({ searchParams }: PageProps<"/contact"
               </p>
               {ladiesLabel(b) && <p className="text-ash">Ladies&apos; hours: {ladiesLabel(b)} · women only</p>}
               {b.maps_url && (
-                <a href={b.maps_url} target="_blank" rel="noreferrer" className="text-[15px] font-bold tracking-wider text-red uppercase hover:text-chalk">Get directions →</a>
+                <a href={b.maps_url} target="_blank" rel="noopener noreferrer" className="text-[15px] font-bold tracking-wider text-redtext uppercase hover:text-chalk">Get directions →</a>
               )}
             </div>
           ))}

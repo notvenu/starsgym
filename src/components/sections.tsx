@@ -49,13 +49,13 @@ export function SectionHead({ n, eyebrow, title, accent, aside, href, cta }: { n
     <div className="flex flex-wrap items-end justify-between gap-6" data-reveal>
       <div className="flex flex-col gap-4">
         <p className="flex items-center gap-3 font-label text-sm font-bold tracking-[0.24em] uppercase">
-          {n && <span className="text-red">{n}</span>}
+          {n && <span className="text-redtext">{n}</span>}
           <span className={`h-px w-10 ${n ? "bg-line" : "bg-red"}`} />
-          <span className={n ? "text-ash" : "text-red"}>{eyebrow}</span>
+          <span className={n ? "text-ash" : "text-redtext"}>{eyebrow}</span>
         </p>
         <h2 className="font-display text-[clamp(44px,6vw,88px)] leading-[0.92] uppercase">
           {title}
-          {accent && <span className="block text-red">{accent}</span>}
+          {accent && <span className="block text-redtext">{accent}</span>}
         </h2>
       </div>
       <div className="flex max-w-[420px] flex-col items-start gap-4">
@@ -75,10 +75,10 @@ export function TrainerCard({ t, i = 0, where }: { t: SiteItem; i?: number; wher
         <h3 className="absolute bottom-4 left-5 font-display text-5xl leading-none uppercase dark-shadow">{t.title}</h3>
       </div>
       <div className="flex flex-1 flex-col gap-3 p-6">
-        <p className="label text-red">{[t.subtitle, where].filter(Boolean).join(" · ")}</p>
+        <p className="label text-redtext">{[t.subtitle, where].filter(Boolean).join(" · ")}</p>
         {t.body && <p className="leading-relaxed text-body">{t.body}</p>}
         {t.url && (
-          <a href={t.url} target="_blank" rel="noreferrer" className="mt-auto text-sm font-bold tracking-wider text-chalk uppercase hover:text-red">
+          <a href={t.url} target="_blank" rel="noopener noreferrer" className="mt-auto text-sm font-bold tracking-wider text-chalk uppercase hover:text-redtext">
             Follow {t.title.split(" ")[0]} →
           </a>
         )}
@@ -96,7 +96,7 @@ export function TransformationCard({ c, trainer, i = 0 }: { c: SiteItem; trainer
         <div className="flex flex-wrap gap-2">
           {c.duration && <span className="rounded-full bg-red px-3 py-1 font-label text-sm font-bold tracking-[0.12em] text-white uppercase">{c.duration}</span>}
           {trainer && (
-            <Link href="/trainers" className="rounded-full border border-strong px-3 py-1 font-label text-sm font-bold tracking-[0.12em] uppercase hover:border-red hover:text-red">
+            <Link href="/trainers" className="rounded-full border border-strong px-3 py-1 font-label text-sm font-bold tracking-[0.12em] uppercase hover:border-red hover:text-redtext">
               Coach · {trainer.title}
             </Link>
           )}
@@ -189,7 +189,7 @@ function ShowcaseCard({ m, rank, hidden }: { m: ShowcaseItem; rank: number; hidd
       <div className="flex items-center justify-between p-4">
         <div>
           <p className="font-bold">{m.full_name || "Member"}</p>
-          <p className="mt-1 flex items-center gap-1.5 font-label text-[15px] font-bold tracking-[0.1em] text-red">
+          <p className="mt-1 flex items-center gap-1.5 font-label text-[15px] font-bold tracking-[0.1em] text-redtext">
             <Flame size={15} /> {m.streak} DAY STREAK
           </p>
         </div>
@@ -220,12 +220,12 @@ export function ReviewsSection({ reviews }: { reviews: Reviews }) {
             <div className="flex items-center gap-5" data-reveal>
               <p className="font-display text-[80px] leading-none">{reviews.rating.toFixed(1)}</p>
               <div className="flex flex-col gap-1.5">
-                <div className="flex gap-0.5 text-red" aria-label={`${reviews.rating.toFixed(1)} out of 5`}>
+                <div role="img" className="flex gap-0.5 text-redtext" aria-label={`${reviews.rating.toFixed(1)} out of 5`}>
                   {[1, 2, 3, 4, 5].map((n) => <Star key={n} />)}
                 </div>
                 <p className="text-[15px] text-ash">{reviews.sample ? "Sample reviews · real Google reviews appear once connected" : `${reviews.count} reviews on Google`}</p>
                 {reviews.writeUrl && (
-                  <a href={reviews.writeUrl} target="_blank" rel="noreferrer" className="text-sm font-bold tracking-wider text-red uppercase hover:text-chalk">
+                  <a href={reviews.writeUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold tracking-wider text-redtext uppercase hover:text-chalk">
                     Write a review →
                   </a>
                 )}
@@ -237,7 +237,7 @@ export function ReviewsSection({ reviews }: { reviews: Reviews }) {
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {reviews.reviews.map((r, i) => (
               <figure key={i} className="lift flex flex-col gap-4.5 rounded-md border border-line bg-ink p-7" data-reveal style={{ transitionDelay: `${(i % 3) * 80}ms` }}>
-                <div className="flex gap-0.5 text-red">{Array.from({ length: r.rating }, (_, n) => <Star key={n} size={16} />)}</div>
+                <div className="flex gap-0.5 text-redtext">{Array.from({ length: r.rating }, (_, n) => <Star key={n} size={16} />)}</div>
                 <blockquote className="line-clamp-5 text-lg leading-relaxed text-body">{r.text}</blockquote>
                 <figcaption className="mt-auto flex items-center gap-3">
                   {r.photo ? (
@@ -270,7 +270,7 @@ export function FinalCta({ href, label = "Book a trial day", title = "First rep"
       <div className="relative flex flex-col items-center gap-7" data-reveal>
         <h2 className="font-display text-[clamp(56px,8vw,120px)] leading-[0.92] uppercase">
           {title}
-          <span className="block text-red">{accent}</span>
+          <span className="block text-redtext">{accent}</span>
         </h2>
         <Link href={href} className="btn-red min-h-15 px-9 text-base">{label}</Link>
       </div>

@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
-import { adminDb, allRows, db } from "@/lib/supabase";
+import { unstable_cache } from "next/cache";
+import { adminDb, allRows } from "@/lib/supabase";
 import { gymDate, gymDateIn, type Plan } from "@/lib/gym";
 import { CLOSED } from "./outcomes";
 
@@ -23,9 +24,9 @@ async function latestNotes(since: string) {
  * ponytail: up to 1000 lapsed plans per window; page it if a branch ever lapses more than that in 90 days.
  */
 export const loadFollowUps = cache(async (view: string | null, days: number) => {
-  const supabase = await db();
   const today = gymDate();
-  let q = supabase
+  // service key: callers have passed requireStaff, and `view` scopes it like RLS would — and no cookies, so the badge below can be cached
+  let q = adminDb()
     .from("subscriptions")
     .select("id,user_id,ends_on,plans(*),profiles!subscriptions_user_id_fkey(full_name,phone,photo_path,history:subscriptions!subscriptions_user_id_fkey(status,ends_on))")
     .eq("status", "active")
@@ -56,6 +57,9 @@ export const loadFollowUps = cache(async (view: string | null, days: number) => 
     untouched: rows.filter((e) => !latest(e)).length,
   };
 });
+
+/** The nav badge: lapsed members nobody has contacted. Cached a minute across requests (the layout otherwise runs the whole lapsed query on every load); logContact expires it. */
+export const untouchedCount = unstable_cache(async (view: string | null) => (await loadFollowUps(view, 60)).untouched, ["untouched"], { tags: ["followups"], revalidate: 60 });
 
 export const MISSING_DAYS = 10;
 

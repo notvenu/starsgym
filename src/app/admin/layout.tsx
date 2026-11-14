@@ -4,7 +4,7 @@ import { requireStaff } from "@/lib/supabase";
 import { AccountPrompt } from "@/components/account-prompt";
 import { BranchSwitch } from "./ui";
 import { deskRef, openEnquiries } from "./data";
-import { loadFollowUps } from "./follow-ups/data";
+import { untouchedCount } from "./follow-ups/data";
 import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
@@ -21,7 +21,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
     openEnquiries(branchId, view), // staff: their branch's (and any-branch) enquiries
     deskRef(),
     supabase.from("profile_requests").select("id", { count: "exact", head: true }).eq("status", "pending"), // RLS: what this desk can see
-    loadFollowUps(view, 60), // lapsed members nobody has contacted yet
+    untouchedCount(view), // lapsed members nobody has contacted yet (cached a minute)
   ]);
   const branchName = ref.branches.find((x) => x.id === view)?.name;
   const branchList = canSwitch ? ref.branches.filter((x) => x.active) : null;
@@ -33,7 +33,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       { href: "/admin", label: "Overview", icon: "overview", badge: requests.count ?? 0 },
       { href: "/admin/members", label: "Members", icon: "members" },
       { href: "/admin/payments", label: "Payments", icon: "payments", badge: pending.count ?? 0 },
-      { href: "/admin/follow-ups", label: "Follow-ups", icon: "phone", badge: lapsed.untouched },
+      { href: "/admin/follow-ups", label: "Follow-ups", icon: "phone", badge: lapsed },
       { href: "/admin/checkins", label: "Check-ins", icon: "scan" },
       { href: "/admin/summary", label: "Daily summary", icon: "summary" },
       { href: "/admin/enquiries", label: "Enquiries", icon: "enquiries", badge: enquiries.count ?? 0 },
@@ -100,7 +100,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
         </div>
       </aside>
       {/* bottom padding on phones keeps content clear of the tab bar */}
-      <main className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 max-lg:pb-28 sm:gap-8 sm:px-8 lg:py-10">
+      <main id="main" className="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-6 px-4 py-6 max-lg:pb-28 sm:gap-8 sm:px-8 lg:py-10">
         {children}
       </main>
     </div>

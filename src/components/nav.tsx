@@ -62,7 +62,7 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
             <div className="border-b border-chalk/10">
               <div className="wrap flex items-center justify-between gap-3 py-2.5 font-label text-xs font-semibold tracking-[0.12em] whitespace-nowrap uppercase sm:text-sm">
                 <div className="min-w-0 overflow-hidden">{status}</div>
-                <Link href="/dashboard" className="shrink-0 text-red hover:text-chalk">Check in →</Link>
+                <Link href="/dashboard" className="shrink-0 text-redtext hover:text-chalk">Check in →</Link>
               </div>
             </div>
           </div>
@@ -83,7 +83,7 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
                     <Link
                       href={href}
                       aria-current={active ? "page" : undefined}
-                      className={`flex min-h-10 items-center rounded-full px-4 text-[15px] font-semibold transition-colors duration-200 ${active ? "bg-steel text-chalk shadow-[inset_0_0_0_1px_var(--color-strong)]" : "text-ash hover:text-chalk"}`}
+                      className={`flex min-h-10 items-center rounded-full px-4 text-[15px] font-semibold transition-colors duration-200 ${active ? "bg-steel text-chalk shadow-[inset_0_0_0_1px_var(--color-strong)]" : "text-ash hover:bg-steel hover:text-chalk"}`}
                     >
                       {label}
                     </Link>
@@ -125,9 +125,9 @@ export function Nav({ children, overlay = false, status }: { children?: ReactNod
           <ul className="flex flex-col">
             {PAGES.map(([label, href], i) => (
               <li key={href} className="hero-line border-b border-line" style={{ "--d": `${i * 60}ms` } as React.CSSProperties}>
-                <Link href={href} onClick={() => setOpen(false)} className="flex items-center justify-between py-5 font-display text-4xl uppercase hover:text-red">
+                <Link href={href} onClick={() => setOpen(false)} className="flex items-center justify-between py-5 font-display text-4xl uppercase hover:text-redtext">
                   {label}
-                  <span aria-hidden="true" className="text-2xl text-red">→</span>
+                  <span aria-hidden="true" className="text-2xl text-redtext">→</span>
                 </Link>
               </li>
             ))}

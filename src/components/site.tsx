@@ -23,7 +23,7 @@ export function PageHero({ eyebrow, title, accent, intro, image }: { eyebrow: st
     <section className="relative overflow-hidden">
       {image && (
         <div aria-hidden="true" className="absolute inset-y-0 right-0 w-full lg:w-[55%]">
-          <Image src={image} alt="" fill priority sizes="(min-width: 1024px) 55vw, 100vw" quality={85} className="object-cover object-[center_35%] [mask-image:linear-gradient(to_right,transparent,#000_35%)] max-lg:opacity-40" />
+          <Image src={image} alt="" fill priority sizes="(min-width: 1024px) 55vw, 100vw" quality={75} className="object-cover object-[center_35%] [mask-image:linear-gradient(to_right,transparent,#000_35%)] max-lg:opacity-40" />
           <div className="absolute inset-0 bg-linear-to-t from-ink via-transparent to-transparent" />
           <div className="absolute inset-x-0 top-0 h-24 bg-linear-to-b from-ink to-transparent" />
         </div>
@@ -32,7 +32,7 @@ export function PageHero({ eyebrow, title, accent, intro, image }: { eyebrow: st
         <p className="eyebrow flex animate-rise items-center gap-3"><span className="inline-block h-0.5 w-10 bg-red" />{eyebrow}</p>
         <h1 className="animate-rise font-display text-[clamp(64px,11vw,170px)] leading-[0.86] uppercase [animation-delay:100ms] dark-shadow">
           {title}
-          {accent && <span className="block text-red">{accent}</span>}
+          {accent && <span className="block text-redtext">{accent}</span>}
         </h1>
         {intro && <p className="max-w-[540px] animate-rise text-[19px] leading-relaxed text-body [animation-delay:250ms]">{intro}</p>}
       </div>
@@ -50,7 +50,7 @@ export async function SiteNav({ children }: { children?: ReactNode }) {
 /** Nav + page + footer for the marketing pages. */
 export function Shell({ children }: { children: ReactNode }) {
   return (
-    <main>
+    <main id="main">
       <SiteNav />
       {children}
       <Footer />
@@ -100,7 +100,7 @@ export async function Footer() {
         <address className="wrap grid gap-6 border-b border-line py-10 not-italic sm:grid-cols-2 lg:grid-cols-3">
           {branches.map((b) => (
             <div key={b.id} className="flex flex-col gap-1.5 text-[15px]">
-              <Link href={branchPath(b)} className="font-display text-2xl uppercase hover:text-red">Stars Gym {b.name}</Link>
+              <Link href={branchPath(b)} className="font-display text-2xl uppercase hover:text-redtext">Stars Gym {b.name}</Link>
               <span className="text-ash">{b.address}</span>
               {settings.phone && <a href={`tel:${settings.phone.replace(/[^\d+]/g, "")}`} className="text-ash hover:text-chalk">{settings.phone}</a>}
             </div>
@@ -157,10 +157,10 @@ export function Socials({ settings, size = 44, label }: { settings: Settings; si
           <a
             href={href!}
             target={href!.startsWith("http") ? "_blank" : undefined}
-            rel="noreferrer"
+            rel="noopener noreferrer"
             aria-label={label}
             title={label}
-            className="flex items-center justify-center rounded-full border border-strong text-chalk transition-[border-color,color,transform] duration-200 hover:-translate-y-0.5 hover:border-red hover:text-red"
+            className="flex items-center justify-center rounded-full border border-strong text-chalk transition-[border-color,color,transform] duration-200 hover:-translate-y-0.5 hover:border-red hover:text-redtext"
             style={{ width: size, height: size }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icon}</svg>
@@ -181,14 +181,14 @@ export function Notices({ holidays, offers, branches }: { holidays: Holiday[]; o
       <div className="wrap flex flex-col gap-1.5 py-2.5 text-sm">
         {holidays.map((h) => (
           <p key={h.id} className="flex flex-wrap items-center gap-x-2">
-            <span className="font-label font-bold uppercase tracking-[0.14em] text-red">Holiday</span>
+            <span className="font-label font-bold uppercase tracking-[0.14em] text-redtext">Holiday</span>
             <span className="text-chalk">Closed {prettyDay(h.day)}{h.note && ` — ${h.note}`}</span>
             <span className="text-ash">· {where(h)} · streaks are safe</span>
           </p>
         ))}
         {offers.map((o) => (
           <p key={o.id} className="flex flex-wrap items-center gap-x-2">
-            <span className="font-label font-bold uppercase tracking-[0.14em] text-red">Offer</span>
+            <span className="font-label font-bold uppercase tracking-[0.14em] text-redtext">Offer</span>
             <span className="text-chalk">{o.title} — {o.percent_off}% off {o.tracks ? o.tracks.map((t) => TRACKS[t]).join(", ") : "all plans"}</span>
             <span className="text-ash">· till {prettyDay(o.ends_on)}{o.description && ` · ${o.description}`}</span>
           </p>

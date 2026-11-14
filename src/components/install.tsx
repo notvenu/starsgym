@@ -38,7 +38,7 @@ export function InstallApp() {
       <div className="flex min-h-10 items-center gap-2.5 text-sm">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-ash"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" /></svg>
         <span className="flex-1 font-semibold">Install app</span>
-        <button type="button" onClick={install} className="min-h-8 shrink-0 cursor-pointer rounded-full border border-red px-3 text-xs font-bold tracking-wider text-red uppercase hover:bg-red hover:text-white">Install</button>
+        <button type="button" onClick={install} className="min-h-8 shrink-0 cursor-pointer rounded-full border border-red px-3 text-xs font-bold tracking-wider text-redtext uppercase hover:bg-red hover:text-white">Install</button>
       </div>
       {help && (
         <Sheet title="Add to home screen" open onClose={() => setHelp(null)}>

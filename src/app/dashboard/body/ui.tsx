@@ -28,7 +28,7 @@ export function BodyForm({ logs, today }: { logs: BodyLog[]; today: string }) {
         <label className="flex flex-col items-center gap-1 rounded-md border border-line bg-ink px-4 py-5">
           <span className="label">{weight.label}</span>
           <span className="flex items-baseline gap-2">
-            <input className="w-32 bg-transparent text-right font-display text-6xl tabular-nums outline-none placeholder:text-faint focus:text-red" type="number" inputMode="decimal"
+            <input className="w-32 bg-transparent text-right font-display text-6xl tabular-nums outline-none placeholder:text-faint focus:text-redtext" type="number" inputMode="decimal"
               step="0.1" min={weight.min} max={weight.max} name={weight.key} defaultValue={existing?.weight_kg ?? ""} placeholder={last?.weight_kg != null ? String(Number(last.weight_kg)) : "0.0"} />
             <span className="font-display text-2xl text-ash">kg</span>
           </span>
@@ -77,7 +77,7 @@ export function BodyHistory({ logs }: { logs: BodyLog[] }) {
                 {BODY_FIELDS.filter((f) => l[f.key] != null).map((f) => `${f.label} ${Number(l[f.key])}${f.unit === "%" ? "%" : ` ${f.unit}`}`).join(" · ")}
               </p>
             </div>
-            <button type="button" className="min-h-10 shrink-0 cursor-pointer text-sm font-bold text-ash hover:text-red" disabled={busy} onClick={() => remove(l)}>Delete</button>
+            <button type="button" className="min-h-10 shrink-0 cursor-pointer text-sm font-bold text-ash hover:text-redtext" disabled={busy} onClick={() => remove(l)}>Delete</button>
           </li>
         ))}
       </ul>

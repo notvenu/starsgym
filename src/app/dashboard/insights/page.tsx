@@ -75,7 +75,7 @@ export default async function InsightsPage() {
                     {s.done ? <Icon d={ICONS.check} size={15} /> : i + 1}
                   </span>
                   <span className={`flex-1 ${s.done ? "line-through decoration-faint" : "font-bold"}`}>{s.label}</span>
-                  {!s.done && <span aria-hidden="true" className="text-red">→</span>}
+                  {!s.done && <span aria-hidden="true" className="text-redtext">→</span>}
                 </Link>
               </li>
             ))}

@@ -50,7 +50,7 @@ export function Icon({ d, size = 22 }: { d: string; size?: number }) {
 export function Empty({ icon, title, body, tips, action }: { icon: string; title: string; body: ReactNode; tips?: string[]; action?: ReactNode }) {
   return (
     <div className="card flex flex-col gap-4 p-6">
-      <span className="flex size-12 items-center justify-center rounded-full border border-redline bg-redwash text-red"><Icon d={icon} /></span>
+      <span className="flex size-12 items-center justify-center rounded-full border border-redline bg-redwash text-redtext"><Icon d={icon} /></span>
       <div>
         <p className="text-xl font-bold">{title}</p>
         <p className="mt-1 text-ash">{body}</p>
@@ -58,7 +58,7 @@ export function Empty({ icon, title, body, tips, action }: { icon: string; title
       {tips && (
         <ul className="flex flex-col gap-2 text-sm text-body">
           {tips.map((t) => (
-            <li key={t} className="flex gap-2.5"><span className="mt-0.5 text-red"><Icon d={ICONS.check} size={16} /></span>{t}</li>
+            <li key={t} className="flex gap-2.5"><span className="mt-0.5 text-redtext"><Icon d={ICONS.check} size={16} /></span>{t}</li>
           ))}
         </ul>
       )}
@@ -76,7 +76,7 @@ export function Jump({ href, icon, title, sub }: { href: string; icon: string; t
         <span className="block font-bold">{title}</span>
         <span className="block truncate text-sm text-ash">{sub}</span>
       </span>
-      <span aria-hidden="true" className="text-red">→</span>
+      <span aria-hidden="true" className="text-redtext">→</span>
     </Link>
   );
 }

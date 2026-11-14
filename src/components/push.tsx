@@ -83,7 +83,7 @@ export function NotificationToggle({ compact, nudge }: { compact?: boolean; nudg
     const can = state === "on" || state === "off";
     return (
       <div className="flex min-h-10 items-center gap-2.5 text-sm">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`shrink-0 ${on ? "text-red" : "text-ash"}`}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`shrink-0 ${on ? "text-redtext" : "text-ash"}`}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
         <span className="flex-1 font-semibold">Notifications</span>
         {can ? (
           <button type="button" role="switch" aria-checked={on} aria-label="Notifications on this device" disabled={busy} onClick={on ? turnOff : turnOn}

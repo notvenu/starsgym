@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Sheet } from "@/components/sheet";
 import { toast } from "@/components/feedback";
 import { logContact } from "./actions";
@@ -23,7 +22,6 @@ export type FollowItem = {
  * (the page refreshes). Skip moves on without saving. One item = the same popup for a single member.
  */
 export function FollowUpQueue({ items, label, className }: { items: FollowItem[]; label: string; className?: string }) {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [list, setList] = useState(items);
   const [outcome, setOutcome] = useState<string | null>(null);
@@ -52,7 +50,7 @@ export function FollowUpQueue({ items, label, className }: { items: FollowItem[]
     start(async () => {
       const r = await logContact(now.memberId, channel, outcome, note);
       if (r?.error) toast(r.error, "error");
-      else router.refresh(); // the list behind moves them to "contacted"
+      // no router.refresh(): the action's revalidatePath already returns the fresh page — refreshing again re-ran every query twice
     });
   };
   const next = () => {
@@ -74,7 +72,7 @@ export function FollowUpQueue({ items, label, className }: { items: FollowItem[]
             <div key={now.memberId} className="flex animate-rise flex-col gap-1 rounded-md border border-line bg-panel p-4 [animation-duration:.3s]">
               <div className="flex items-start justify-between gap-3">
                 <p className="min-w-0 truncate text-xl font-bold">{now.name}</p>
-                {now.badge && <span className="shrink-0 rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-red uppercase">{now.badge}</span>}
+                {now.badge && <span className="shrink-0 rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-redtext uppercase">{now.badge}</span>}
               </div>
               <p className="text-sm text-ash">{[now.phone, now.sub].filter(Boolean).join(" · ")}</p>
               {now.last && <p className="mt-1 text-sm"><span className="text-ash">Last: </span>{now.last}</p>}
@@ -93,12 +91,12 @@ export function FollowUpQueue({ items, label, className }: { items: FollowItem[]
               <p className="rounded-md border border-[#25d366] bg-[#25d366]/10 px-4 py-3 text-sm font-semibold">✓ Saved — {via === "call" ? "called" : "messaged on WhatsApp"}{outcome ? ` · ${outcome}` : ""}</p>
             ) : now.phone ? (
               <div className="grid grid-cols-2 gap-2">
-                <a href={now.text ? `https://wa.me/${waDigits(now.phone)}?text=${encodeURIComponent(now.text)}` : "#"} target="_blank" rel="noreferrer" onClick={() => contact("whatsapp")}
+                <a href={now.text ? `https://wa.me/${waDigits(now.phone)}?text=${encodeURIComponent(now.text)}` : "#"} target="_blank" rel="noopener noreferrer" onClick={() => contact("whatsapp")}
                   className="flex min-h-14 items-center justify-center rounded-md bg-[#25d366] text-sm font-bold tracking-wider text-ink uppercase">WhatsApp</a>
                 <a href={`tel:${now.phone}`} onClick={() => contact("call")} className="btn-ghost min-h-14">Call</a>
               </div>
             ) : (
-              <p className="text-sm text-red">No phone number on file — add it from their profile.</p>
+              <p className="text-sm text-redtext">No phone number on file — add it from their profile.</p>
             )}
 
             {single
@@ -106,6 +104,7 @@ export function FollowUpQueue({ items, label, className }: { items: FollowItem[]
               : via
                 ? <button type="button" onClick={next} className="btn-red min-h-12">Next →</button>
                 : <button type="button" onClick={next} className="btn-ghost min-h-12">Skip</button>}
+            {!single && <button type="button" onClick={close} className="min-h-10 text-sm font-bold text-ash hover:text-chalk">Do it later</button>}
             {!single && list.length > 1 && <p className="text-center text-sm text-ash">Up next: {list[1].name}</p>}
           </div>
         ) : (

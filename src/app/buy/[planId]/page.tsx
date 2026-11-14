@@ -7,7 +7,7 @@ import Link from "next/link";
 import { bestOffer, discounted, DURATIONS, inr, isStandard, MEMBERSHIP, planName, savings, type Branch, type Plan } from "@/lib/gym";
 import { Checkout } from "./checkout";
 
-export const metadata = { title: "Checkout — Stars Gym", robots: { index: false } };
+export const metadata = { title: "Checkout — Stars Gym", robots: { index: false }, alternates: { canonical: "./" } };
 
 export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
   const { planId } = await params;
@@ -31,7 +31,7 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
   const per = DURATIONS.find((d) => d.days === plan.duration_days)?.per ?? "day";
 
   return (
-    <main className="min-h-dvh pb-20">
+    <main id="main" className="min-h-dvh pb-20">
       <SiteNav />
       <div className="wrap grid gap-10 pt-8 lg:grid-cols-2">
         <div className="flex flex-col gap-5">
@@ -41,7 +41,7 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
             <Price paise={plan.price_paise} offer={bestOffer(offers, plan.track, plan.duration_days)} days={plan.duration_days} size="text-6xl" />
             <span className="text-2xl text-ash">/ {per}</span>
           </p>
-          {bestOffer(offers, plan.track, plan.duration_days) && <p className="text-red">{bestOffer(offers, plan.track, plan.duration_days)!.title} applied automatically.</p>}
+          {bestOffer(offers, plan.track, plan.duration_days) && <p className="text-redtext">{bestOffer(offers, plan.track, plan.duration_days)!.title} applied automatically.</p>}
           {admission > 0 && <p className="text-body">+ {inr(admission)} one-time admission fee (first membership only).</p>}
           <p className="max-w-md text-ash">
             {plan.duration_days === 1
@@ -51,7 +51,7 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
           <p className="text-sm text-faint">Fees are non-refundable and non-transferable.</p>
           {upsell.length > 0 && (
             <div className="flex flex-col gap-3 rounded-lg border border-red/50 bg-redwash p-4">
-              <p className="font-label text-sm font-bold tracking-[0.16em] text-red uppercase">Commit longer, pay less</p>
+              <p className="font-label text-sm font-bold tracking-[0.16em] text-redtext uppercase">Commit longer, pay less</p>
               {upsell.map(({ p, s }) => (
                 <Link key={p.id} href={`/buy/${p.id}`} className="group flex items-center justify-between gap-3 rounded-md border border-line bg-carbon px-4 py-3 transition-colors hover:border-red">
                   <span className="min-w-0">
@@ -59,7 +59,7 @@ export default async function BuyPage({ params }: PageProps<"/buy/[planId]">) {
                     <span className="block text-sm text-ash">{inr(s!.perMonth)}/month instead of {inr(discounted(plan.price_paise, bestOffer(offers, plan.track, plan.duration_days), plan.duration_days))}</span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block font-display text-2xl leading-none text-red">−{s!.pct}%</span>
+                    <span className="block font-display text-2xl leading-none text-redtext">−{s!.pct}%</span>
                     <span className="block text-xs text-ash">save {inr(s!.save)}</span>
                   </span>
                 </Link>

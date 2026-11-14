@@ -27,7 +27,7 @@ export default async function SharePage() {
   }));
 
   return (
-    <main className="min-h-dvh pb-20">
+    <main id="main" className="min-h-dvh pb-20">
       <SiteNav />
       <div className="wrap flex max-w-lg flex-col gap-6 pt-6">
         <div>

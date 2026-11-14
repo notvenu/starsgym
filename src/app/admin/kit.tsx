@@ -39,7 +39,7 @@ export function Panel({ title, intro, action, flush, children, id }: { title: st
 export function Stat({ label, value, href, tone }: { label: string; value: string | number; href?: string; tone?: "red" }) {
   const body = (
     <>
-      <span className={`truncate font-display text-[clamp(28px,7vw,40px)] leading-none lg:text-[clamp(26px,2.4vw,40px)] ${tone === "red" ? "text-red" : ""}`}>{value}</span>
+      <span className={`truncate font-display text-[clamp(28px,7vw,40px)] leading-none lg:text-[clamp(26px,2.4vw,40px)] ${tone === "red" ? "text-redtext" : ""}`}>{value}</span>
       <span className="label">{label}</span>
     </>
   );

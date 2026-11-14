@@ -71,7 +71,7 @@ export function Photos({ photos, today }: { photos: Photo[]; today: string }) {
             {open.url && <img src={open.url} alt={`Progress photo, ${shortDay(open.day)}`} className="max-h-[60dvh] w-full rounded-md object-contain" />}
             {open.note && <p className="text-body">{open.note}</p>}
             <button type="button" className="btn-red min-h-12" disabled={busy} onClick={() => share(open)}>{busy ? "Posting…" : "Post to the Streak Wall"}</button>
-            <button type="button" className="min-h-10 cursor-pointer self-center text-sm font-bold text-ash hover:text-red" disabled={busy} onClick={() => remove(open)}>Delete photo</button>
+            <button type="button" className="min-h-10 cursor-pointer self-center text-sm font-bold text-ash hover:text-redtext" disabled={busy} onClick={() => remove(open)}>Delete photo</button>
           </div>
         )}
       </Sheet>
@@ -86,7 +86,7 @@ function FirstPhoto() {
       <div className="grid grid-cols-3 gap-2" aria-hidden="true">
         {["Day 1", "Week 4", "Week 12"].map((l, i) => (
           <div key={l} className={`stripes relative flex aspect-[3/4] items-center justify-center rounded ${i === 0 ? "border-2 border-dashed border-red" : "opacity-50"}`}>
-            <span className={i === 0 ? "text-red" : "text-faint"}><Icon d={ICONS.camera} size={26} /></span>
+            <span className={i === 0 ? "text-redtext" : "text-faint"}><Icon d={ICONS.camera} size={26} /></span>
             <span className="absolute inset-x-0 bottom-0 rounded-b bg-gradient-to-t from-black/80 px-2 pt-6 pb-1.5 text-xs font-bold text-white">{l}</span>
           </div>
         ))}
@@ -97,7 +97,7 @@ function FirstPhoto() {
       </div>
       <ul className="flex flex-col gap-2 text-sm text-body">
         {["Same spot, same light, same time of day", "Front, side and back — relaxed, not flexed", "Phone at chest height, a step back"].map((t) => (
-          <li key={t} className="flex gap-2.5"><span className="mt-0.5 text-red"><Icon d={ICONS.check} size={16} /></span>{t}</li>
+          <li key={t} className="flex gap-2.5"><span className="mt-0.5 text-redtext"><Icon d={ICONS.check} size={16} /></span>{t}</li>
         ))}
       </ul>
     </div>

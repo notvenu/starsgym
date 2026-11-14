@@ -17,7 +17,7 @@ export default async function PassPage({ params, searchParams }: PageProps<"/pas
   if (!pass) notFound();
 
   return (
-    <main className="min-h-dvh pb-20">
+    <main id="main" className="min-h-dvh pb-20">
       <SiteNav>
         <Link href={profile.role !== "member" ? "/admin" : "/dashboard"} className="btn-ghost">{profile.role !== "member" ? "Front desk" : "Dashboard"}</Link>
       </SiteNav>

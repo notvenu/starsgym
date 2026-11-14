@@ -46,7 +46,7 @@ export default function TermsPage() {
       <p>Photos you post to the Streak Wall are shown on our website for seven days. Only post photos you own and that show people who agreed to be in them. We may remove any post. We may photograph or film the gym for our website and social media; tell the desk if you don&apos;t want to appear.</p>
 
       <h2>Changes</h2>
-      <p>We may update these terms. The date at the top shows the latest version. Questions? <Link href="/contact" className="text-red hover:text-chalk">Contact us</Link>.</p>
+      <p>We may update these terms. The date at the top shows the latest version. Questions? <Link href="/contact" className="text-redtext hover:text-chalk">Contact us</Link>.</p>
     </LegalPage>
   );
 }

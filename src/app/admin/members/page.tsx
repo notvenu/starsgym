@@ -58,7 +58,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
   const [list, ref] = await Promise.all([
     allRows(() => supabase
       .from("profiles")
-      .select("*,checkins(session),subscriptions!subscriptions_user_id_fkey(id,status,starts_on,ends_on,plan_id)")
+      .select("id,full_name,phone,email,home_branch_id,role,gender,date_of_birth,age,emergency_contact,photo_path,created_at,checkins(session),subscriptions!subscriptions_user_id_fkey(id,status,starts_on,ends_on,plan_id)")
       .eq("checkins.day", today) // only today's visits
       .eq("subscriptions.status", "active") // paid plans only; pending/cancelled orders don't make anyone a member
       .order("created_at", { ascending: false })
@@ -167,18 +167,18 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
                       <span className="flex min-w-0 items-center gap-2">
                         <span className="truncate font-bold">{m.full_name || "—"}</span>
                         {m.role !== "member" && <span className="shrink-0 rounded bg-steel px-1.5 text-[11px] font-bold tracking-wider text-ash uppercase">{ROLE_LABEL[m.role]}</span>}
-                        {!m.photo_path && m.role === "member" && <span className="shrink-0 rounded border border-redline px-1.5 text-[11px] font-bold tracking-wider text-red uppercase">No photo</span>}
+                        {!m.photo_path && m.role === "member" && <span className="shrink-0 rounded border border-redline px-1.5 text-[11px] font-bold tracking-wider text-redtext uppercase">No photo</span>}
                       </span>
                       {m.phone && <span className="block truncate text-sm text-ash">{m.phone}</span>}
                       {m.checkins.length > 0 && (
-                        <span className="block text-xs font-bold tracking-wider text-red uppercase">In today: {m.checkins.map((c) => SESSION_LABEL[c.session] ?? c.session).join(" + ")}</span>
+                        <span className="block text-xs font-bold tracking-wider text-redtext uppercase">In today: {m.checkins.map((c) => SESSION_LABEL[c.session] ?? c.session).join(" + ")}</span>
                       )}
                     </span>
                   </Link>
                   {/* under the photo on phones, lined up with the name from sm up; the tag gives way (never the buttons) so they stay on one line */}
                   <span className="flex min-w-0 flex-1 pl-3 sm:pl-[4.5rem]">
                     {m.state === "active" ? (
-                      <span className={`truncate rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${daysLeft <= 7 ? "border-red text-red" : "border-redline bg-redwash"}`}>
+                      <span className={`truncate rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${daysLeft <= 7 ? "border-red text-redtext" : "border-redline bg-redwash"}`}>
                         {daysLeft <= 7 ? `${daysLeft}d left` : `Till ${shortDay(m.endsOn, today)}`}
                       </span>
                     ) : (

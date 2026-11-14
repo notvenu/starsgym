@@ -75,7 +75,7 @@ export default async function FollowUps({ searchParams }: PageProps<"/admin/foll
           <span className="block truncate text-sm text-ash">{item.sub}</span>
           <span className="block truncate text-xs">
             {note
-              ? <><b className={CLOSED.some((o) => note.detail?.startsWith(o)) ? "text-chalk" : "text-red"}>{note.detail}</b> <span className="text-ash">· {note.actor_name || "Desk"}, {when(note.at)}</span></>
+              ? <><b className={CLOSED.some((o) => note.detail?.startsWith(o)) ? "text-chalk" : "text-redtext"}>{note.detail}</b> <span className="text-ash">· {note.actor_name || "Desk"}, {when(note.at)}</span></>
               : <span className="text-ash">Not contacted yet</span>}
           </span>
         </span>
@@ -153,9 +153,9 @@ export default async function FollowUps({ searchParams }: PageProps<"/admin/foll
               {referrals.map((r) => (
                 <li key={r.id} className="flex flex-wrap items-center gap-3 px-3 py-3 sm:px-5">
                   <span className="min-w-0 flex-1 text-sm">
-                    <Link href={`/admin/members/${r.inviterId}`} className="font-bold hover:text-red">{r.inviter}</Link>
+                    <Link href={`/admin/members/${r.inviterId}`} className="font-bold hover:text-redtext">{r.inviter}</Link>
                     <span className="text-ash"> invited </span>
-                    <Link href={`/admin/members/${r.friendId}`} className="font-bold hover:text-red">{r.friend}</Link>
+                    <Link href={`/admin/members/${r.friendId}`} className="font-bold hover:text-redtext">{r.friend}</Link>
                     <span className="block text-xs text-ash">Signed up {when(r.at)} · {r.joined ? "bought a membership" : "no membership yet"}</span>
                   </span>
                   {r.rewarded

@@ -65,10 +65,27 @@ export async function proofUrls(subIds: string[]) {
   return new Map(subIds.filter((id) => urls.has(proofPath(id))).map((id) => [id, urls.get(proofPath(id))!]));
 }
 
+// Signed URLs are reused for 5 of their 10 minutes: a repeat page view skips the signing round trip, and the same URL
+// means the browser keeps the picture instead of downloading it again. Per server instance (a cold one just signs again).
+// ponytail: safe to share across users — a page only asks for paths it has already checked the visitor may see.
+const signed = new Map<string, { url: string; until: number }>();
+
 /** Signed URLs for many photos in one request: path → url. */
 export async function photoUrls(paths: (string | null | undefined)[], bucket = "faces") {
-  const list = [...new Set(paths.filter((p): p is string => !!p))];
-  if (!list.length) return new Map<string, string>();
-  const { data } = await adminDb().storage.from(bucket).createSignedUrls(list, 600);
-  return new Map((data ?? []).filter((d) => d.signedUrl && d.path).map((d) => [d.path!, d.signedUrl]));
+  const now = Date.now();
+  const out = new Map<string, string>();
+  const todo: string[] = [];
+  for (const p of new Set(paths.filter((p): p is string => !!p))) {
+    const hit = p.startsWith("payments/") ? undefined : signed.get(`${bucket}/${p}`); // a payment proof is replaced in place: never reuse its URL
+    if (hit && hit.until > now) out.set(p, hit.url);
+    else todo.push(p);
+  }
+  if (!todo.length) return out;
+  const { data } = await adminDb().storage.from(bucket).createSignedUrls(todo, 600);
+  if (signed.size > 5000) signed.clear();
+  for (const d of data ?? []) if (d.signedUrl && d.path) {
+    out.set(d.path, d.signedUrl);
+    if (!d.path.startsWith("payments/")) signed.set(`${bucket}/${d.path}`, { url: d.signedUrl, until: now + 300_000 });
+  }
+  return out;
 }

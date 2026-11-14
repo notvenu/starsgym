@@ -55,9 +55,9 @@ export default async function PaymentsPage() {
                 <span className="text-right font-bold md:order-4">{inr(p.amount_paise)}</span>
                 <span className="truncate text-body md:order-2">{planName(p.plans)}</span>
                 <span className="flex justify-end gap-3 font-bold md:order-6">
-                  {proofs.has(p.id) && <a href={proofs.get(p.id)} target="_blank" rel="noreferrer" className="text-ash hover:text-chalk">Proof</a>}
+                  {proofs.has(p.id) && <a href={proofs.get(p.id)} target="_blank" rel="noopener noreferrer" className="text-ash hover:text-chalk">Proof</a>}
                   <a href={`/pass/${p.id}/receipt`} download className="text-ash hover:text-chalk">Receipt</a>
-                  <Link href={`/pass/${p.id}`} className="text-red hover:text-chalk">Pass</Link>
+                  <Link href={`/pass/${p.id}`} className="text-redtext hover:text-chalk">Pass</Link>
                 </span>
                 <span className="col-span-2 text-xs text-ash md:col-span-1 md:order-3 md:text-sm">
                   {payMethod(p)}

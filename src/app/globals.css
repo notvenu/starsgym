@@ -11,12 +11,13 @@
   --color-steel: #1a1a1a;
   --color-line: #262626;
   --color-red: #e3141c;
+  --color-redtext: #f22d35; /* red as small text: the brand red is 4.1:1 on near-black, this clears 4.5:1 */
   --color-plate: #b8111a;
   --color-blood: #8c0c12;
   --color-chalk: #f4f2ee;
   --color-ash: #a3a3a3;
   --color-body: #cbcbcb;
-  --color-faint: #6b6b6b;
+  --color-faint: #8a8a8a;
   --color-panel: #0f0f0f;
   --color-strong: #3a3a3a;
   --color-redwash: #1a0b0c;
@@ -68,7 +69,7 @@ fieldset { min-inline-size: 0; }
 input:is([type="date"], [type="time"], [type="datetime-local"], [type="month"]) { min-width: 0; -webkit-appearance: none; appearance: none; }
 ::-webkit-date-and-time-value { text-align: left; }
 /* form validation (checkFields): the message under the field, and its box outlined in red */
-[data-error]::after { content: attr(data-error); display: block; margin-top: 0.375rem; font-size: 0.8125rem; font-weight: 600; color: var(--color-red); }
+[data-error]::after { content: attr(data-error); display: block; margin-top: 0.375rem; font-size: 0.8125rem; font-weight: 600; color: var(--color-redtext); }
 [data-error] :is(.field, input:not([type="radio"], [type="checkbox"], [type="file"]), select, textarea) { border-color: var(--color-red); }
 fieldset[data-error] label, [data-field][data-error] > div:first-of-type { border-color: var(--color-red); }
 /* a form's error box (ResultToast) gets a full line of its own, under the button row */
@@ -82,7 +83,7 @@ a, button, select, label, summary { touch-action: manipulation; }
 ::selection { background: var(--color-red); color: #fff; }
 
 @layer components {
-  .eyebrow { @apply font-label text-[15px] font-bold uppercase tracking-[0.24em] text-red; }
+  .eyebrow { @apply font-label text-[15px] font-bold uppercase tracking-[0.24em] text-redtext; }
   .label { @apply font-label text-sm font-bold uppercase tracking-[0.18em] text-ash; }
   .h-section { @apply font-display text-[clamp(52px,7vw,96px)] leading-[0.92] uppercase; }
   .wrap { @apply mx-auto w-full max-w-7xl px-4 sm:px-8; }
@@ -93,7 +94,7 @@ a, button, select, label, summary { touch-action: manipulation; }
   .card { @apply rounded-md border border-line bg-carbon; }
   .lift { @apply transition-[transform,border-color] duration-400 ease-lift hover:-translate-y-2 hover:border-red; }
 
-  .field { @apply min-h-11 w-full rounded border border-line bg-ink px-3.5 text-base text-chalk outline-none placeholder:text-[#6b6b6b] focus:border-red; }
+  .field { @apply min-h-11 w-full rounded border border-line bg-ink px-3.5 text-base text-chalk outline-none placeholder:text-faint focus:border-red; }
 
   /* plate-stripe fill: placeholders and empty photo slots */
   .stripes { background: repeating-linear-gradient(135deg, var(--color-panel) 0 18px, var(--color-steel) 18px 36px); }

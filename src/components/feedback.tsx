@@ -122,7 +122,7 @@ export function Feedback() {
             <p className="min-w-0 flex-1 py-px font-semibold">{t.text}</p>
             {t.undo && (
               <button type="button" onClick={() => (t.undo!(), setToasts((l) => l.filter((x) => x.id !== t.id)), toast("Undone"))}
-                className="-my-1 min-h-8 shrink-0 cursor-pointer rounded-full border border-red px-3 text-xs font-bold tracking-wider text-red uppercase hover:bg-red hover:text-white">
+                className="-my-1 min-h-8 shrink-0 cursor-pointer rounded-full border border-red px-3 text-xs font-bold tracking-wider text-redtext uppercase hover:bg-red hover:text-white">
                 Undo
               </button>
             )}

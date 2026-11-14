@@ -45,7 +45,7 @@ export default async function StaffLogPage({ searchParams }: PageProps<"/admin/l
                   <span className="w-16 shrink-0 text-ash tabular-nums">{time(r.at)}</span>
                   <span className="font-bold">{r.actor_name || "Someone"}</span>
                   <span>{r.action}</span>
-                  {r.member_name && (r.member_id ? <Link href={`/admin/members/${r.member_id}`} className="font-semibold text-red hover:text-chalk">{r.member_name}</Link> : <span className="font-semibold">{r.member_name}</span>)}
+                  {r.member_name && (r.member_id ? <Link href={`/admin/members/${r.member_id}`} className="font-semibold text-redtext hover:text-chalk">{r.member_name}</Link> : <span className="font-semibold">{r.member_name}</span>)}
                   {(r.detail || r.branches) && <span className="basis-full pl-[4.75rem] text-ash max-sm:pl-0">{[r.detail, r.branches?.name].filter(Boolean).join(" · ")}</span>}
                 </li>
               ))}

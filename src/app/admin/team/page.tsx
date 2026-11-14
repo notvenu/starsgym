@@ -110,7 +110,7 @@ export default async function TeamPage({ searchParams }: PageProps<"/admin/team"
                 <ul className="divide-y divide-line">
                   {g.list.map((c) => (
                     <li key={c.id} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center">
-                      <Link href={`/admin/members/${c.user_id}`} className="min-w-0 flex-1 hover:text-red">
+                      <Link href={`/admin/members/${c.user_id}`} className="min-w-0 flex-1 hover:text-redtext">
                         <span className="block truncate font-bold">{c.profiles?.full_name || "Member"}</span>
                         <span className="block truncate text-sm text-ash">{[planName(c.plans), `till ${prettyDay(c.ends_on)}`, inr(c.amount_paise), c.profiles?.phone].filter(Boolean).join(" · ")}</span>
                       </Link>

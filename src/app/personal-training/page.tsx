@@ -42,7 +42,7 @@ export default async function PersonalTrainingPage() {
       <section className="wrap grid gap-5 py-20 md:grid-cols-3">
         {STEPS.map(([title, body], i) => (
           <div key={title} className="lift flex flex-col gap-4 rounded-md border border-line bg-carbon p-8" data-reveal style={{ transitionDelay: `${i * 80}ms` }}>
-            <span className="font-display text-6xl text-red">0{i + 1}</span>
+            <span className="font-display text-6xl text-redtext">0{i + 1}</span>
             <h2 className="font-display text-4xl uppercase">{title}</h2>
             <p className="leading-relaxed text-body">{body}</p>
           </div>
@@ -88,7 +88,7 @@ export default async function PersonalTrainingPage() {
           <details key={q} className="group rounded-md border border-line bg-carbon open:border-red">
             <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-6 text-lg font-bold [&::-webkit-details-marker]:hidden">
               {q}
-              <span aria-hidden="true" className="font-display text-3xl text-red transition-transform group-open:rotate-45">+</span>
+              <span aria-hidden="true" className="font-display text-3xl text-redtext transition-transform group-open:rotate-45">+</span>
             </summary>
             <p className="px-6 pb-6 leading-relaxed text-body">{a}</p>
           </details>

@@ -18,7 +18,7 @@ export default async function WelcomePage({ searchParams }: PageProps<"/welcome"
   if (profile?.gender && profile.photo_path && profile.experience !== null) redirect(next);
 
   return (
-    <main className="flex min-h-dvh flex-col items-center gap-8 px-4 py-10">
+    <main id="main" className="flex min-h-dvh flex-col items-center gap-8 px-4 py-10">
       <Logo size={72} />
       <div className="w-full max-w-md">
         <p className="eyebrow">Almost there</p>

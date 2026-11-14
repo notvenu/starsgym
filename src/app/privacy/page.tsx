@@ -44,13 +44,13 @@ export default async function PrivacyPage() {
       <p>Account and membership records are kept while you&apos;re a member and for as long as tax and accounting law requires afterwards. Streak Wall posts stop showing after seven days; you can delete them any time.</p>
 
       <h2>Your rights</h2>
-      <p>You can ask to see, correct or delete your personal data, or withdraw consent for optional uses such as Streak Wall posts. Update most details yourself on your dashboard, or contact us{email ? <> at <a href={`mailto:${email}`} className="text-red hover:text-chalk">{email}</a></> : null}.</p>
+      <p>You can ask to see, correct or delete your personal data, or withdraw consent for optional uses such as Streak Wall posts. Update most details yourself on your dashboard, or contact us{email ? <> at <a href={`mailto:${email}`} className="text-redtext hover:text-chalk">{email}</a></> : null}.</p>
 
       <h2>Cookies</h2>
       <p>We only use cookies needed to keep you signed in. There are no advertising or tracking cookies.</p>
 
       <h2>Contact</h2>
-      <p>Questions or complaints about your data: <Link href="/contact" className="text-red hover:text-chalk">contact us</Link> and we&apos;ll reply within 30 days.</p>
+      <p>Questions or complaints about your data: <Link href="/contact" className="text-redtext hover:text-chalk">contact us</Link> and we&apos;ll reply within 30 days.</p>
     </LegalPage>
   );
 }

@@ -76,7 +76,7 @@ export function CheckInPanel(props: {
         <b className="block text-chalk">{props.covered.days === 1 ? "Your plan ends today" : `Your plan ends in ${props.covered.days} days`}</b>
         <span className="text-ash">Renew now to keep your {streak}-day streak going.</span>
       </span>
-      <span className="shrink-0 font-bold text-red">Renew →</span>
+      <span className="shrink-0 font-bold text-redtext">Renew →</span>
     </a>
   );
 
@@ -85,7 +85,7 @@ export function CheckInPanel(props: {
       <section className="flex flex-col gap-5 rounded-lg border border-line bg-panel p-5 sm:p-9">
         <div className="flex items-center justify-between gap-3">
           <p className="flex items-center gap-2 font-label text-sm font-bold tracking-widest text-ash uppercase"><Check /> Checked in</p>
-          <p className="font-label text-sm font-bold tracking-widest text-red uppercase">{streak}-day streak</p>
+          <p className="font-label text-sm font-bold tracking-widest text-redtext uppercase">{streak}-day streak</p>
         </div>
         {renewNudge}
         <TodayLog plan={props.workout!.plan} logs={props.workout!.logs} today={today} level={props.workout!.level} onSkip={() => setSkipped(true)} />
@@ -126,7 +126,7 @@ export function CheckInPanel(props: {
             <span className="block text-xs text-ash">Valid till {props.covered.till}{props.covered.days <= 7 && " · renew now"}</span>
           </span>
           <span className="shrink-0 text-right leading-none">
-            <span className={`font-display text-4xl ${props.covered.days <= 7 ? "text-red" : ""}`}>{props.covered.days}</span>
+            <span className={`font-display text-4xl ${props.covered.days <= 7 ? "text-redtext" : ""}`}>{props.covered.days}</span>
             <span className="label ml-1.5 text-xs">day{props.covered.days === 1 ? "" : "s"} left</span>
           </span>
         </a>
@@ -179,7 +179,7 @@ export function CheckInPanel(props: {
           Today:
           {(["morning", "ladies", "evening"] as const).filter((v) => visits.includes(v)).map((v) => (
             <span key={v} className="inline-flex items-center gap-1 rounded-full border border-redline bg-redwash px-3 py-1 font-label font-bold tracking-wider text-chalk uppercase">
-              <Check className="text-red" /> {v === "ladies" ? "Ladies' hours" : v}
+              <Check className="text-redtext" /> {v === "ladies" ? "Ladies' hours" : v}
             </span>
           ))}
         </p>
@@ -266,7 +266,7 @@ export function ProfileEditor({ profile, photo, branches, request }: { profile: 
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} aria-label="Edit profile"
-        className="relative flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-strong px-4 text-sm font-bold tracking-wider uppercase transition-colors hover:border-red hover:text-red">
+        className="relative flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-strong px-4 text-sm font-bold tracking-wider uppercase transition-colors hover:border-red hover:text-redtext">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
         Edit
         {waiting && <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full border-2 border-ink bg-red" title="Change pending" />}
@@ -313,7 +313,7 @@ function ProfileBody({ profile, photo, branches, request }: { profile: Profile; 
                 {open.photoUrl && <Zoomable src={open.photoUrl} alt="Requested photo" className="size-11 rounded-full border-2 border-red object-cover" />}
                 <p className="min-w-0 text-sm"><b className="block text-chalk">Waiting for the desk</b><span className="text-ash">{asked}</span></p>
               </div>
-              <button type="button" disabled={pending} onClick={() => start(async () => toastResult(await cancelRequest()))} className="cursor-pointer text-sm font-bold text-ash hover:text-red">Cancel</button>
+              <button type="button" disabled={pending} onClick={() => start(async () => toastResult(await cancelRequest()))} className="cursor-pointer text-sm font-bold text-ash hover:text-redtext">Cancel</button>
             </div>
           ) : asking ? (
             <RequestForm profile={profile} branches={branches} onDone={() => setAsking(false)} />
@@ -456,12 +456,12 @@ export function RenewSheet({ plans, offers, branches, homeBranch, current, admis
             {plan ? (
               <div className="flex flex-col gap-1 rounded-md border border-line bg-panel p-4">
                 <Price paise={plan.price_paise} offer={offer} days={plan.duration_days} size="text-5xl" />
-                {offer && <p className="text-sm text-red">{offer.title} applied.</p>}
+                {offer && <p className="text-sm text-redtext">{offer.title} applied.</p>}
                 {admissionPaise > 0 && <p className="text-sm text-body">+ {inr(admissionPaise)} one-time admission (first membership only)</p>}
                 <p className="text-sm text-ash">{current ? "Starts the day after your current plan ends — renewing early never wastes days." : "Starts the day it's confirmed."}</p>
               </div>
             ) : (
-              <p className="text-red">That plan isn&apos;t available.</p>
+              <p className="text-redtext">That plan isn&apos;t available.</p>
             )}
             {branches.length > 1 && (
               <label className="flex flex-col gap-1.5">

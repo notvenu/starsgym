@@ -206,7 +206,7 @@ export function PhotoCapture({ current, label = "Photo", required, back }: { cur
         </div>
       )}
       {preview && !error && <p role="status" className="text-sm text-ash">Looks good — your face is clear.</p>}
-      {error && <p role="alert" className="text-sm text-red">{error}</p>}
+      {error && <p role="alert" className="text-sm text-redtext">{error}</p>}
     </div>
   );
 }

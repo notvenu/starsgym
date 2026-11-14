@@ -17,7 +17,7 @@ export default async function MemberLayout({ children }: LayoutProps<"/dashboard
   if (profile.role !== "member") redirect("/admin"); // staff and the owner work from the front desk
 
   return (
-    <main className="min-h-dvh pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-20">
+    <main id="main" className="min-h-dvh pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-20">
       <AccountPrompt />
       <Nav>
         <HeaderTabs />

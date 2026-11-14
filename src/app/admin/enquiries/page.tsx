@@ -25,7 +25,7 @@ export default async function EnquiriesPage() {
         <span className="rounded-full border border-line px-2 py-0.5 text-xs font-bold tracking-wider text-ash uppercase">{TOPIC[e.topic] ?? e.topic}</span>
       </p>
       <p className="text-sm">
-        <a href={`tel:${e.phone}`} className="text-red hover:text-chalk">{e.phone}</a>
+        <a href={`tel:${e.phone}`} className="text-redtext hover:text-chalk">{e.phone}</a>
         {e.email && <> · <a href={`mailto:${e.email}`} className="text-ash hover:text-chalk">{e.email}</a></>}
         <span className="text-ash"> · {e.branches?.name ?? "Any branch"} · {new Date(e.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>
       </p>

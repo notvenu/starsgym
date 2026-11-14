@@ -58,7 +58,7 @@ export function ProofInput({ required, hint }: { required?: boolean; hint?: stri
         </label>
       </div>
       <span className="text-xs text-ash">{hint ?? "Screenshot of the UPI payment, or the paper receipt."}</span>
-      {error && <p role="alert" className="text-sm text-red">{error}</p>}
+      {error && <p role="alert" className="text-sm text-redtext">{error}</p>}
     </div>
   );
 }
@@ -94,7 +94,7 @@ export function ProofCheck({ src, amountPaise, createdAt, upiId }: { src: string
 
   if (!result) return <p role="status" className="text-sm text-ash">Checking the screenshot… {progress ? `${progress}%` : ""}</p>;
   if (result === "error") return <p className="text-sm text-ash">Couldn&apos;t read the screenshot — check it by eye.</p>;
-  const tone = result.verdict === "looks right" ? "text-[#4ade80] border-[#4ade80]/40" : result.verdict === "check carefully" ? "text-[#fbbf24] border-[#fbbf24]/40" : "text-red border-redline";
+  const tone = result.verdict === "looks right" ? "text-[#4ade80] border-[#4ade80]/40" : result.verdict === "check carefully" ? "text-[#fbbf24] border-[#fbbf24]/40" : "text-redtext border-redline";
   return (
     <div className={`flex flex-col gap-3 rounded-md border bg-ink p-3 ${tone}`}>
       <div className="flex items-center justify-between gap-3">
@@ -104,7 +104,7 @@ export function ProofCheck({ src, amountPaise, createdAt, upiId }: { src: string
       <ul className="grid gap-1 text-sm text-body">
         {result.checks.map((c) => (
           <li key={c.label} className="flex items-start gap-2">
-            <span aria-hidden="true" className={c.ok ? "text-[#4ade80]" : "text-red"}>{c.ok ? "✓" : "✗"}</span>
+            <span aria-hidden="true" className={c.ok ? "text-[#4ade80]" : "text-redtext"}>{c.ok ? "✓" : "✗"}</span>
             <span className="min-w-0"><span className="sr-only">{c.ok ? "Matches: " : "Not found: "}</span>{c.label}</span>
           </li>
         ))}

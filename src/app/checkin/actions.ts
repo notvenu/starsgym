@@ -25,9 +25,10 @@ export async function doorCheckIn(key: string, by: "me" | "phone" | "ref", value
   const supabase = await db();
   // phone / bill number: anyone at the door can type one, so it's rate-limited and only the server may run it (0017)
   if (by !== "me" && !(await allow([`door:ip:${await clientIp()}`], 40, 600, true))) return { error: SLOW_DOWN };
-  // the entrance link is a fixed URL — a saved copy works from anywhere — so the phone doing the check-in must be at the branch
-  const { data: door } = await adminDb().from("branch_door_keys").select("branches(lat,lng,radius_m)").eq("key", key).maybeSingle();
-  const away = atBranch(door?.branches as unknown as Pick<Branch, "lat" | "lng" | "radius_m"> | null, spot);
+  // the entrance link is a fixed URL — a saved copy works from anywhere — so a branch can require the phone to be there (off by default)
+  const { data: door } = await adminDb().from("branch_door_keys").select("branches(lat,lng,radius_m,door_location)").eq("key", key).maybeSingle();
+  const b = door?.branches as unknown as Pick<Branch, "lat" | "lng" | "radius_m" | "door_location"> | null;
+  const away = b?.door_location ? atBranch(b, spot) : null;
   if (away) return { error: away };
   const { data, error } = await (by === "me" ? supabase : adminDb()).rpc("check_in_at_door", {
     p_key: key,

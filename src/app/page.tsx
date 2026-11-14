@@ -45,7 +45,7 @@ export default async function Home() {
   ].filter((f): f is { value: string; label: string } => !!f);
 
   return (
-    <main>
+    <main id="main">
       <JsonLd data={gymGraph(branches, settings, plans)} />
       {/* holidays and offers rotate in the top bar (a strip here would hide behind the fixed header) */}
       <Nav overlay status={<BranchTicker branches={branches} holidays={holidays} offers={offers} />} />
@@ -103,7 +103,7 @@ export default async function Home() {
                   <span aria-hidden="true">→</span>
                 </Link>
               )}
-              <p className="font-display text-[clamp(30px,3.2vw,48px)] leading-none uppercase">Earn your <span className="text-red">star.</span></p>
+              <p className="font-display text-[clamp(30px,3.2vw,48px)] leading-none uppercase">Earn your <span className="text-redtext">star.</span></p>
               <p className="text-base leading-relaxed text-body sm:text-lg">
                 Gym, cardio and personal training{branches.length ? ` in ${areaLine(branches)}` : ""}. Buy online, check in at the door, climb the streak wall.
               </p>
@@ -125,10 +125,10 @@ export default async function Home() {
       {/* facts strip: hours (morning / evening) then the other facts. Phones: hours across the top, the rest side by side.
           Desktop: equal columns, each block centred in its column. */}
       <section aria-label="At a glance" className="border-y border-line bg-panel">
-        <dl className={`wrap grid grid-cols-2 ${["lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4"][facts.length + (hours.windows.length ? 1 : 0) - 1] ?? "lg:grid-cols-4"}`}>
+        <div className={`wrap grid grid-cols-2 ${["lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4"][facts.length + (hours.windows.length ? 1 : 0) - 1] ?? "lg:grid-cols-4"}`}>
           {hours.windows.length > 0 && (
             <div className="col-span-2 flex justify-center border-b border-line py-7 lg:col-span-1 lg:border-b-0 lg:py-9">
-              <div className="flex flex-col gap-2">
+              <dl className="flex flex-col gap-2">
                 <dt className="label flex items-center gap-2"><span className="size-1.5 rounded-full bg-red" />Open {hours.days}</dt>
                 {hours.windows.map((w, i) => (
                   <dd key={w} className="flex items-center gap-4">
@@ -136,19 +136,19 @@ export default async function Home() {
                     <span className="font-display text-[clamp(28px,3vw,40px)] leading-none tabular-nums">{w}</span>
                   </dd>
                 ))}
-              </div>
+              </dl>
             </div>
           )}
           {facts.map((f, i) => (
             <div key={f.label}
               className={`flex justify-center py-7 lg:border-l lg:border-line lg:py-9 ${i % 2 ? "border-l border-line" : ""} ${i > 1 ? "max-lg:border-t max-lg:border-line" : ""} ${i === facts.length - 1 && i % 2 === 0 ? "col-span-2 lg:col-span-1" : ""}`}>
-              <div className="flex flex-col justify-center gap-1.5">
+              <dl className="flex flex-col justify-center gap-1.5">
                 <dt className="label order-2">{f.label}</dt>
                 <dd className="order-1 font-display text-[clamp(40px,4vw,56px)] leading-none">{f.value}</dd>
-              </div>
+              </dl>
             </div>
           ))}
-        </dl>
+        </div>
       </section>
 
       {/* running offers, big — the top bar only rotates them */}
@@ -165,7 +165,7 @@ export default async function Home() {
                 className="object-cover can-hover:grayscale-[40%] transition-[transform,filter] duration-700 ease-lift group-hover:scale-105 group-hover:grayscale-0" />
               <div className="absolute inset-0 bg-linear-to-t from-ink via-ink/30 to-transparent" />
               <div className="relative flex flex-col gap-2 p-6">
-                <span className="font-label text-sm font-bold tracking-[0.2em] text-red">0{i + 1}</span>
+                <span className="font-label text-sm font-bold tracking-[0.2em] text-redtext">0{i + 1}</span>
                 <h3 className="font-display text-[40px] leading-none uppercase">{p.title}</h3>
                 <p className="max-w-[26ch] text-[15px] leading-snug text-body">{p.line}</p>
                 <span className="mt-3 flex items-center gap-2 text-sm font-bold tracking-[0.1em] uppercase">
@@ -258,7 +258,7 @@ function Head({ n, eyebrow, title, aside, href, cta }: { n: string; eyebrow: str
     <div className="flex flex-wrap items-end justify-between gap-6" data-reveal>
       <div className="flex flex-col gap-4">
         <p className="flex items-center gap-3 font-label text-sm font-bold tracking-[0.24em] uppercase">
-          <span className="text-red">{n}</span>
+          <span className="text-redtext">{n}</span>
           <span className="h-px w-10 bg-line" />
           <span className="text-ash">{eyebrow}</span>
         </p>
@@ -286,7 +286,7 @@ function Coach({ t, i }: { t: SiteItem; i: number }) {
       )}
       <div className="absolute inset-0 bg-linear-to-t from-ink via-ink/20 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-5">
-        <p className="label text-red">{t.subtitle}</p>
+        <p className="label text-redtext">{t.subtitle}</p>
         <h3 className="font-display text-[clamp(26px,2.6vw,36px)] leading-none uppercase">{t.title}</h3>
         {t.body && (
           <p className="grid grid-rows-[0fr] text-sm leading-snug text-body transition-[grid-template-rows] duration-500 ease-lift group-hover:grid-rows-[1fr] max-lg:hidden">

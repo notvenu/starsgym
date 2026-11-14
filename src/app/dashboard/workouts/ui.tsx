@@ -133,7 +133,7 @@ export function Workouts({ plan, level, logs, today, checkedIn, shared = null }:
                 <span className="block truncate font-bold">{l.title.replace(`${plan.name} · `, "")}</span>
                 <span className="block text-sm text-ash">{summary(l)}</span>
               </span>
-              <span className="shrink-0 text-sm font-bold text-red">View</span>
+              <span className="shrink-0 text-sm font-bold text-redtext">View</span>
             </button>
           ))}
           <p className="text-sm text-ash">Next time: <b className="text-chalk">{day.name}</b></p>
@@ -173,7 +173,7 @@ export function Workouts({ plan, level, logs, today, checkedIn, shared = null }:
           <ul className="divide-y divide-line">
             {past.slice(0, shown).map((l) => (
               <li key={l.id}>
-                <button type="button" className="flex w-full cursor-pointer items-center justify-between gap-3 py-2.5 text-left hover:text-red" onClick={() => setLog({ value: l, id: l.id })}>
+                <button type="button" className="flex w-full cursor-pointer items-center justify-between gap-3 py-2.5 text-left hover:text-redtext" onClick={() => setLog({ value: l, id: l.id })}>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-bold">{plan ? l.title.replace(`${plan.name} · `, "") : l.title}</span>
                     <span className="block text-xs text-ash">{summary(l)}</span>
@@ -273,7 +273,7 @@ function DayChoice({ open, plan, sched, onPick, onClose }: { open: boolean; plan
         <span className="block font-display text-3xl uppercase">{plan.days[i].name}</span>
         <span className="block text-sm text-ash">{hint}</span>
       </span>
-      <span aria-hidden="true" className="text-red">→</span>
+      <span aria-hidden="true" className="text-redtext">→</span>
     </button>
   );
   return (
@@ -299,7 +299,7 @@ function Stepper({ label, value, step, onChange }: { label: string; value: numbe
       <span className="label">{label}</span>
       <div className="flex items-center gap-2">
         <button type="button" className={btn} aria-label={`Less ${label}`} onClick={() => onChange(Math.max(0, round2(value - step)))}>−</button>
-        <input className="w-20 bg-transparent text-center font-display text-5xl tabular-nums outline-none focus:text-red" type="number" inputMode="decimal" min={0} step="any"
+        <input className="w-20 bg-transparent text-center font-display text-5xl tabular-nums outline-none focus:text-redtext" type="number" inputMode="decimal" min={0} step="any"
           aria-label={label} placeholder="0" value={value || ""} onChange={(e) => onChange(Number(e.target.value))} />
         <button type="button" className={btn} aria-label={`More ${label}`} onClick={() => onChange(round2(value + step))}>+</button>
       </div>
@@ -412,7 +412,7 @@ function GuidedLog({ initial, today, busy, onSave }: { initial: Log; today: stri
             <div className="flex items-center justify-between gap-3">
               <p className="label">Exercise {p.i + 1} of {exs.length}</p>
               {exs.length > 1 && (
-                <button type="button" aria-expanded={switching} className="min-h-9 cursor-pointer text-sm font-bold text-red hover:text-chalk" onClick={() => setSwitching(!switching)}>
+                <button type="button" aria-expanded={switching} className="min-h-9 cursor-pointer text-sm font-bold text-redtext hover:text-chalk" onClick={() => setSwitching(!switching)}>
                   {switching ? "Cancel" : "Switch ⇅"}
                 </button>
               )}
@@ -530,11 +530,11 @@ function SplitList({ level, current, busy, onPick, onCustom }: { level: Level; c
             <li key={split.key}>
               <button type="button" disabled={busy} onClick={() => onPick(s)} className={`${row} ${top ? "border-red" : "border-line"}`}>
                 <span className="min-w-0">
-                  {top && <span className="block font-label text-xs font-bold tracking-widest text-red uppercase">Recommended</span>}
+                  {top && <span className="block font-label text-xs font-bold tracking-widest text-redtext uppercase">Recommended</span>}
                   <span className="block font-bold">{s.name}{s.name === current && <span className="font-normal text-ash"> · current</span>}</span>
                   <span className="block text-sm text-ash">{s.days.length} workouts · {s.days[0].exercises.length} exercises each</span>
                 </span>
-                <span aria-hidden="true" className="text-red">→</span>
+                <span aria-hidden="true" className="text-redtext">→</span>
               </button>
             </li>
           );
@@ -545,7 +545,7 @@ function SplitList({ level, current, busy, onPick, onCustom }: { level: Level; c
               <span className="block font-bold">Build your own</span>
               <span className="block text-sm text-ash">Start empty, add from the exercise list</span>
             </span>
-            <span aria-hidden="true" className="text-red">→</span>
+            <span aria-hidden="true" className="text-redtext">→</span>
           </button>
         </li>
       </ul>
@@ -582,7 +582,7 @@ function ExercisePicker({ onPick }: { onPick: (name: string) => void }) {
       </div>
       <ul className="flex max-h-60 flex-col overflow-y-auto overscroll-contain">
         {q.trim() && !found.some(([, n]) => n.toLowerCase() === query) && (
-          <li><button type="button" className="w-full cursor-pointer rounded px-2 py-2.5 text-left text-sm font-bold text-red hover:bg-steel" onClick={() => pick(q.trim())}>+ Add &quot;{q.trim()}&quot;</button></li>
+          <li><button type="button" className="w-full cursor-pointer rounded px-2 py-2.5 text-left text-sm font-bold text-redtext hover:bg-steel" onClick={() => pick(q.trim())}>+ Add &quot;{q.trim()}&quot;</button></li>
         )}
         {found.map(([g, n]) => (
           <li key={g + n}>
@@ -604,7 +604,7 @@ function Footer({ busy, label, existing, onShare, onDelete }: { busy: boolean; l
       {existing && (
         <div className={`grid gap-2 ${onShare ? "grid-cols-2" : ""}`}>
           {onShare && <button type="button" className="btn-ghost" onClick={onShare}>Share</button>}
-          <button type="button" className="btn-ghost hover:text-red" disabled={busy} onClick={onDelete}>Delete</button>
+          <button type="button" className="btn-ghost hover:text-redtext" disabled={busy} onClick={onDelete}>Delete</button>
         </div>
       )}
     </div>
@@ -619,7 +619,7 @@ const MoveButton = ({ dir, label, disabled, onClick }: { dir: "up" | "down"; lab
 );
 
 const RemoveButton = ({ label, onClick }: { label: string; onClick: () => void }) => (
-  <button type="button" aria-label={label} className="flex size-10 shrink-0 cursor-pointer items-center justify-center text-faint hover:text-red" onClick={onClick}>
+  <button type="button" aria-label={label} className="flex size-10 shrink-0 cursor-pointer items-center justify-center text-faint hover:text-redtext" onClick={onClick}>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
   </button>
 );
@@ -740,7 +740,7 @@ function LogEditor({ initial, today, busy, existing, onSave, onShare, onDelete }
               </div>
             ))}
             <div className="flex gap-5 pl-7 text-sm font-bold">
-              <button type="button" className="min-h-9 cursor-pointer text-red hover:text-chalk" onClick={() => edit((d) => void d.exercises[i].sets.push({ ...(d.exercises[i].sets.at(-1) ?? { kg: 0, reps: 10 }) }))}>+ Set</button>
+              <button type="button" className="min-h-9 cursor-pointer text-redtext hover:text-chalk" onClick={() => edit((d) => void d.exercises[i].sets.push({ ...(d.exercises[i].sets.at(-1) ?? { kg: 0, reps: 10 }) }))}>+ Set</button>
               {/* removing the last set removes the exercise */}
               <button type="button" className="min-h-9 cursor-pointer text-ash hover:text-chalk" onClick={() => edit((d) => void (d.exercises[i].sets.length > 1 ? d.exercises[i].sets.pop() : d.exercises.splice(i, 1)))}>
                 {ex.sets.length > 1 ? "− Set" : "Remove"}

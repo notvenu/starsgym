@@ -43,9 +43,9 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
       <div className="min-w-0 flex-1">
         <p className="font-bold">{title}</p>
         <p className="text-sm text-ash">{meta}</p>
-        {ask && <p className="mt-1 text-sm font-semibold text-red">Discount request · {ask}</p>}
+        {ask && <p className="mt-1 text-sm font-semibold text-redtext">Discount request · {ask}</p>}
         {proof && !paying && (
-          <a href={proof} target="_blank" rel="noreferrer" className="mt-2 flex w-fit items-center gap-3 text-sm font-bold text-chalk hover:text-red">
+          <a href={proof} target="_blank" rel="noopener noreferrer" className="mt-2 flex w-fit items-center gap-3 text-sm font-bold text-chalk hover:text-redtext">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={proof} alt="" className="size-11 shrink-0 rounded-md border border-red object-cover" />
             Payment screenshot sent · check it
@@ -73,7 +73,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
             <button type="button" onClick={() => setEditing(false)} className="btn-ghost min-h-10 px-3 text-xs">Close</button>
           </form>
         ) : (
-          <button type="button" onClick={() => setEditing(true)} className="mt-1 cursor-pointer text-sm font-bold text-red hover:text-chalk">Change price</button>
+          <button type="button" onClick={() => setEditing(true)} className="mt-1 cursor-pointer text-sm font-bold text-redtext hover:text-chalk">Change price</button>
         ))}
         <Status state={state} />
         {paying && <MarkPaidForm id={id} cash={method === "cash"} sent={proof} amountPaise={amountPaise} createdAt={createdAt} upiId={upiId} onClose={() => setPaying(false)} />}
@@ -110,7 +110,7 @@ function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, upiId, onClose }
     <form noValidate onSubmit={keepFields(action)} className="mt-3 flex flex-col gap-3 rounded-md border border-line bg-panel p-3">
       <input type="hidden" name="id" value={id} />
       {sent && (
-        <a href={sent} target="_blank" rel="noreferrer" className="flex flex-col gap-2">
+        <a href={sent} target="_blank" rel="noopener noreferrer" className="flex flex-col gap-2">
           <span className="label">Member&apos;s screenshot</span>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={sent} alt="Payment screenshot the member sent" className="max-h-80 w-full rounded-md border border-line bg-ink object-contain" />
@@ -407,7 +407,7 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
               <label className="flex flex-col gap-1.5 sm:w-64">
                 <span className="label">Number of days</span>
                 <input type="number" inputMode="numeric" min={CUSTOM_DAYS.min} max={CUSTOM_DAYS.max} step="1" value={customText} onChange={(e) => setCustomText(e.target.value)} className="field font-bold" />
-                <span className={`text-xs ${customOk ? "text-ash" : "text-red"}`}>
+                <span className={`text-xs ${customOk ? "text-ash" : "text-redtext"}`}>
                   {customOk ? `Priced from the ${TRACKS[track]} plans + ${markup}% short-stay markup, never above the next full plan.` : `${CUSTOM_DAYS.min}–${CUSTOM_DAYS.max} days.`}
                 </span>
               </label>
@@ -456,7 +456,7 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
               // a trainer with their own fee (Team page) prices it; otherwise the standard PT price, offer applied
               <PtFee key={`${ptPlan.id}-${trainerId}`} standard={fee ? trainerFee(fee, ptPlan.duration_days) : discounted(ptPlan.price_paise, bestOffer(offers, ptPlan.track, ptPlan.duration_days), ptPlan.duration_days)} onTotal={setPtTotal} />
             ) : (
-              <p className="text-red">No personal training price for that length — set it on the Pricing page.</p>
+              <p className="text-redtext">No personal training price for that length — set it on the Pricing page.</p>
             )}
             <input type="hidden" name="pt_plan_id" value={ptPlan?.id ?? ""} />
           </div>
@@ -472,7 +472,7 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
           // New members: blank = today
           <StartDate initial={startOn} />
         )}
-        {kind !== "none" && kind !== "pt" && !plan && <p className="text-red">That plan isn&apos;t available.</p>}
+        {kind !== "none" && kind !== "pt" && !plan && <p className="text-redtext">That plan isn&apos;t available.</p>}
         <input type="hidden" name="plan_id" value={plan?.id ?? ""} />
       </Step>
 
@@ -565,7 +565,7 @@ function StartDate({ initial }: { initial?: string }) {
             aria-label="New start date"
             className="field"
           />
-          {draft && !ok && <p className="text-xs text-red">Pick a day within the last 3 months or up to 60 days ahead.</p>}
+          {draft && !ok && <p className="text-xs text-redtext">Pick a day within the last 3 months or up to 60 days ahead.</p>}
           <div className="flex gap-2">
             <button type="button" onClick={save} disabled={!ok} className="btn-red min-h-10 flex-1 px-4 text-xs">Save date</button>
             <button type="button" onClick={() => setDraft(null)} className="btn-ghost min-h-10 flex-1 px-4 text-xs">Cancel</button>
@@ -598,7 +598,7 @@ function NegotiatedPrice({ standard, list, admission, onTotal }: { standard: num
   return (
     <div className="flex flex-col gap-3 rounded-md border border-line bg-panel p-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {money("Plan price", "price", price, setPrice, changed ? <span className="text-red">Negotiated · standard {inr(standard)}</span> : standard < list ? <>Offer applied · list {inr(list)}</> : "Change it if you've agreed a different price")}
+        {money("Plan price", "price", price, setPrice, changed ? <span className="text-redtext">Negotiated · standard {inr(standard)}</span> : standard < list ? <>Offer applied · list {inr(list)}</> : "Change it if you've agreed a different price")}
         {admission !== null && money("Admission", "admission", fee, setFee, "Only charged on their first membership · 0 = waived")}
       </div>
       <p className="flex items-baseline justify-between border-t border-line pt-3">
@@ -622,7 +622,7 @@ function PtFee({ standard, onTotal }: { standard: number; onTotal: (paise: numbe
         <span className="pl-3 text-ash">₹</span>
         <input name="pt_price" type="number" inputMode="decimal" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} className="min-h-11 w-full min-w-0 bg-transparent px-2 font-bold text-chalk outline-none" />
       </span>
-      <span className="text-xs text-ash">{paise !== standard ? <span className="text-red">Negotiated · standard {inr(standard)}</span> : "On top of the plan · no admission on PT"}</span>
+      <span className="text-xs text-ash">{paise !== standard ? <span className="text-redtext">Negotiated · standard {inr(standard)}</span> : "On top of the plan · no admission on PT"}</span>
     </label>
   );
 }
@@ -631,7 +631,7 @@ function Step({ n, title, children }: { n: string; title: string; children: Reac
   return (
     <fieldset className="flex flex-col gap-4">
       <legend className="mb-4 flex items-center gap-3">
-        <span className="font-display text-2xl text-red">{n}</span>
+        <span className="font-display text-2xl text-redtext">{n}</span>
         <span className="label text-chalk">{title}</span>
       </legend>
       {children}
@@ -763,7 +763,7 @@ export function DeletePlanButton({ sub, unpaid, onDeleted }: {
       }
     });
   };
-  return <button type="button" onClick={remove} className="btn-ghost min-h-10 shrink-0 px-4 text-sm text-red">Delete plan</button>;
+  return <button type="button" onClick={remove} className="btn-ghost min-h-10 shrink-0 px-4 text-sm text-redtext">Delete plan</button>;
 }
 
 /** The "Edit plan" sheet from a member's actions: each running or booked plan, loaded when it opens. */
@@ -969,12 +969,12 @@ export function MemberTools({ member, passId, cancelSubId, editExtra, className 
         </button>
       )}
       {cancelSubId && (
-        <button type="button" disabled={pending} aria-label="Cancel plan" className={`${ICON_CHIP} text-red`}
+        <button type="button" disabled={pending} aria-label="Cancel plan" className={`${ICON_CHIP} text-redtext`}
           onClick={async () => (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops. Payment records stay. You'll have 10 seconds to undo.", confirm: "Cancel plan", danger: true })) && withUndo("Cancelling the plan…", () => start(async () => toastResult(await cancelPlan(cancelSubId))))}>
           {chipLabel("M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8", "Cancel plan")}
         </button>
       )}
-      {owner && member.role === "member" && <button type="button" disabled={pending} onClick={remove} aria-label="Delete member" className={`${ICON_CHIP} text-red`}>{chipLabel("M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6", "Delete")}</button>}
+      {owner && member.role === "member" && <button type="button" disabled={pending} onClick={remove} aria-label="Delete member" className={`${ICON_CHIP} text-redtext`}>{chipLabel("M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6", "Delete")}</button>}
       {editingPlan && <EditPlansSheet member={member} onClose={() => setEditingPlan(false)} />}
       {editing && (
         <Sheet title={member.full_name || "Edit member"} open onClose={() => setEditing(false)}>
@@ -994,7 +994,7 @@ export function WhatsAppButton({ member, endsOn, expired, plan }: { member: Prof
   if (!member.phone) return null;
   const text = endsOn && (expired || endsOn <= gymDateIn(7)) ? reminderText(member.full_name, plan, endsOn) : `Hi ${member.full_name.split(" ")[0] || "there"}!`;
   return (
-    <a href={waLink(waNumber(member.phone), text)} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${member.full_name}`} title="WhatsApp"
+    <a href={waLink(waNumber(member.phone), text)} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${member.full_name}`} title="WhatsApp"
       className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-ink transition-transform hover:scale-105">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.4z" /><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.5-2-1-1 .8a5 5 0 0 1-2.8-2.8l.8-1-1-2z" /></svg>
     </a>
@@ -1036,7 +1036,7 @@ export function BranchSwitch({ branches, value }: { branches: [string, string][]
   }, [pending]);
   return (
     <label className={`relative flex min-w-0 shrink items-center text-chalk ${pending ? "opacity-60" : ""}`}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="pointer-events-none absolute left-3 text-red">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="pointer-events-none absolute left-3 text-redtext">
         <path d="M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z" /><circle cx="12" cy="10" r="2.5" />
       </svg>
       <select aria-label="Branch" defaultValue={value} disabled={pending} onChange={(e) => start(() => switchBranch(e.target.value))}
@@ -1069,13 +1069,13 @@ export function RequestRow({ id, name, href, photo, newPhoto, changes, note }: {
           {face(photo, `${name} now`)}
           {newPhoto && (
             <>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="text-red"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" className="text-redtext"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
               {face(newPhoto, `${name}'s new photo`, true)}
             </>
           )}
         </div>
         <div className="min-w-0">
-          <Link href={href} className="block truncate font-bold hover:text-red">{name}</Link>
+          <Link href={href} className="block truncate font-bold hover:text-redtext">{name}</Link>
           <ul className="text-sm text-ash">
             {changes.map(([field, from, to]) => <li key={field} className="truncate">{field}: <s className="text-faint">{from}</s> → <b className="text-chalk">{to}</b></li>)}
             {newPhoto && <li>New photo</li>}
@@ -1206,13 +1206,13 @@ export function OfferRow({ offer, canEdit }: { offer: Offer; canEdit: boolean })
     <li className="flex flex-wrap items-center justify-between gap-3 py-3">
       <span>
         <span className="block font-bold">{offer.title}</span>
-        <span className="block text-sm font-semibold text-red">{offerLabel(offer)}</span>
+        <span className="block text-sm font-semibold text-redtext">{offerLabel(offer)}</span>
         <span className="text-sm text-ash">
           {offer.tracks ? offer.tracks.map((t) => TRACKS[t]).join(", ") : "All plans"} · {prettyDay(offer.starts_on)} → {prettyDay(offer.ends_on)}
         </span>
       </span>
       <span className="flex items-center gap-3">
-        <span className={`font-label text-sm font-bold uppercase tracking-widest ${status === "Live" ? "text-red" : "text-ash"}`}>{status}</span>
+        <span className={`font-label text-sm font-bold uppercase tracking-widest ${status === "Live" ? "text-redtext" : "text-ash"}`}>{status}</span>
         {canEdit && status !== "Ended" && (
           <button disabled={pending} onClick={() => start(async () => toastResult(await setOfferActive(offer.id, !offer.active)))} className="btn-ghost">
             {offer.active ? "Pause" : "Resume"}
@@ -1298,7 +1298,7 @@ export function PriceForm({ plans }: { plans: Plan[] }) {
         <span className="min-h-4 text-xs text-ash">
           {perMonth > 0 && `${inr(perMonth * 100)}/mo`}
           {saving > 0 && <span className="text-chalk"> · save {saving}%</span>}
-          {saving < 0 && <span className="text-red"> · {-saving}% above monthly</span>}
+          {saving < 0 && <span className="text-redtext"> · {-saving}% above monthly</span>}
         </span>
         <label className="flex min-h-8 cursor-pointer items-center gap-2 text-xs text-ash">
           <input type="checkbox" name={`active_${plan.id}`} checked={v.active} onChange={(e) => set(plan.id, { active: e.target.checked })} className="peer sr-only" />
@@ -1437,7 +1437,11 @@ function BranchForm({ branch: b, onDone }: { branch?: Branch; onDone: () => void
           <Field label="Latitude" name="lat" type="number" step="any" defaultValue={b?.lat ?? ""} />
           <Field label="Longitude" name="lng" type="number" step="any" defaultValue={b?.lng ?? ""} />
           <Field label="Check-in radius (m)" name="radius_m" type="number" min="20" defaultValue={b?.radius_m ?? 150} />
-          <p className="self-end text-xs text-ash sm:col-span-2">With coordinates set, members checking in from their dashboard must be within the radius. Leave them blank and they&apos;re read off the Google Maps link when you save (no link = no location check). The same check applies to the entrance QR.</p>
+          <p className="self-end text-xs text-ash sm:col-span-2">With coordinates set, members checking in from their dashboard must be within the radius. Leave them blank and they&apos;re read off the Google Maps link when you save (no link = no location check).</p>
+          <label className="flex min-h-11 items-center gap-2 text-sm sm:col-span-2">
+            <input type="checkbox" name="door_location" defaultChecked={b?.door_location ?? false} className="size-5 accent-red" />
+            <span>Also require location on the entrance QR <span className="text-ash">(off: scanning the poster just works, nothing to allow)</span></span>
+          </label>
         </div>
       </details>
 

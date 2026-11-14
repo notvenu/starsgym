@@ -9,6 +9,22 @@ export function Sheet({ title, open, onClose, children }: { title: string; open:
     if (open && !ref.current?.open) ref.current?.showModal();
     if (!open) ref.current?.close();
   }, [open]);
+  // phone back closes the sheet instead of leaving the page: open = one history entry, popped by back or by closing
+  useEffect(() => {
+    if (!open) return;
+    const mark = `sheet-${Date.now()}`;
+    let popped = false;
+    window.history.pushState({ ...window.history.state, sheet: mark }, "");
+    const onPop = () => {
+      popped = true;
+      ref.current?.close();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      if (!popped && window.history.state?.sheet === mark) window.history.back(); // closed with ✕ / outside tap: drop our entry
+    };
+  }, [open]);
   return (
     <>
       {/* the dialog sits in the DOM beside the button that opens it, so a button row's child styles (PageHeader's phone

@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { adminDb, requireStaff, UUID } from "@/lib/supabase";
 import { gymDate } from "@/lib/gym";
 import { REFERRAL_DAYS } from "@/lib/referral";
@@ -20,9 +20,8 @@ export async function logContact(memberId: string, channel: "whatsapp" | "call",
   const how = channel === "call" ? "Called" : "WhatsApp";
   const detail = [outcome, how, note.trim().slice(0, 200) || null].filter(Boolean).join(" · ");
   await logAction(profile, "Follow-up", { memberId, branchId: view, detail });
-  revalidatePath("/admin");
-  revalidatePath("/admin/follow-ups");
-  revalidatePath(`/admin/members/${memberId}`);
+  revalidateTag("followups", { expire: 0 }); // the nav badge
+  revalidatePath("/admin", "layout"); // the open page, the other desk pages and the nav badge — one pass, returned with this action
   return { ok: "Saved." };
 }
 

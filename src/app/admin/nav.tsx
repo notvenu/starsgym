@@ -59,7 +59,7 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
                   className={`relative flex min-h-10 items-center gap-3 rounded px-3 text-[15px] font-semibold transition-colors ${active ? "bg-steel text-chalk" : "text-ash hover:bg-steel/60 hover:text-chalk"}`}
                 >
                   {active && <span className="absolute inset-y-2 left-0 w-0.5 rounded bg-red [view-transition-name:side-mark]" />}
-                  <LinkPending className={active ? "text-red" : ""}><Icon d={ICONS[it.icon]} /></LinkPending>
+                  <LinkPending className={active ? "text-redtext" : ""}><Icon d={ICONS[it.icon]} /></LinkPending>
                   <span className="flex-1">{it.label}</span>
                   {!!it.badge && <span className="rounded-full bg-red px-2 py-0.5 text-xs font-bold text-white">{it.badge}</span>}
                 </Link>
@@ -113,7 +113,7 @@ export function AdminMobileNav({ groups, logo, footer, switcher }: { groups: Nav
               </ScanButton>
             )}
             <Link href={it.href} aria-current={active ? "page" : undefined}
-              className={`relative flex min-h-16 flex-col items-center justify-center gap-1 text-[11px] font-bold tracking-wide uppercase ${active ? "text-red" : "text-ash"}`}>
+              className={`relative flex min-h-16 flex-col items-center justify-center gap-1 text-[11px] font-bold tracking-wide uppercase ${active ? "text-redtext" : "text-ash"}`}>
               {active && <span className="absolute top-0 h-0.5 w-10 rounded bg-red [view-transition-name:tab-mark]" />}
               <LinkPending className="relative"><Icon d={ICONS[it.icon]} />{badge(it.badge)}</LinkPending>
               {it.label}
@@ -149,7 +149,7 @@ export function AdminMobileNav({ groups, logo, footer, switcher }: { groups: Nav
                   return (
                     <Link key={it.href} href={it.href} aria-current={active ? "page" : undefined}
                       className={`flex min-h-12 items-center gap-2.5 rounded-lg border px-3 text-sm font-semibold ${active ? "border-red bg-redwash text-chalk" : "border-line text-body"}`}>
-                      <LinkPending className={active ? "text-red" : "text-ash"}><Icon d={ICONS[it.icon]} /></LinkPending>
+                      <LinkPending className={active ? "text-redtext" : "text-ash"}><Icon d={ICONS[it.icon]} /></LinkPending>
                       <span className="min-w-0 flex-1 leading-tight">{it.label}</span>
                       {!!it.badge && <span className="rounded-full bg-red px-1.5 text-xs font-bold text-white">{it.badge}</span>}
                     </Link>

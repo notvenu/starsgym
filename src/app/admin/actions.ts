@@ -40,9 +40,9 @@ async function loginLink(email: string) {
   return `${await siteOrigin()}/auth/confirm?${q}`;
 }
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const done = (ok: string): Result => (revalidatePath("/admin", "layout"), revalidatePath("/"), { ok });
-/** done(), for saves that change the cached desk data (branches, prices, offers, admission): every desk page re-reads it. */
-const doneDesk = <T,>(r: T): T => (clearDesk(), r);
+const done = (ok: string): Result => (revalidatePath("/admin", "layout"), { ok });
+/** done(), for saves the public site shows too (branches, prices, offers, admission, holidays) and the cached desk data: every desk page re-reads it, and the home page rebuilds. */
+const doneDesk = <T,>(r: T): T => (clearDesk(), revalidatePath("/"), r);
 /** done(), after a line in the staff log. */
 const logged = async (me: Profile, action: string, ok: string, opts?: Parameters<typeof logAction>[2]): Promise<Result> => {
   await logAction(me, action, opts);
@@ -549,7 +549,8 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
     lat: num("lat"),
     lng: num("lng"),
     radius_m: num("radius_m") ?? 150,
-    require_location: false, // set below: coordinates set = check-ins need to be within the radius
+    require_location: false, // set below: coordinates set = dashboard check-ins need to be within the radius
+    door_location: form.get("door_location") === "on", // the entrance QR checks it too (default off)
     morning_open: s(form, "morning_open") || "05:00",
     morning_close: s(form, "morning_close") || "11:00",
     // leave both evening fields blank for a branch with one session
@@ -583,6 +584,11 @@ export async function saveBranch(_: Result, form: FormData): Promise<Result> {
     // 0022 not run yet: save everything else, and say why the UPI ID didn't stick
     ({ error } = await save({ ...row, upi_id: undefined }));
     if (!error) return { error: "Saved — but run 0022 in Supabase to store a UPI ID per branch." };
+  }
+  if (error && /door_location/.test(error.message)) {
+    // 0024 not run yet: save everything else, and say why the toggle didn't stick
+    ({ error } = await save({ ...row, door_location: undefined }));
+    if (!error) return { error: "Saved — but add the column first for the entrance toggle: alter table branches add column door_location boolean not null default false;" };
   }
   return error ? { error: error.message } : doneDesk(await logged(me, id ? "Edited branch" : "Added branch", id ? "Branch saved" : "Branch added", { detail: row.name }));
 }
@@ -722,13 +728,13 @@ Your streak is safe: holidays never break it.
     const q = () => adminDb().from("profiles").select("id").eq("role", "member").order("id");
     return (await allRows(() => (branchId ? q().eq("home_branch_id", branchId) : q()))).data.map((p) => p.id as string);
   }, { title: `Closed ${prettyDay(day)}`, body: `${note ? `${note} · ` : ""}Your streak is safe — holidays never break it.`, url: "/dashboard", tag: `holiday-${day}` });
-  return logged(me, "Declared holiday", emailed ? `Holiday added · emailed ${emailed} members` : "Holiday added · members see it on the site", { branchId, detail: `${prettyDay(day)}${note ? ` · ${note}` : ""}` });
+  return doneDesk(await logged(me, "Declared holiday", emailed ? `Holiday added · emailed ${emailed} members` : "Holiday added · members see it on the site", { branchId, detail: `${prettyDay(day)}${note ? ` · ${note}` : ""}` }));
 }
 
 export async function deleteHoliday(id: string): Promise<Result> {
   const { supabase, profile: me } = await requireAdmin();
   const { error } = await supabase.from("holidays").delete().eq("id", id);
-  return error ? { error: error.message } : logged(me, "Removed holiday", "Holiday removed");
+  return error ? { error: error.message } : doneDesk(await logged(me, "Removed holiday", "Holiday removed"));
 }
 
 export async function saveOffer(_: Result, form: FormData): Promise<Result> {

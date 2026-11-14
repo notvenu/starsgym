@@ -12,7 +12,7 @@ export const metadata = { title: "Check in — Stars Gym", robots: { index: fals
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
-/** Opened by scanning the QR at a branch entrance. The link is fixed (a saved copy works anywhere), so a branch with coordinates also checks location. */
+/** Opened by scanning the QR at a branch entrance. The link is fixed (a saved copy works anywhere), so a branch can turn on a location check (branch settings). */
 export default async function CheckInPage({ searchParams }: PageProps<"/checkin">) {
   const sp = await searchParams;
   const k = sp.k;
@@ -31,7 +31,7 @@ export default async function CheckInPage({ searchParams }: PageProps<"/checkin"
   const { data: profile } = uid ? await supabase.from("profiles").select("full_name,photo_path").eq("id", uid).maybeSingle() : { data: null };
 
   return (
-    <main className="dark-zone relative isolate flex min-h-dvh flex-col overflow-hidden bg-ink text-chalk">
+    <main id="main" className="dark-zone relative isolate flex min-h-dvh flex-col overflow-hidden bg-ink text-chalk">
       {uid && <AccountPrompt />}
       {/* backdrop: brand glow + giant outlined word */}
       <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_55%_at_50%_0%,rgb(227_20_28/0.35),transparent_70%)]" />
@@ -50,16 +50,16 @@ export default async function CheckInPage({ searchParams }: PageProps<"/checkin"
         {branch ? (
           <>
             <div className="animate-rise text-center">
-              <p className="font-label text-sm font-bold tracking-[0.3em] text-red uppercase">{branch.name} · entrance</p>
+              <p className="font-label text-sm font-bold tracking-[0.3em] text-redtext uppercase">{branch.name} · entrance</p>
               <h1 className="mt-2 font-display text-[clamp(64px,18vw,128px)] leading-[0.85] uppercase">
-                Earn your <span className="text-red">star.</span>
+                Earn your <span className="text-redtext">star.</span>
               </h1>
               <p className="mt-4 text-sm text-ash">
                 General {hoursLabel(branch)}
                 {ladiesLabel(branch) && <> · Ladies {ladiesLabel(branch)}</>}
               </p>
             </div>
-            <DoorCheckIn autoGo={scanned} doorKey={key!} member={uid ? profile?.full_name || "Member" : null} memberPhoto={await photoUrl(profile?.photo_path)} holidays={weekHolidays(notices.holidays, branch.id)} next={`/checkin?k=${key}`} needsLocation={branch.lat != null && branch.lng != null} />
+            <DoorCheckIn autoGo={scanned} doorKey={key!} member={uid ? profile?.full_name || "Member" : null} memberPhoto={await photoUrl(profile?.photo_path)} holidays={weekHolidays(notices.holidays, branch.id)} next={`/checkin?k=${key}`} needsLocation={!!branch.door_location && branch.lat != null && branch.lng != null} />
           </>
         ) : (
           <div className="flex max-w-sm flex-col items-center gap-4 text-center">

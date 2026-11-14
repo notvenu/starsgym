@@ -34,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${anton.variable} ${barlow.variable} ${barlowCondensed.variable} antialiased`}>
       <body className="min-h-dvh overflow-x-hidden">
+        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded focus:bg-red focus:px-4 focus:py-2.5 focus:text-sm focus:font-bold focus:text-white">Skip to content</a>
         <SmoothScroll />
         <ServiceWorker />
         <Cursor />

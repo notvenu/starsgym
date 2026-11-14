@@ -87,7 +87,7 @@ export function DoorCheckIn({ autoGo, doorKey, member, memberPhoto, holidays, ne
             <button type="button" onClick={() => setAsGuest(false)} className="cursor-pointer text-sm text-ash hover:text-chalk">← Back to my check-in</button>
           ) : (
             <p className="text-center text-sm text-ash">
-              Have an account? <Link href={`/login?next=${encodeURIComponent(next)}`} className="font-bold text-red hover:text-chalk">Sign in</Link> to check in with one tap.
+              Have an account? <Link href={`/login?next=${encodeURIComponent(next)}`} className="font-bold text-redtext hover:text-chalk">Sign in</Link> to check in with one tap.
             </p>
           )}
         </form>
@@ -120,11 +120,11 @@ function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: 
       </div>
 
       <div>
-        <p className="font-label text-sm font-bold tracking-[0.24em] text-red uppercase">
+        <p className="font-label text-sm font-bold tracking-[0.24em] text-redtext uppercase">
           {r.already ? `Already in · ${r.session ? SESSION[r.session] : "today"}` : `${r.session ? SESSION[r.session] : "Checked in"} · ${time}`}
         </p>
         <h2 className="mt-1 font-display text-[clamp(48px,13vw,76px)] leading-[0.9] uppercase">
-          {r.already ? "See you inside" : "Welcome"}{r.name ? <>, <span className="text-red">{r.name}</span></> : null}
+          {r.already ? "See you inside" : "Welcome"}{r.name ? <>, <span className="text-redtext">{r.name}</span></> : null}
         </h2>
         <p className="mt-2 text-ash">{r.branch}</p>
       </div>
@@ -139,7 +139,7 @@ function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: 
             <span className="flex flex-wrap gap-2">
               {(r.sessionsToday ?? []).map((s) => (
                 <span key={s} className="inline-flex items-center gap-1 rounded-full border border-redline bg-redwash px-3 py-1 font-label text-sm tracking-wider uppercase">
-                  <Check className="size-4 text-red" /> {SESSION[s]}
+                  <Check className="size-4 text-redtext" /> {SESSION[s]}
                 </span>
               ))}
             </span>
@@ -147,10 +147,10 @@ function Welcome({ r, holidays, signedIn, onAgain }: { r: DoorResult; holidays: 
         />
         {r.plan && <Stat wide label="Plan" value={r.plan} />}
         {r.endsOn && (
-          <Stat wide label="Valid till" value={<>{prettyDay(r.endsOn)}{daysLeft !== null && <span className={`ml-2 text-sm ${daysLeft <= 5 ? "text-red" : "text-ash"}`}>· {daysLeft} day{daysLeft === 1 ? "" : "s"} left</span>}</>} />
+          <Stat wide label="Valid till" value={<>{prettyDay(r.endsOn)}{daysLeft !== null && <span className={`ml-2 text-sm ${daysLeft <= 5 ? "text-redtext" : "text-ash"}`}>· {daysLeft} day{daysLeft === 1 ? "" : "s"} left</span>}</>} />
         )}
       </dl>
-      {daysLeft !== null && daysLeft <= 5 && <p className="text-sm text-red">Your plan ends soon — renew at the desk or online.</p>}
+      {daysLeft !== null && daysLeft <= 5 && <p className="text-sm text-redtext">Your plan ends soon — renew at the desk or online.</p>}
       <div className="w-full"><WeekHolidays holidays={holidays} /></div>
 
       <div className="flex w-full flex-col gap-2 sm:flex-row">
@@ -194,7 +194,7 @@ function Stat({ label, value, wide }: { label: string; value: React.ReactNode; w
 
 function Flame({ size = 18 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-red">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-redtext">
       <path d="M12 2c1 4 6 6 6 12a6 6 0 0 1-12 0c0-3 1.5-5 3-6 .3 2 1.3 3.2 3 3.5C12 8 11 5 12 2z" />
     </svg>
   );

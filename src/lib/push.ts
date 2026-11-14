@@ -1,6 +1,6 @@
 import "server-only";
 import { after } from "next/server";
-import webpush from "web-push";
+import * as webpush from "web-push"; // web-push 4 is ESM with named exports only (no default)
 import { adminDb } from "@/lib/supabase";
 
 // Web push. Keys: NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT (generate with

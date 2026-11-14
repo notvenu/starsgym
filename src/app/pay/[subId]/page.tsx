@@ -38,7 +38,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
   const sent = sub.status === "pending" && qr ? (await proofUrls([sub.id])).get(sub.id) ?? null : null;
 
   return (
-    <main className="min-h-dvh pb-20">
+    <main id="main" className="min-h-dvh pb-20">
       <SiteNav />
       <div className="wrap flex flex-col items-center gap-6 pt-6 text-center">
         <p className="eyebrow">{sub.status === "active" ? "Paid" : "Pay by UPI"}</p>
@@ -50,12 +50,12 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
             {pass && <PassDialog label="Show my pass" className="btn-red"><Ticket pass={pass} /></PassDialog>}
           </>
         ) : sub.status === "cancelled" ? (
-          <p className="text-red">This order was cancelled.</p>
+          <p className="text-redtext">This order was cancelled.</p>
         ) : (
           <>
             <p className="font-display text-6xl">{inr(sub.amount_paise)}</p>
             {discountOf(sub) > 0 && (
-              <p className="-mt-3 text-sm font-semibold text-red">
+              <p className="-mt-3 text-sm font-semibold text-redtext">
                 You save {inr(discountOf(sub))} <span className="font-normal text-ash">· <s>{inr(sub.list_price_paise + (sub.admission_paise ?? 0))}</s> list price</span>
               </p>
             )}

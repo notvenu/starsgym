@@ -139,14 +139,14 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button disabled={saving || pending} className="btn-red min-h-12">{saving ? "Saving…" : person ? "Save" : "Add to team"}</button>
         {item && (
-          <button type="button" disabled={saving || pending} className="min-h-11 cursor-pointer text-sm font-semibold text-ash hover:text-red"
+          <button type="button" disabled={saving || pending} className="min-h-11 cursor-pointer text-sm font-semibold text-ash hover:text-redtext"
             onClick={async () => (await confirmDialog({ title: `Delete ${item.title}'s trainer card?`, body: "It comes off the website for good. Sign-in access isn't touched. Pick “Desk staff” to just hide the card.", confirm: "Delete card", danger: true }))
               && start(async () => { const r = await deleteItem(item.id); toastResult(r); if (r?.ok) onDone?.(); })}>
             Delete trainer card
           </button>
         )}
         {person?.profileId && person.role && !person.self && (
-          <button type="button" disabled={saving || pending} className="min-h-11 cursor-pointer text-sm font-semibold text-ash hover:text-red"
+          <button type="button" disabled={saving || pending} className="min-h-11 cursor-pointer text-sm font-semibold text-ash hover:text-redtext"
             onClick={async () => (await confirmDialog({ title: `Reset ${person.name}'s password?`, body: "You'll get a one-time password to give them. Their old one stops working.", confirm: "Reset password" }))
               && start(async () => { const r = await resetStaffPassword(person.profileId!); if (r?.password) await showPassword(r.password); else toastResult(r); })}>
             Reset password
@@ -178,7 +178,7 @@ export function TeamRow({ person, branches }: { person: Person; branches: Branch
             <span className="truncate font-bold">{p.name}</span>
             {p.role === "admin" && <span className={`${CHIP} bg-red text-white`}>Admin</span>}
             {p.role === "staff" && <span className={`${CHIP} bg-steel text-chalk`}>Staff</span>}
-            {p.item && <span className={`${CHIP} border ${p.item.active ? "border-redline text-red" : "border-line text-ash line-through"}`}>Trainer</span>}
+            {p.item && <span className={`${CHIP} border ${p.item.active ? "border-redline text-redtext" : "border-line text-ash line-through"}`}>Trainer</span>}
           </span>
           <span className="block truncate text-sm text-ash">{[p.branchLabel, p.item?.active && p.item.subtitle, p.email].filter(Boolean).join(" · ")}</span>
         </span>

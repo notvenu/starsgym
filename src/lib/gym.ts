@@ -13,6 +13,7 @@ export type Branch = {
   lng: number | null;
   radius_m: number;
   require_location: boolean;
+  door_location?: boolean; // the entrance QR also needs the phone's location (0024); dashboard check-ins always do when there are coordinates
   morning_open: string; // "05:00:00"
   morning_close: string;
   evening_open: string | null;

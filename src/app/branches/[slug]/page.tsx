@@ -55,10 +55,10 @@ export default async function BranchPage({ params }: PageProps<"/branches/[slug]
         <div className="flex flex-col gap-3 rounded-md border border-line bg-carbon p-8">
           <h2 className="font-display text-4xl uppercase">Address</h2>
           <p className="text-body">{b.address}</p>
-          {settings.phone && <a href={`tel:${settings.phone.replace(/[^\d+]/g, "")}`} className="text-xl hover:text-red">{settings.phone}</a>}
+          {settings.phone && <a href={`tel:${settings.phone.replace(/[^\d+]/g, "")}`} className="text-xl hover:text-redtext">{settings.phone}</a>}
           <div className="mt-2 flex flex-wrap gap-2">
-            {b.maps_url && <a href={b.maps_url} target="_blank" rel="noreferrer" className="btn-red">Get directions</a>}
-            {settings.whatsapp && <a href={waLink(settings.whatsapp)} target="_blank" rel="noreferrer" className="btn-ghost">WhatsApp</a>}
+            {b.maps_url && <a href={b.maps_url} target="_blank" rel="noopener noreferrer" className="btn-red">Get directions</a>}
+            {settings.whatsapp && <a href={waLink(settings.whatsapp)} target="_blank" rel="noopener noreferrer" className="btn-ghost">WhatsApp</a>}
           </div>
         </div>
       </section>
@@ -76,7 +76,7 @@ export default async function BranchPage({ params }: PageProps<"/branches/[slug]
           </ul>
           <p className="text-[15px] text-ash">
             {settings.admission_fee_paise ? `One-time admission fee ${inr(settings.admission_fee_paise)} on your first membership. ` : ""}
-            Personal training is added on top of a membership. <Link href="/#plans" className="text-red hover:text-chalk">Buy a plan online →</Link>
+            Personal training is added on top of a membership. <Link href="/#plans" className="text-redtext hover:text-chalk">Buy a plan online →</Link>
           </p>
         </section>
       )}

@@ -7,6 +7,7 @@ import { AddMemberForm, AdminModal, Desk, MemberActions, RequestRow } from "./ui
 import { deskRef, trainersFor } from "./data";
 import { loadFollowUps, recentNotes, wonBackThisMonth } from "./follow-ups/data";
 import { FollowUpQueue, type FollowItem } from "./follow-ups/queue";
+import { Reveal } from "./more";
 import { ScanButton } from "@/components/scanner";
 import { NotificationToggle } from "@/components/push";
 
@@ -20,9 +21,6 @@ export const maxDuration = 60;
 export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const sp = await searchParams;
   const scanNext = sp.scan === "1"; // "Scan next" on a checked pass comes back here
-  // "Show 10 more" on the expiring / expired lists: how many rows each shows (only those get photos signed)
-  const upTo = (v: unknown) => Math.min(500, Math.max(10, Number(v) || 10));
-  const count = { expiring: upTo(sp.expiring), expired: upTo(sp.expired) };
   const { supabase, profile, isOwner, branchId, view } = await requireStaff();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the generic query-builder type recurses too deep
   const only = (q: any) => (view ? q.eq("branch_id", view) : q);
@@ -125,7 +123,8 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     profiles: { full_name: string; photo_path: string | null; gender: string | null; home_branch_id: string | null; phone: string | null; email: string | null } | null };
   const queue = (requests.data ?? []) as unknown as Req[];
   // an overview, not the full lists: the first few of each (with a link to all) keeps the page quick to open on a phone
-  const shown = { visits: visits.slice(0, 12), ending: ending.slice(0, count.expiring), lapsed: lapsed.slice(0, count.expired), joiners: joiners.slice(0, 30) }; // a week of new joiners is short: show them all
+  // the renewal lists show 10 at a time as you scroll (<Reveal>), so every row's photo is signed up front (one request)
+  const shown = { visits: visits.slice(0, 12), ending, lapsed, joiners: joiners.slice(0, 30) }; // a week of new joiners is short: show them all
   // photos are signed as soon as the lists are in, while the numbers and the rest finish
   const [[ref, { members, collected, renewals }, holidays, enquiries, toConfirm, followUps, wonBack], photos] = await Promise.all([
     restP,
@@ -136,17 +135,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const liveOffers = ref.offers.filter((o) => o.starts_on <= today && o.ends_on >= today);
   const trainers = trainersFor(ref.trainers, view);
   const more = (total: number, showing: number, href: string, what: string) =>
-    total > showing && <Link href={href} className="block border-t border-line px-5 py-3 text-sm font-bold text-red hover:bg-steel/60 hover:text-chalk">All {total} {what} →</Link>;
-  // the renewal lists grow 10 at a time right here — the members list counts "expired" differently (ever, not 30 days)
-  const toggle = (list: "expiring" | "expired", total: number) => {
-    if (total <= count[list]) return null;
-    const next = new URLSearchParams(Object.entries({ ...count, [list]: count[list] + 10 }).filter(([, n]) => n > 10).map(([k, n]) => [k, String(n)]));
-    return (
-      <Link href={`/admin?${next}`} scroll={false} className="block border-t border-line px-5 py-3 text-center text-sm font-bold text-red hover:bg-steel/60 hover:text-chalk">
-        Show 10 more · {total - count[list]} left
-      </Link>
-    );
-  };
+    total > showing && <Link href={href} className="block border-t border-line px-5 py-3 text-sm font-bold text-redtext hover:bg-steel/60 hover:text-chalk">All {total} {what} →</Link>;
   const pic = (p?: string | null) => (p ? photos.get(p) : null);
   const branchName = (id: string) => b.find((x) => x.id === id)?.name ?? "";
   const where = (h: Holiday) => (h.branch_id ? b.find((x) => x.id === h.branch_id)?.name ?? "One branch" : "All branches");
@@ -182,7 +171,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
           </span>
         </Link>
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 pl-3 sm:pl-[4.5rem]">
-          <span className="shrink-0 rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-red uppercase">{badge}</span>
+          <span className="shrink-0 rounded-full border border-red px-2 py-0.5 text-[11px] font-bold tracking-wider text-redtext uppercase">{badge}</span>
           {done && <span className="min-w-0 truncate text-xs text-ash" title={done.detail ?? ""}><b className="text-[#25d366]">✓ Contacted</b> · {done.detail} · {ago(done.at)}</span>}
         </span>
         <FollowUpQueue items={[followItem(e, badge, since)]} label={done ? "Again" : "Follow up"}
@@ -249,30 +238,24 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       <Panel id="expiring" title={`Expiring soon · ${ending.length}`} intro="Ending in the next 7 days." flush
         action={((q) => <FollowUpQueue items={q} label={`Follow up one by one · ${q.length}`} />)(queueOf(ending, endingBadge, () => weekAgo))}>
         {ending.length ? (
-          <ul className="divide-y divide-line">
-            {shown.ending.map((e) => renewRow(e, endingBadge(e), e.id, weekAgo))}
-          </ul>
+          <Reveal>{shown.ending.map((e) => renewRow(e, endingBadge(e), e.id, weekAgo))}</Reveal>
         ) : (
           <Empty>No plans ending in the next 7 days.</Empty>
         )}
-        {toggle("expiring", ending.length)}
       </Panel>
 
       <Panel id="expired" title={`Expired · ${lapsed.length}`} intro="Ended in the last 30 days, not renewed." flush
         action={
           <span className="flex flex-wrap items-center justify-end gap-3">
             {((q) => <FollowUpQueue items={q} label={`Follow up one by one · ${q.length}`} />)(queueOf(lapsed, lapsedBadge, (e) => e.ends_on))}
-            <Link href="/admin/follow-ups" className="text-sm font-bold text-red hover:text-chalk">Follow-ups →</Link>
+            <Link href="/admin/follow-ups" className="text-sm font-bold text-redtext hover:text-chalk">Follow-ups →</Link>
           </span>
         }>
         {lapsed.length ? (
-          <ul className="divide-y divide-line">
-            {shown.lapsed.map((e) => renewRow(e, lapsedBadge(e), null, e.ends_on))}
-          </ul>
+          <Reveal>{shown.lapsed.map((e) => renewRow(e, lapsedBadge(e), null, e.ends_on))}</Reveal>
         ) : (
           <Empty>Nobody lapsed in the last 30 days.</Empty>
         )}
-        {toggle("expired", lapsed.length)}
       </Panel>
       </Desk>
 
@@ -323,13 +306,13 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
         )}
       </Panel>
 
-      <Panel title="Coming up" action={<Link href="/admin/branches#holidays" className="text-sm font-bold text-red hover:text-chalk">Manage →</Link>}>
+      <Panel title="Coming up" action={<Link href="/admin/branches#holidays" className="text-sm font-bold text-redtext hover:text-chalk">Manage →</Link>}>
         <ul className="flex flex-col gap-2 text-sm">
           {((holidays.data ?? []) as Holiday[]).map((h) => (
             <li key={h.id}><span className="font-bold">Closed {prettyDay(h.day)}</span> <span className="text-ash">· {where(h)}{h.note && ` · ${h.note}`}</span></li>
           ))}
           {liveOffers.map((o) => (
-            <li key={o.id}><span className="font-bold text-red">{o.percent_off}% off</span> <span className="text-ash">· {o.title} till {prettyDay(o.ends_on)}</span></li>
+            <li key={o.id}><span className="font-bold text-redtext">{o.percent_off}% off</span> <span className="text-ash">· {o.title} till {prettyDay(o.ends_on)}</span></li>
           ))}
           {!holidays.data?.length && !liveOffers.length && <li className="text-ash">No holidays or live offers.</li>}
         </ul>

@@ -58,7 +58,7 @@ function Kpi({ label, value, now, before, hint }: { label: string; value: string
       <span className="label">{label}</span>
       <span className="truncate font-display text-[clamp(26px,7vw,40px)] leading-none lg:text-[clamp(26px,2.4vw,40px)]">{value}</span>
       {delta !== null ? (
-        <span className={`text-xs ${delta < 0 ? "text-red" : delta > 0 ? "text-chalk" : "text-ash"}`}>
+        <span className={`text-xs ${delta < 0 ? "text-redtext" : delta > 0 ? "text-chalk" : "text-ash"}`}>
           {delta > 0 ? "▲" : delta < 0 ? "▼" : "•"} {Math.abs(delta)}% <span className="text-ash">vs before</span>
         </span>
       ) : hint ? <span className="truncate text-xs text-ash">{hint}</span> : null}
@@ -139,7 +139,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
                 </Link>
                 {m.phone && (
                   <a href={waLink(waNumber(m.phone), `Hi ${(m.name || "there").split(" ")[0]}! We've missed you at Stars Gym — see you on the floor this week?`)}
-                    target="_blank" rel="noreferrer" className="btn-ghost min-h-10 shrink-0 px-4 text-xs">WhatsApp</a>
+                    target="_blank" rel="noopener noreferrer" className="btn-ghost min-h-10 shrink-0 px-4 text-xs">WhatsApp</a>
                 )}
               </li>
             ))}

@@ -58,7 +58,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
   const age = ageOf(member);
   const facts = [b.find((x) => x.id === member.home_branch_id)?.name, GENDERS.find(([g]) => g === member.gender)?.[1], age != null && `${age} yrs`].filter(Boolean).join(" · ");
   const status = current
-    ? { text: `Active · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`, cls: daysLeft <= 7 ? "border-red bg-redwash text-chalk" : "border-red text-red" }
+    ? { text: `Active · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left`, cls: daysLeft <= 7 ? "border-red bg-redwash text-chalk" : "border-red text-redtext" }
     : lastEnd
       ? { text: `Expired ${fullDay(lastEnd)}`, cls: "border-red bg-red text-white" }
       : { text: "No plan yet", cls: "border-line text-ash" };
@@ -126,8 +126,8 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
                     <span className="block font-bold">{planName(p.plans)} · {inr(p.amount_paise)}</span>
                     <span className="block text-sm text-ash">{p.starts_on ? `${fullDay(p.starts_on)} – ${fullDay(p.ends_on!)}` : "Not started"} · {payMethod(p)}</span>
                   </span>
-                  <span className={`rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${state === "Active" ? "border-red text-red" : state === "Awaiting payment" ? "border-red bg-redwash" : "border-line text-ash"}`}>{state}</span>
-                  {p.status === "pending" && <Link href={`/pay/${p.id}`} className="text-sm font-bold text-red hover:text-chalk">Take payment</Link>}
+                  <span className={`rounded-full border px-3 py-1 text-xs font-bold tracking-wider uppercase ${state === "Active" ? "border-red text-redtext" : state === "Awaiting payment" ? "border-red bg-redwash" : "border-line text-ash"}`}>{state}</span>
+                  {p.status === "pending" && <Link href={`/pay/${p.id}`} className="text-sm font-bold text-redtext hover:text-chalk">Take payment</Link>}
                   {p.status !== "cancelled" && <DeletePlanButton sub={p} unpaid={p.status === "pending"} />}
                   {p.status === "active" && p.starts_on && p.plans.duration_days > 1 && state !== "Ended" && (
                     <EditPlanForm key={`${p.plans.id}-${p.starts_on}-${p.amount_paise}-${p.trainer_id}`} sub={{ ...p, starts_on: p.starts_on }} />

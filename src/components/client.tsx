@@ -114,7 +114,7 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
       <div className="flex flex-wrap items-end justify-between gap-6">
         <div className="flex flex-col gap-4" data-reveal>
           <p className="flex items-center gap-3 font-label text-sm font-bold tracking-[0.24em] uppercase">
-            <span className="text-red">02</span>
+            <span className="text-redtext">02</span>
             <span className="h-px w-10 bg-line" />
             <span className="text-ash">Membership</span>
           </p>
@@ -128,14 +128,14 @@ export function PlanPicker({ plans, offers, admissionPaise = 0 }: { plans: Plan[
               aria-pressed={d.days === days}
               onClick={() => setDays(d.days)}
               className={`relative flex min-h-12 cursor-pointer flex-col items-center justify-center rounded px-1 font-label text-[13px] font-bold uppercase tracking-[0.06em] whitespace-nowrap transition-colors duration-200 sm:px-5 sm:text-[15px] sm:tracking-[0.12em] ${
-                d.days === days ? "bg-red text-white" : "text-ash hover:text-chalk"
+                d.days === days ? "bg-red text-white" : "text-ash hover:bg-steel hover:text-chalk"
               }`}
             >
               {/* phones: four equal tabs on one row, so the long label gets a short form */}
               <span className="sm:hidden">{d.days === 180 ? "6 Months" : d.label}</span>
               <span className="max-sm:hidden">{d.label}</span>
               {upTo(d.days) > 0 && (
-                <span className={`text-[10px] leading-none tracking-[0.04em] normal-case ${d.days === days ? "text-white/85" : "text-red"}`}>
+                <span className={`text-[10px] leading-none tracking-[0.04em] normal-case ${d.days === days ? "text-white/85" : "text-redtext"}`}>
                   Save {upTo(d.days)}%
                 </span>
               )}
@@ -319,7 +319,7 @@ export function Marquee({ children, label, className = "", speed = 28 }: { child
 }
 const COPIES = 4;
 
-export function Check({ className = "text-red" }: { className?: string }) {
+export function Check({ className = "text-redtext" }: { className?: string }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={`shrink-0 ${className}`}>
       <path d="M5 12l5 5L20 7" />
@@ -333,11 +333,11 @@ export function WeekHolidays({ holidays }: { holidays: Holiday[] }) {
   const today = gymDate();
   return (
     <div role="note" className="flex gap-3 rounded-lg border border-red/50 bg-redwash px-4 py-3 text-left">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="mt-0.5 shrink-0 text-red">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true" className="mt-0.5 shrink-0 text-redtext">
         <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" />
       </svg>
       <div className="min-w-0">
-        <p className="font-label text-sm font-bold tracking-[0.14em] text-red uppercase">This week</p>
+        <p className="font-label text-sm font-bold tracking-[0.14em] text-redtext uppercase">This week</p>
         <ul className="mt-0.5 text-sm text-chalk">
           {holidays.map((h) => (
             <li key={h.id}>
@@ -361,7 +361,7 @@ export function MemberDetailsFields({ d, phone = true, closedEmergency = false }
         <legend className="label mb-1.5">Gender</legend>
         <div className="grid grid-cols-3 gap-2">
           {GENDERS.map(([g, label]) => (
-            <label key={g} className="flex min-h-12 cursor-pointer items-center justify-center rounded border border-strong font-bold has-checked:border-red has-checked:bg-redwash has-checked:text-red has-focus-visible:outline-2 has-focus-visible:outline-red">
+            <label key={g} className="flex min-h-12 cursor-pointer items-center justify-center rounded border border-strong font-bold has-checked:border-red has-checked:bg-redwash has-checked:text-redtext has-focus-visible:outline-2 has-focus-visible:outline-red">
               <input type="radio" name="gender" value={g} defaultChecked={d?.gender === g} required className="sr-only" />
               {label}
             </label>
@@ -471,7 +471,7 @@ export function BeforeAfter({ before, after, name }: { before: string | null; af
     return single ? <img {...siteImg(single, SLIDER)} alt={name} loading="lazy" decoding="async" className="aspect-[4/5] w-full object-cover" /> : <div className="stripes aspect-[4/5] w-full" />;
 
   return (
-    <div className="relative aspect-[4/5] w-full overflow-hidden select-none">
+    <div className="group relative aspect-[4/5] w-full overflow-hidden select-none">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img {...siteImg(after, SLIDER)} alt={`${name} after`} loading="lazy" decoding="async" className="absolute inset-0 size-full object-cover" />
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -479,7 +479,7 @@ export function BeforeAfter({ before, after, name }: { before: string | null; af
       <span className="absolute top-3 left-3 rounded-xs bg-ink/80 px-2 py-1 font-label text-xs font-bold tracking-[0.18em] text-chalk">BEFORE</span>
       <span className="absolute top-3 right-3 rounded-xs bg-red px-2 py-1 font-label text-xs font-bold tracking-[0.18em] text-white">AFTER</span>
       <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-chalk shadow-[0_0_12px_rgba(0,0,0,.6)]" style={{ left: `${pos}%` }}>
-        <span className="absolute top-1/2 left-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-chalk bg-red text-white">
+        <span className="absolute top-1/2 left-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-chalk bg-red text-white group-focus-within:ring-4 group-focus-within:ring-chalk/70">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6" /></svg>
         </span>
       </div>
@@ -490,7 +490,7 @@ export function BeforeAfter({ before, after, name }: { before: string | null; af
         value={pos}
         onChange={(e) => setPos(Number(e.target.value))}
         aria-label={`Compare ${name} before and after`}
-        className="absolute inset-0 size-full cursor-ew-resize opacity-0"
+        className="absolute inset-0 size-full cursor-ew-resize appearance-none bg-transparent outline-none focus-visible:outline-3 focus-visible:-outline-offset-3 focus-visible:outline-redtext [&::-moz-range-thumb]:opacity-0 [&::-webkit-slider-thumb]:size-11 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:opacity-0"
       />
     </div>
   );
@@ -509,9 +509,9 @@ export function BranchTicker({ branches, holidays, offers = [] }: { branches: Br
     ...branches.map((b) => ({ key: b.id, node: <OpenStatus branch={b} holidays={holidays} withHours /> })),
     ...holidays.map((h) => ({
       key: h.id,
-      node: <><span className="text-red">Holiday</span> · Closed {prettyDay(h.day)}{h.note && ` · ${h.note}`} · {where(h)}</>,
+      node: <><span className="text-redtext">Holiday</span> · Closed {prettyDay(h.day)}{h.note && ` · ${h.note}`} · {where(h)}</>,
     })),
-    ...offers.map((o) => ({ key: o.id, node: <><span className="text-red">{o.percent_off}% off</span> · {o.title} · till {prettyDay(o.ends_on)}</> })),
+    ...offers.map((o) => ({ key: o.id, node: <><span className="text-redtext">{o.percent_off}% off</span> · {o.title} · till {prettyDay(o.ends_on)}</> })),
   ];
   useEffect(() => {
     if (items.length < 2 || paused) return;

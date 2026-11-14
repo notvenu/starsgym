@@ -162,7 +162,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
               {pending.map((s) => (
                 <Link key={s.id} href={`/pay/${s.id}`} className="flex items-center justify-between gap-3 rounded border border-dashed border-red px-4 py-3 text-sm hover:bg-redwash">
                   <span className="min-w-0">Awaiting payment · {planName(s.plans)} · {inr(s.amount_paise)}</span>
-                  <span className="shrink-0 font-bold text-red">Pay →</span>
+                  <span className="shrink-0 font-bold text-redtext">Pay →</span>
                 </Link>
               ))}
             </section>
@@ -172,7 +172,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             <section className="card flex flex-col gap-4 p-5 sm:p-6">
               <div className="flex items-center justify-between">
                 <p className="label">Streak Wall</p>
-                {rank > 0 && <p className="flex items-center gap-1.5 font-label font-bold tracking-widest text-red"><Flame size={15} /> Ranked #{rank}</p>}
+                {rank > 0 && <p className="flex items-center gap-1.5 font-label font-bold tracking-widest text-redtext"><Flame size={15} /> Ranked #{rank}</p>}
               </div>
               {post.data && (
                 <div className="flex items-center gap-3 text-sm text-ash">

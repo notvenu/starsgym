@@ -75,7 +75,7 @@ export function BranchExplorer({ branches, holidays }: { branches: Branch[]; hol
               onClick={() => setI(n)}
               className={`group relative flex cursor-pointer flex-col justify-end gap-3 overflow-hidden rounded-lg border p-6 text-left lg:flex-1 transition-[border-color,background-color] duration-300 ${active ? "border-red bg-redwash" : "border-line bg-carbon hover:border-strong"}`}
             >
-              <span aria-hidden="true" className={`absolute -right-4 -bottom-8 font-display text-[140px] leading-none transition-colors ${active ? "text-red/15" : "text-white/[0.03]"}`}>0{n + 1}</span>
+              <span aria-hidden="true" data-n={`0${n + 1}`} className={`absolute -right-4 -bottom-8 font-display text-[140px] leading-none transition-colors after:content-[attr(data-n)] ${active ? "text-redtext/15" : "text-white/[0.03]"}`} /> {/* a pseudo-element: decorative, so no text for contrast checkers or screen readers */}
               <span className="relative flex items-center gap-2 font-label text-[13px] font-bold tracking-[0.16em] uppercase">
                 <span className={`inline-block size-2 rounded-full ${s?.open ? "animate-pulse-red bg-red" : "bg-strong"}`} />
                 <span className={s?.open ? "text-chalk" : "text-ash"}>{s?.text ?? " "}</span>
@@ -105,7 +105,7 @@ export function BranchExplorer({ branches, holidays }: { branches: Branch[]; hol
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline justify-between gap-3">
               <p className="label">Today{now ? ` · ${prettyDay(gymDate(now))}` : ""}</p>
-              {st && <p className={`text-sm font-bold ${st.open ? "text-red" : "text-ash"}`}>{st.text}</p>}
+              {st && <p className={`text-sm font-bold ${st.open ? "text-redtext" : "text-ash"}`}>{st.text}</p>}
             </div>
             <div className="relative h-11">
               <div className={`absolute inset-x-0 top-3 h-5 rounded-full ${todayClosed ? "stripes" : "bg-steel"}`} />
@@ -148,7 +148,7 @@ export function BranchExplorer({ branches, holidays }: { branches: Branch[]; hol
               const isToday = clock?.dow === d;
               return (
                 <li key={d} className={`rounded-md border px-1 py-2 ${isToday ? "border-red bg-redwash" : "border-line"}`}>
-                  <p className={`font-label text-xs font-bold tracking-[0.12em] uppercase ${isToday ? "text-red" : "text-ash"}`}>{DAY_NAMES[d]}</p>
+                  <p className={`font-label text-xs font-bold tracking-[0.12em] uppercase ${isToday ? "text-redtext" : "text-ash"}`}>{DAY_NAMES[d]}</p>
                   <p className={`mt-1 text-[11px] leading-tight ${off ? "text-faint" : "text-body"}`}>{off ? "Off" : sessions(b).map(([a]) => a).join(" / ")}</p>
                 </li>
               );
@@ -162,7 +162,7 @@ export function BranchExplorer({ branches, holidays }: { branches: Branch[]; hol
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <a href={directions} target="_blank" rel="noreferrer" className="btn-red">
+            <a href={directions} target="_blank" rel="noopener noreferrer" className="btn-red">
               Get directions
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17L17 7M8 7h9v9" /></svg>
             </a>
