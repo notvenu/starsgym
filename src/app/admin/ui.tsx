@@ -12,7 +12,7 @@ import { ProofCheck, ProofInput } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
 import type { Trainer } from "./data";
 import { waNumber } from "./kit";
-import { ageOf, GENDERS, LOGIN_EMAIL_DOMAIN, offerLabel, OFFER_LENGTHS, bestOffer, CUSTOM_DAYS, customPrice, DAY_NAMES, DEFAULT_MARKUP, discounted, DURATIONS, isStandard, gymDate, gymDateIn, hhmm, inr, planName, prettyDay, reminderText, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track, waLink } from "@/lib/gym";
+import { ageOf, GENDERS, LOGIN_EMAIL_DOMAIN, offerLabel, OFFER_LENGTHS, bestOffer, CUSTOM_DAYS, CUSTOM_MONTHS, customPrice, DAY_NAMES, DEFAULT_MARKUP, discounted, DURATIONS, isStandard, gymDate, gymDateIn, hhmm, inr, planEnd, planName, prettyDay, reminderText, trainerFee, TRACKS, type Branch, type Holiday, type Offer, type Plan, type Track, waLink } from "@/lib/gym";
 import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, editPlan, editablePlans, setOrderPrice, saveAdmission, saveMarkup, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type EditableSub, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
@@ -347,9 +347,13 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
   const [days, setDays] = useState(pre?.duration_days ?? 30);
   // custom length (20 days, 45 days…): priced off the standard plans, the row is made when it's sold (sellPlans)
   const [customOn, setCustomOn] = useState(!!pre && !isStandard(pre));
-  const [customText, setCustomText] = useState(String(pre && !isStandard(pre) ? pre.duration_days : 20));
-  const customDays = Number(customText);
-  const customOk = Number.isInteger(customDays) && customDays >= CUSTOM_DAYS.min && customDays <= CUSTOM_DAYS.max;
+  // custom in months (2, 4, 5…) = 30 × months, run by calendar months; a past custom multiple of 30 reopens as months
+  const [inMonths, setInMonths] = useState(!!pre && !isStandard(pre) && pre.duration_days % 30 === 0);
+  const [customText, setCustomText] = useState(String(pre && !isStandard(pre) ? (pre.duration_days % 30 ? pre.duration_days : pre.duration_days / 30) : 20));
+  const range = inMonths ? CUSTOM_MONTHS : CUSTOM_DAYS;
+  const customN = Number(customText);
+  const customDays = inMonths ? customN * 30 : customN;
+  const customOk = Number.isInteger(customN) && customN >= range.min && customN <= range.max;
   const custom = kind === "membership" && customOn;
   const customPlan = (): Plan | undefined => {
     if (!customOk) return undefined;
@@ -358,6 +362,7 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
     const price = customPrice(plans, track, customDays, markup);
     return price === null ? undefined : { id: row?.id ?? "", track, duration_days: customDays, price_paise: price, active: true };
   };
+  const [startVal, setStartVal] = useState(startOn ?? ""); // "" = today
   const [payment, setPayment] = useState("cash");
   const [withPt, setWithPt] = useState(false); // membership + personal training add-on
   const [ptDays, setPtDays] = useState(pre?.duration_days ?? 30);
@@ -372,6 +377,7 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
   const ptPlan = kind === "pt" || (kind === "membership" && withPt) ? ptPlans.find((p) => p.duration_days === ptDays) : undefined;
   const fee = trainers.find(([id]) => id === trainerId)?.[2];
   const selling = !!plan || !!ptPlan;
+  const endDays = plan?.duration_days ?? ptPlan?.duration_days ?? 0; // the end date is the membership's (or PT alone)
   // a QR covers one plan: with PT, the money is taken at the desk (a QR picked earlier reads as cash)
   const pay = plan && ptPlan && payment === "qr" ? "cash" : payment;
   const n = (i: number) => String(first + i).padStart(2, "0");
@@ -396,19 +402,23 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
         {picking && kind === "membership" && (
           <div className="flex flex-col gap-2">
             <Segmented label="Track" options={GYM_TRACKS.map((t) => [t, TRACKS[t]])} value={track} onChange={(v) => setTrack(v as Track)} />
-            <Segmented label="Length" options={[...DURATIONS.map((d) => [String(d.days), d.label] as [string, string]), ["custom", "Custom days"]]} value={customOn ? "custom" : String(days)}
+            <Segmented label="Length" options={[...DURATIONS.map((d) => [String(d.days), d.label] as [string, string]), ["custom", "Custom days"], ["months", "Custom months"]]} value={customOn ? (inMonths ? "months" : "custom") : String(days)}
               onChange={(v) => {
-                if (v === "custom") return setCustomOn(true);
+                if (v === "custom" || v === "months") {
+                  if ((v === "months") !== inMonths) setCustomText(v === "months" ? "2" : "20");
+                  setInMonths(v === "months");
+                  return setCustomOn(true);
+                }
                 setCustomOn(false);
                 setDays(Number(v));
                 if (!withPt) setPtDays(Number(v));
               }} />
             {customOn && (
               <label className="flex flex-col gap-1.5 sm:w-64">
-                <span className="label">Number of days</span>
-                <input type="number" inputMode="numeric" min={CUSTOM_DAYS.min} max={CUSTOM_DAYS.max} step="1" value={customText} onChange={(e) => setCustomText(e.target.value)} className="field font-bold" />
+                <span className="label">Number of {inMonths ? "months" : "days"}</span>
+                <input type="number" inputMode="numeric" min={range.min} max={range.max} step="1" value={customText} onChange={(e) => setCustomText(e.target.value)} className="field font-bold" />
                 <span className={`text-xs ${customOk ? "text-ash" : "text-redtext"}`}>
-                  {customOk ? `Priced from the ${TRACKS[track]} plans + ${markup}% short-stay markup, never above the next full plan.` : `${CUSTOM_DAYS.min}–${CUSTOM_DAYS.max} days.`}
+                  {customOk ? (inMonths ? `${TRACKS[track]} monthly price × ${customN} months.` : `Priced from the ${TRACKS[track]} plans + ${markup}% short-stay markup, never above the next full plan.`) : `${range.min}–${range.max} ${inMonths ? "months" : "days"}.`}
                 </span>
               </label>
             )}
@@ -470,8 +480,9 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
         {selling && (
           // renewals come filled in (today, or the day after their current plan ends); any past date backdates, up to 60 days ahead starts later.
           // New members: blank = today
-          <StartDate initial={startOn} />
+          <StartDate initial={startOn} value={startVal} setValue={setStartVal} />
         )}
+        {selling && endDays > 1 && <EndDate start={startVal || gymDate()} days={endDays} />}
         {kind !== "none" && kind !== "pt" && !plan && <p className="text-redtext">That plan isn&apos;t available.</p>}
         <input type="hidden" name="plan_id" value={plan?.id ?? ""} />
       </Step>
@@ -520,8 +531,7 @@ function PlanSteps({ plans, offers, trainers, markup = DEFAULT_MARKUP, admission
  * The plan's start date. Picking a date in the calendar changes nothing until "Save date"; "Cancel" keeps the date it
  * had — so opening it by mistake (wrong member, can't find the day) never moves anyone's plan. `initial` blank = today.
  */
-function StartDate({ initial }: { initial?: string }) {
-  const [value, setValue] = useState(initial ?? ""); // what the form sends
+function StartDate({ initial, value, setValue }: { initial?: string; value: string; setValue: (v: string) => void }) {
   const [draft, setDraft] = useState<string | null>(null); // null = not changing it
   const min = gymDateIn(-92);
   const max = gymDateIn(60);
@@ -575,6 +585,25 @@ function StartDate({ initial }: { initial?: string }) {
       )}
       {draft === null && <span className="text-xs text-ash">{initial ? "Change it to backdate or start later." : "Starts today unless you change it."}</span>}
     </div>
+  );
+}
+
+/** The plan's end date, under the start. Follows the start and the length until the desk picks another day; a new
+ *  start or length puts it back on the automatic one. Sends end_on only when it isn't the automatic date. */
+function EndDate({ start, days, initial }: { start: string; days: number; initial?: string | null }) {
+  const auto = planEnd(start, days);
+  const [edit, setEdit] = useState<{ for: string; value: string } | null>(initial && initial !== auto ? { for: auto, value: initial } : null);
+  const value = edit?.for === auto ? edit.value : auto;
+  const changed = value !== auto;
+  return (
+    <label data-field className="flex flex-col gap-1.5 sm:max-w-sm">
+      <span className="label">Ends on</span>
+      <input type="date" value={value} min={start} onChange={(e) => setEdit({ for: auto, value: e.target.value || auto })} className={`field ${changed ? "border-red bg-redwash" : ""}`} />
+      <input type="hidden" name="end_on" value={changed ? value : ""} />
+      <span className="text-xs text-ash">
+        {changed ? <>Plan length says {prettyDay(auto)}. <button type="button" onClick={() => setEdit(null)} className="underline">Reset</button></> : "Set from the start date and plan length — change it if needed."}
+      </span>
+    </label>
   );
 }
 
@@ -778,7 +807,7 @@ function EditPlansSheet({ member, onClose }: { member: Profile; onClose: () => v
         : (
           <div className="flex flex-col divide-y divide-line">
             {subs.map((s) => (
-              <div key={`${s.id}-${s.plans.id}-${s.starts_on}-${s.amount_paise}-${s.trainer_id}`} className="flex flex-col gap-3 py-4 first:pt-0">
+              <div key={`${s.id}-${s.plans.id}-${s.starts_on}-${s.ends_on}-${s.amount_paise}-${s.trainer_id}`} className="flex flex-col gap-3 py-4 first:pt-0">
                 <div className="flex items-start justify-between gap-3">
                   <p><span className="font-bold">{planName(s.plans)}</span> <span className="text-sm text-ash">· {prettyDay(s.starts_on)} – {prettyDay(s.ends_on)} · {inr(s.amount_paise)}</span></p>
                   <DeletePlanButton sub={s} onDeleted={load} />
@@ -794,7 +823,7 @@ function EditPlansSheet({ member, onClose }: { member: Profile; onClose: () => v
 
 /** Fix a paid plan — plan (track / length), start date, price, PT trainer. The end date follows. `inline`: the form
  *  without its "Edit plan" toggle (inside the sheet above). */
-export function EditPlanForm({ sub, inline, onSaved }: { sub: Omit<EditableSub, "ends_on">; inline?: boolean; onSaved?: () => void }) {
+export function EditPlanForm({ sub, inline, onSaved }: { sub: Omit<EditableSub, "ends_on"> & { ends_on?: string | null }; inline?: boolean; onSaved?: () => void }) {
   const { plans, trainers } = useContext(DeskContext);
   const refresh = useRefreshAfterSave();
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
@@ -810,20 +839,23 @@ export function EditPlanForm({ sub, inline, onSaved }: { sub: Omit<EditableSub, 
   // custom lengths (20 days…) aren't listed for switching to — only the one this plan already is
   const choices = plans.filter((p) => (p.track === "personal_training") === isPt && p.duration_days > 1 && isStandard(p));
   if (!choices.some((p) => p.id === sub.plans.id)) choices.unshift(sub.plans);
+  const [planId, setPlanId] = useState(sub.plans.id);
+  const [start, setStart] = useState(sub.starts_on ?? gymDate());
+  const days = choices.find((p) => p.id === planId)?.duration_days ?? sub.plans.duration_days;
   const form = (
       <form noValidate onSubmit={keepFields(action)} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <input type="hidden" name="id" value={sub.id} />
         <label className="flex flex-col gap-1.5">
           <span className="label">Plan</span>
-          <select name="plan_id" defaultValue={sub.plans.id} required className="field">
+          <select name="plan_id" value={planId} onChange={(e) => setPlanId(e.target.value)} required className="field">
             {choices.map((p) => <option key={p.id} value={p.id}>{planName(p)}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="label">Starts on</span>
-          <input type="date" name="start_on" defaultValue={sub.starts_on} min={gymDateIn(-92)} max={gymDateIn(60)} required className="field" />
-          <span className="text-xs text-ash">The end date follows the plan&apos;s length.</span>
+          <input type="date" name="start_on" value={start} onChange={(e) => e.target.value && setStart(e.target.value)} min={gymDateIn(-92)} max={gymDateIn(60)} required className="field" />
         </label>
+        <EndDate start={start} days={days} initial={sub.ends_on} />
         <Field label="Price paid (₹)" name="price" type="number" min="0" step="1" inputMode="numeric" defaultValue={sub.amount_paise / 100} required />
         {isPt && trainers.length > 0 && (
           <label className="flex flex-col gap-1.5">

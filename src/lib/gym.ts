@@ -159,13 +159,31 @@ export const DAY_NAMES =["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function planName(p: Pick<Plan, "track" | "duration_days">) {
   const d = DURATIONS.find((x) => x.days === p.duration_days);
-  return d ? `${TRACKS[p.track]} · ${d.label}` : p.duration_days > 1 ? `${TRACKS[p.track]} · ${p.duration_days} days` : TRACKS[p.track];
+  if (d) return `${TRACKS[p.track]} · ${d.label}`;
+  if (p.duration_days <= 1) return TRACKS[p.track];
+  return `${TRACKS[p.track]} · ${p.duration_days % 30 ? `${p.duration_days} days` : `${p.duration_days / 30} months`}`;
 }
 
 /** The price-list lengths (one-day passes + monthly…yearly). Any other length is a custom plan the desk sold. */
 export const isStandard = (p: Pick<Plan, "duration_days">) => p.duration_days === 1 || DURATIONS.some((d) => d.days === p.duration_days);
 /** Custom lengths the desk can sell: a week-and-a-bit, a partial month, 45 days… */
 export const CUSTOM_DAYS = { min: 2, max: 364 };
+/** Custom lengths in months (2, 4, 5…): stored as 30 × months and run by calendar months (planEnd). */
+export const CUSTOM_MONTHS = { min: 2, max: 11 };
+const dayAfter = (iso: string, n = 1) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+
+/** The last day of a plan: monthly plans (30/90/180/365 days, and custom months: any multiple of 30) run by calendar
+ *  months to the day before the same date — 28 Jun + 6 months ends 27 Dec; 31 Jan + 1 month has no 31 Feb, so it ends
+ *  28/29 Feb. Day passes and custom day lengths (20 days, 45 days) count days. */
+export function planEnd(start: string, days: number) {
+  if (days === 1 || (!isStandard({ duration_days: days }) && days % 30)) return dayAfter(start, days - 1);
+  const [y, m, d] = start.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + Math.round(days / 30), 1)); // 365 days → 12 months
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  if (d > lastDay) return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), lastDay)).toISOString().slice(0, 10);
+  return dayAfter(new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), d)).toISOString().slice(0, 10), -1);
+}
+
 /** Short-stay markup on custom lengths when the owner hasn't set one (Pricing page). */
 export const DEFAULT_MARKUP = 20;
 export const markupOf = (s?: { custom_markup_pct?: number | null } | null) => s?.custom_markup_pct ?? DEFAULT_MARKUP;
@@ -178,6 +196,9 @@ export const markupOf = (s?: { custom_markup_pct?: number | null } | null) => s?
 export function customPrice(plans: Plan[], track: Track, days: number, markupPct: number) {
   const std = plans.filter((p) => p.track === track && p.duration_days > 1 && isStandard(p)).sort((a, b) => a.duration_days - b.duration_days);
   if (!std.length) return null;
+  // custom months (2, 4, 5…): the monthly price × months, no markup
+  const monthly = std.find((p) => p.duration_days === 30);
+  if (monthly && days % 30 === 0) return monthly.price_paise * (days / 30);
   const base = std.filter((p) => p.duration_days <= days).at(-1) ?? std[0];
   const cap = std.find((p) => p.duration_days >= days)?.price_paise ?? Infinity;
   return Math.round(Math.min((base.price_paise / base.duration_days) * days * (1 + markupPct / 100), cap) / 1000) * 1000;

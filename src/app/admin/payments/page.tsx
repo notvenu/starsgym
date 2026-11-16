@@ -61,9 +61,9 @@ export default async function PaymentsPage() {
                 </span>
                 <span className="col-span-2 text-xs text-ash md:col-span-1 md:order-3 md:text-sm">
                   {payMethod(p)}
-                  <span className="md:hidden"> · {new Date(p.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>
+                  <span className="md:hidden"> · {new Date(p.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" })}</span>
                 </span>
-                <span className="hidden text-ash md:order-5 md:block">{new Date(p.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>
+                <span className="hidden text-ash md:order-5 md:block">{new Date(p.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" })}</span>
               </li>
             ))}
           </ul>

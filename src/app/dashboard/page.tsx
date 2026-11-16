@@ -178,7 +178,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
                 <div className="flex items-center gap-3 text-sm text-ash">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={showcaseUrl(post.data.image_path)} alt="Your latest post" className="size-14 rounded object-cover" />
-                  Last posted {new Date(post.data.created_at).toLocaleDateString("en-IN")}. Posts stay up for 7 days.
+                  Last posted {new Date(post.data.created_at).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}. Posts stay up for 7 days.
                 </div>
               )}
               <ShowcaseForm defaultLink={profile.instagram_url ?? ""} />

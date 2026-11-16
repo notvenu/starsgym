@@ -130,7 +130,7 @@ export default async function MemberPage({ params }: PageProps<"/admin/members/[
                   {p.status === "pending" && <Link href={`/pay/${p.id}`} className="text-sm font-bold text-redtext hover:text-chalk">Take payment</Link>}
                   {p.status !== "cancelled" && <DeletePlanButton sub={p} unpaid={p.status === "pending"} />}
                   {p.status === "active" && p.starts_on && p.plans.duration_days > 1 && state !== "Ended" && (
-                    <EditPlanForm key={`${p.plans.id}-${p.starts_on}-${p.amount_paise}-${p.trainer_id}`} sub={{ ...p, starts_on: p.starts_on }} />
+                    <EditPlanForm key={`${p.plans.id}-${p.starts_on}-${p.ends_on}-${p.amount_paise}-${p.trainer_id}`} sub={{ ...p, starts_on: p.starts_on }} />
                   )}
                 </li>
               );

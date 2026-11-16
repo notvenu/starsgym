@@ -9,7 +9,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { adminDb, allRows, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { CUSTOM_DAYS, customPrice, gymDate, gymDateIn, inr, isStandard, loginEmail, markupOf, OFFER_LENGTHS, planName, prettyDay, readMemberDetails, trainerFee, TRACKS, UPI_ID, type Plan, type Track } from "@/lib/gym";
+import { CUSTOM_DAYS, customPrice, gymDate, gymDateIn, inr, isStandard, loginEmail, markupOf, OFFER_LENGTHS, planEnd, planName, prettyDay, readMemberDetails, trainerFee, TRACKS, UPI_ID, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
@@ -138,6 +138,14 @@ function pickedStart(form: FormData): { start: string | null; error?: string } {
   if (!start) return { start: null };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || start < gymDateIn(-92) || start > gymDateIn(60)) return { start: null, error: "Pick a start date within the last 3 months or up to 60 days ahead." };
   return { start };
+}
+
+/** The end date the desk typed over the automatic one: blank = follow the plan's length. Must be on/after `start`. */
+function pickedEnd(form: FormData, start: string): { end: string | null; error?: string } {
+  const end = s(form, "end_on");
+  if (!end) return { end: null };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start || end > gymDateIn(800)) return { end: null, error: "The end date must be on or after the start date." };
+  return { end };
 }
 
 /** Desk sign-up: creates the member and optionally sells their first plan — paid now, or shown as a UPI QR. */
@@ -275,14 +283,16 @@ export async function editPlan(_: Result, form: FormData): Promise<Result> {
   const trainerId = s(form, "trainer_id") || null;
   if (trainerId && !UUID.test(trainerId)) return { error: "Pick a trainer from the list." };
   const db = adminDb();
-  const { data: sub } = await db.from("subscriptions").select("user_id,branch_id,starts_on,amount_paise,plans(*)").eq("id", subId).eq("status", "active").maybeSingle();
+  const { data: sub } = await db.from("subscriptions").select("user_id,branch_id,starts_on,ends_on,amount_paise,plans(*)").eq("id", subId).eq("status", "active").maybeSingle();
   if (!sub) return { error: "Only a paid plan can be edited." };
   const { data: plan } = UUID.test(planId) ? await db.from("plans").select("*").eq("id", planId).maybeSingle<Plan>() : { data: null };
   if (!plan) return { error: "Pick a plan." };
   const old = sub.plans as unknown as Plan;
   const isPt = plan.track === "personal_training";
   if (isPt !== (old.track === "personal_training")) return { error: "Membership and personal training can't be swapped — sell the other one with Renew." };
-  const ends = planEnd(picked.start, plan.duration_days);
+  const end = pickedEnd(form, picked.start);
+  if (end.error) return { error: end.error };
+  const ends = end.end ?? planEnd(picked.start, plan.duration_days);
   const amount = Math.round(price * 100);
   const { error } = await db
     .from("subscriptions")
@@ -292,6 +302,7 @@ export async function editPlan(_: Result, form: FormData): Promise<Result> {
   const changes = [
     old.id !== plan.id && `${planName(old)} → ${planName(plan)}`,
     sub.starts_on !== picked.start && `start ${sub.starts_on ? prettyDay(sub.starts_on) : "—"} → ${prettyDay(picked.start)}`,
+    sub.ends_on !== ends && `end ${sub.ends_on ? prettyDay(sub.ends_on) : "—"} → ${prettyDay(ends)}`,
     sub.amount_paise !== amount && `${inr(sub.amount_paise)} → ${inr(amount)}`,
   ].filter(Boolean).join(" · ");
   await logAction(me, "Edited plan", { memberId: sub.user_id, branchId: sub.branch_id, detail: changes || "trainer" });
@@ -350,25 +361,13 @@ async function customPlanId(track: string, days: number): Promise<{ id: string }
 
 const dayAfter = (iso: string, n = 1) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
-/** The last day of a plan: monthly plans (30/90/180/365 days) run by calendar months to the day before the same date —
- *  28 Jun + 6 months ends 27 Dec; 31 Jan + 1 month has no 31 Feb, so it ends 28/29 Feb. Day passes and custom lengths
- *  (20 days, 45 days) count days. */
-function planEnd(start: string, days: number) {
-  if (days === 1 || !isStandard({ duration_days: days })) return dayAfter(start, days - 1);
-  const [y, m, d] = start.split("-").map(Number);
-  const target = new Date(Date.UTC(y, m - 1 + Math.round(days / 30), 1)); // 365 days → 12 months
-  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
-  if (d > lastDay) return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), lastDay)).toISOString().slice(0, 10);
-  return dayAfter(new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), d)).toISOString().slice(0, 10), -1);
-}
-
 /**
  * Puts a just-activated plan on the calendar (the app decides, not the database's activation, which can't tell a
  * PT add-on from a gym plan): the start the desk picked; else a membership the day after their current membership
  * ends (today if none), a PT add-on the day after their current PT — or alongside the membership it goes with —
  * and a day pass or trial today. It then runs its full length (see planEnd): a 1-month plan from 19 Oct ends 18 Nov.
  */
-async function placeDates(subId: string, userId: string, picked: string | null): Promise<{ ends?: string; error?: string }> {
+async function placeDates(subId: string, userId: string, picked: string | null, endOn: string | null = null): Promise<{ ends?: string; error?: string }> {
   const db = adminDb();
   const today = gymDate();
   const { data } = await db.from("subscriptions").select("id,starts_on,ends_on,created_at,plans(track,duration_days)").eq("user_id", userId).eq("status", "active");
@@ -389,7 +388,7 @@ async function placeDates(subId: string, userId: string, picked: string | null):
       start = gym?.starts_on && gym.starts_on > today ? gym.starts_on : today;
     } else start = today;
   }
-  const ends = planEnd(start, days);
+  const ends = endOn && endOn >= start ? endOn : planEnd(start, days); // the desk's end date, else the plan's length
   const { error } = await db.from("subscriptions").update({ starts_on: start, ends_on: ends }).eq("id", subId).eq("status", "active");
   return error ? { error: error.message } : { ends };
 }
@@ -415,6 +414,8 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
   if (cash !== null && !(cash > 0)) return { error: "Enter the cash part of the payment." };
   const picked = pickedStart(form);
   if (picked.error) return { error: picked.error };
+  const end = pickedEnd(form, picked.start ?? gymDate()); // the desk's end date: the first item (membership, or PT alone)
+  if (end.error) return { error: end.error };
   const trainerFees = new Map<string, number | null>(); // a trainer's own PT fee per month (Team page), null = standard
   for (const i of items) {
     if (!i.trainerId) continue;
@@ -500,7 +501,7 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
     ]);
     if (act.error) return { error: act.error.message };
     if (saved) console.error(`[desk] payment photo for ${m.id} didn't save:`, saved); // optional: the sale stands without it
-    const dates = await placeDates(m.id, userId, picked.start);
+    const dates = await placeDates(m.id, userId, picked.start, m === made[0] ? end.end : null);
     if (dates.error) return { error: `Sold, but the dates didn't save: ${dates.error}` };
     out.push({ ...sold, state: "paid", endsOn: dates.ends ?? null });
   }

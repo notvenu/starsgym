@@ -27,7 +27,7 @@ export default async function EnquiriesPage() {
       <p className="text-sm">
         <a href={`tel:${e.phone}`} className="text-redtext hover:text-chalk">{e.phone}</a>
         {e.email && <> · <a href={`mailto:${e.email}`} className="text-ash hover:text-chalk">{e.email}</a></>}
-        <span className="text-ash"> · {e.branches?.name ?? "Any branch"} · {new Date(e.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</span>
+        <span className="text-ash"> · {e.branches?.name ?? "Any branch"} · {new Date(e.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" })}</span>
       </p>
       {e.message && <p className="mt-1.5 whitespace-pre-line text-body">{e.message}</p>}
     </>
