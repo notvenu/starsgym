@@ -6,7 +6,7 @@ export { Sheet };
 import { useRouter } from "next/navigation";
 import { createContext, startTransition, useActionState, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { Field, MemberDetailsFields, PhoneField } from "@/components/client";
-import { confirmDialog, ResultToast, toast, toastResult, keepFields, withUndo } from "@/components/feedback";
+import { confirmDialog, ResultToast, toastResult, keepFields, withUndo } from "@/components/feedback";
 import { PhotoCapture } from "@/components/photo";
 import { ProofCheck, ProofInput } from "@/components/receipt";
 import type { Profile } from "@/lib/supabase";
@@ -16,6 +16,19 @@ import { ageOf, GENDERS, LOGIN_EMAIL_DOMAIN, offerLabel, OFFER_LENGTHS, bestOffe
 import { addHoliday, addMember, adminChangePhoto, adminSaveMember, assignTrainer, decideDiscount, resetPassword, cancelPlan, cancelSub, decideRequest, switchBranch, deleteHoliday, deleteMember, markPaid, renewMember, replaceDoorKey, editPlan, editablePlans, setOrderPrice, saveAdmission, saveMarkup, saveBranch, saveOffer, savePrices, setOfferActive, type Created, type EditableSub, type Result } from "./actions";
 
 const Status = ResultToast; // results show as toasts
+
+/** Opens WhatsApp (new tab / the app) with the member's message ready, after a sale, plan change or cancellation. A
+ *  browser that blocks the tab (it opens after the server replied, or 10 s after "Delete") gets one tap to open it. */
+const openWa = async (wa?: string) => {
+  if (!wa) return;
+  if (window.open(wa, "_blank")) return;
+  if (await confirmDialog({ title: "Send the WhatsApp message?", body: "Your browser blocked it from opening by itself.", confirm: "Open WhatsApp" })) window.open(wa, "_blank", "noopener");
+};
+/** toastResult, then the result's WhatsApp message (if it has one). */
+const toastWa = (r: Result) => {
+  toastResult(r);
+  if (!r?.error) void openWa(r?.wa);
+};
 
 /** A button that opens its content in a pop-up (a sheet from the bottom on phones). `startOpen` for deep links like ?new=1. */
 export function AdminModal({ label, title, className = "btn-red", children }: { label: React.ReactNode; title: string; className?: string; children: React.ReactNode }) {
@@ -89,7 +102,7 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
         ) : (
           <>
             <a href={`/pay/${id}`} className="btn-ghost min-h-10 px-3.5 text-xs">QR</a>
-            {owner && <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Cancel this order?", body: meta, confirm: "Cancel order", danger: true })) && start(async () => toastResult(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>}
+            {owner && <button disabled={pending} onClick={async () => (await confirmDialog({ title: "Cancel this order?", body: meta, confirm: "Cancel order", danger: true })) && start(async () => toastWa(await cancelSub(id)))} className="btn-ghost min-h-10 px-3.5 text-xs">Cancel</button>}
             <button disabled={pending} onClick={() => setPaying(true)} className="btn-red min-h-10 px-4 text-xs">{proof ? "Verify & mark paid" : "Mark paid"}</button>
           </>
         )}
@@ -103,7 +116,10 @@ export function PendingRow({ id, title, meta, method, approval, ask, owner, proo
 function MarkPaidForm({ id, cash, sent, amountPaise, createdAt, upiId, onClose }: { id: string; cash: boolean; sent: string | null; amountPaise: number; createdAt: string; upiId: string; onClose: () => void }) {
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await markPaid(prev, form);
-    if (r?.ok) toastResult(r); // the paid row leaves the list with the refresh, taking its own toast with it
+    if (r?.ok) {
+      void openWa(r.wa);
+      toastResult(r);
+    } // the paid row leaves the list with the refresh, taking its own toast with it
     return r?.ok ? undefined : r;
   }, undefined);
   return (
@@ -150,7 +166,11 @@ export function AddMemberForm(props: NewMemberProps) {
 }
 
 function NewMemberForm({ branches, plans, offers, trainers, admissionPaise = 0, markup, onAnother }: NewMemberProps & { onAnother: () => void }) {
-  const [state, action, pending] = useActionState(addMember, undefined);
+  const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
+    const r = await addMember(prev, form);
+    void openWa(r?.created?.wa);
+    return r;
+  }, undefined);
   if (state?.created) return <AccountCreated c={state.created} onAnother={onAnother} />;
   return (
     <form noValidate onSubmit={keepFields(action)} className="flex flex-col gap-8">
@@ -190,23 +210,9 @@ function useRefreshAfterSave() {
 /** After "+ New member": who was created, the temporary password (shown once), a QR that signs the member in on their
  *  own phone so they can set their own password, and where the plan stands. */
 function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void }) {
-  const [qr, setQr] = useState<string>();
   const router = useRouter();
   // the list behind the pop-up picks up the new member in the background — the save itself doesn't wait for it
   useEffect(() => startTransition(() => router.refresh()), [router]);
-  useEffect(() => {
-    // loaded on demand: only this dialog draws a QR, so it stays out of every other admin page
-    const url = c.loginUrl;
-    if (url) void import("qrcode").then((QRCode) => QRCode.toDataURL(url, { margin: 1, width: 440, color: { dark: "#0a0a0a", light: "#ffffff" } })).then(setQr);
-  }, [c.loginUrl]);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(c.password ?? "");
-      toast("Password copied");
-    } catch {
-      toast("Couldn't copy — read it out instead", "error");
-    }
-  };
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
@@ -220,29 +226,13 @@ function AccountCreated({ c, onAnother }: { c: Created; onAnother: () => void })
       <dl className="grid grid-cols-1 gap-3 rounded-lg border border-line bg-panel p-4 text-sm sm:grid-cols-2">
         <div className="min-w-0"><dt className="label">Email</dt><dd className={`mt-0.5 truncate font-semibold ${c.email ? "" : "text-ash"}`}>{c.email || "None — added later"}</dd></div>
         <div><dt className="label">Phone</dt><dd className="mt-0.5 font-semibold">{c.phone}</dd></div>
-        <p className="text-xs text-ash sm:col-span-2">{c.email ? "They can sign in with either, plus the password below." : "They sign in with their phone, plus the password below."}</p>
       </dl>
 
       {c.password ? (
-        // phones: the QR centred on top, everything else on the same left edge as the rest of the screen
-        <div className="flex flex-col gap-5 rounded-lg border border-redline bg-redwash p-4 sm:flex-row sm:items-center sm:p-5">
-          {c.loginUrl && (qr ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={qr} alt="Sign-in QR for the member" width={176} height={176} className="size-44 shrink-0 self-center rounded-lg bg-white p-2" />
-          ) : (
-            <div className="size-44 shrink-0 animate-pulse self-center rounded-lg bg-steel" />
-          ))}
-          <div className="flex min-w-0 flex-1 flex-col gap-3">
-            <p className="label text-chalk">Temporary password</p>
-            <div className="flex items-center justify-between gap-3 rounded-md border border-redline bg-ink py-1.5 pr-1.5 pl-4">
-              <span className="min-w-0 truncate font-mono text-2xl font-bold tracking-wider select-all">{c.password}</span>
-              <button type="button" onClick={copy} className="btn-ghost min-h-10 shrink-0 px-4 text-xs">Copy</button>
-            </div>
-            <p className="text-sm text-body">
-              {c.loginUrl ? "Have them scan the QR with their phone camera: it signs them in straight away and asks them to set their own password — no typing this one." : "Give them this password. They'll be asked to set their own when they sign in."}
-            </p>
-            <p className="text-xs text-ash">Shown only now. {c.loginUrl && "The QR works once and expires after a while."}</p>
-          </div>
+        // the password and sign-in link are in the WhatsApp message only — not on this screen
+        <div className="flex flex-col gap-3 rounded-lg border border-redline bg-redwash p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-body">Their sign-in details (temporary password{c.loginUrl ? " and one-tap link" : ""}) are in the WhatsApp message to {c.phone}. They set their own password when they sign in.</p>
+          {c.wa && <button type="button" onClick={() => void openWa(c.wa)} className="btn-red min-h-11 shrink-0 px-4 text-xs">Send on WhatsApp</button>}
         </div>
       ) : (
         <p className="rounded-lg border border-line px-4 py-3 text-sm text-ash">They already had an account, so their password hasn&apos;t changed.</p>
@@ -321,6 +311,7 @@ function RenewForm({ userId, branchId, lastPlanId, currentEnd, admissionPaise, o
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await renewMember(prev, form);
     if (r?.ok) {
+      void openWa(r.wa);
       toastResult(r); // the sheet closes, so the confirmation can't live inside it
       onDone?.(); // RenewButton refreshes the list once the sheet has closed
     }
@@ -785,7 +776,7 @@ export function DeletePlanButton({ sub, unpaid, onDeleted }: {
     if (!ok) return;
     withUndo("Deleting the plan…", async () => {
       const r = await (unpaid ? cancelSub : cancelPlan)(sub.id);
-      toastResult(r);
+      toastWa(r);
       if (!r?.error) {
         onDeleted?.();
         startTransition(() => router.refresh());
@@ -829,6 +820,7 @@ export function EditPlanForm({ sub, inline, onSaved }: { sub: Omit<EditableSub, 
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
     const r = await editPlan(prev, form);
     if (r?.ok) {
+      void openWa(r.wa);
       refresh();
       onSaved?.();
     }
@@ -983,7 +975,7 @@ export function MemberTools({ member, passId, cancelSubId, editExtra, className 
     if (!ok) return;
     withUndo(`Deleting ${member.full_name}…`, () => start(async () => {
       const r = await deleteMember(member.id);
-      toastResult(r);
+      toastWa(r);
       if (!r?.error && location.pathname === `/admin/members/${member.id}`) router.push("/admin/members"); // their profile is gone
     }));
   };
@@ -1002,7 +994,7 @@ export function MemberTools({ member, passId, cancelSubId, editExtra, className 
       )}
       {cancelSubId && (
         <button type="button" disabled={pending} aria-label="Cancel plan" className={`${ICON_CHIP} text-redtext`}
-          onClick={async () => (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops. Payment records stay. You'll have 10 seconds to undo.", confirm: "Cancel plan", danger: true })) && withUndo("Cancelling the plan…", () => start(async () => toastResult(await cancelPlan(cancelSubId))))}>
+          onClick={async () => (await confirmDialog({ title: `Cancel ${member.full_name}'s plan?`, body: "The plan stops. Payment records stay. You'll have 10 seconds to undo.", confirm: "Cancel plan", danger: true })) && withUndo("Cancelling the plan…", () => start(async () => toastWa(await cancelPlan(cancelSubId))))}>
           {chipLabel("M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8", "Cancel plan")}
         </button>
       )}

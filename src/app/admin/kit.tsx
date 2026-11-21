@@ -83,8 +83,4 @@ export function Avatar({ src, name, size = "size-11", zoom }: { src?: string | n
 
 export const SESSION_LABEL: Record<string, string> = { morning: "Morning", evening: "Evening", ladies: "Ladies' hours" };
 
-/** 10-digit Indian numbers get the country code for wa.me links. */
-export const waNumber = (phone: string | null) => {
-  const d = (phone ?? "").replace(/\D/g, "");
-  return d.length === 10 ? `91${d}` : d;
-};
+export { waNumber } from "@/lib/gym";

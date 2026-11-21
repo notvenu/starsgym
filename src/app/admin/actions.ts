@@ -9,13 +9,14 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { adminDb, allRows, requireAdmin, requireStaff, UUID, type Profile } from "@/lib/supabase";
 import { emailAll } from "@/lib/email";
 import { formPhoto, removePhoto, saveProof, uploadPhoto } from "@/lib/photo";
-import { CUSTOM_DAYS, customPrice, gymDate, gymDateIn, inr, isStandard, loginEmail, markupOf, OFFER_LENGTHS, planEnd, planName, prettyDay, readMemberDetails, trainerFee, TRACKS, UPI_ID, type Plan, type Track } from "@/lib/gym";
+import { accountText, cancelText, CUSTOM_DAYS, customPrice, gymDate, gymDateIn, inr, isStandard, loginEmail, markupOf, OFFER_LENGTHS, planEnd, planName, prettyDay, readMemberDetails, reminderText, trainerFee, TRACKS, UPI_ID, waLink, waNumber, type Plan, type Track } from "@/lib/gym";
 import { logAction } from "@/lib/log";
 import { notifyAfter } from "@/lib/push";
 import { siteOrigin } from "@/lib/pass";
 import { allow, SLOW_DOWN } from "@/lib/rate-limit";
 
-export type Result = { error?: string; ok?: string; created?: Created } | undefined;
+/** `wa`: a wa.me link with the member's membership message ready — the desk's browser opens it after a sale or change. */
+export type Result = { error?: string; ok?: string; created?: Created; wa?: string } | undefined;
 /** What the desk sees after "+ New member": the account, its one-time password and sign-in link, and the plan. */
 export type Created = {
   name: string; email: string; phone: string;
@@ -24,8 +25,28 @@ export type Created = {
   plans: SoldPlan[]; // the membership and/or PT add-on sold with the account (none for "account only")
   planError?: string; // the account was made but the plan wasn't sold (still show the password and QR)
   saveError?: string; // the account was made but its details or photo didn't save (fix them from Edit; never re-create it)
+  wa?: string;
 };
-export type SoldPlan = { label: string; amount: number; state: "paid" | "pay"; subId: string; endsOn: string | null };
+export type SoldPlan = { label: string; amount: number; state: "paid" | "pay"; subId: string; endsOn: string | null; plan: Pick<Plan, "track" | "duration_days"> | null };
+
+/** The member's WhatsApp link, their membership message ready (same layout as the expiry reminder). No phone / no end date: none. */
+async function profileWa(userId: string, text: (name: string) => string) {
+  const { data } = await adminDb().from("profiles").select("full_name,phone").eq("id", userId).maybeSingle();
+  return data?.phone ? waLink(waNumber(data.phone), text(data.full_name ?? "")) : undefined;
+}
+const memberWa = (userId: string, plan: SoldPlan["plan"], endsOn: string | null | undefined, title: string, note: string, extra = "") =>
+  endsOn ? profileWa(userId, (name) => [reminderText(name, plan, endsOn, gymDate(), { title, note }), extra].filter(Boolean).join("\n\n")) : undefined;
+/** A cancelled plan / order: its plan, looked up by the subscription. */
+const cancelWa = async (subId: string, userId: string, title: string, note: string) => {
+  const { data } = await adminDb().from("subscriptions").select("plans(track,duration_days)").eq("id", subId).maybeSingle();
+  return profileWa(userId, (name) => cancelText(name, data?.plans as unknown as SoldPlan["plan"], title, note));
+};
+/** After a sale: the first plan that's paid and running (a QR order isn't — the desk is shown the QR instead). */
+const saleWa = (userId: string, sold: SoldPlan[], title: string, note: string, extra = "") => {
+  const p = sold.find((x) => x.state === "paid");
+  if (p) return memberWa(userId, p.plan, p.endsOn, title, note, extra); // ponytail: membership + PT sends one message (the membership's), not two
+  return extra ? profileWa(userId, (name) => `Hi *${name || "there"}*, welcome to *STARS GYM*! 🏋️\n\n${extra}`) : undefined; // new account, nothing paid yet
+};
 
 /** A temporary password nobody can work out from the member's details: 8 random characters, no look-alikes (0/o, 1/l). */
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -107,7 +128,9 @@ async function markPaidRun(_: Result, form: FormData): Promise<Result> {
   if (dates.error) return { error: `Marked paid, but the dates didn't save: ${dates.error}` };
   await logAction(me, "Marked paid", { memberId: sub.user_id, branchId: sub.branch_id, detail: inr(sub.amount_paise) });
   notifyAfter([sub.user_id], { title: "Payment confirmed", body: `${inr(sub.amount_paise)} received — your pass is ready.`, url: `/pass/${subId}`, tag: `paid-${subId}` });
-  return done("Marked paid");
+  const { data: plan } = await adminDb().from("subscriptions").select("plans(track,duration_days)").eq("id", subId).maybeSingle();
+  const wa = await memberWa(sub.user_id, (plan?.plans ?? null) as unknown as SoldPlan["plan"], dates.ends, "Membership Confirmed", "Payment received — your membership is active. 💪");
+  return { ...done("Marked paid"), wa };
 }
 
 /** Desk: stop (delete) a paid plan — a mistaken sale, a refund. Staff only for their branch's members; every one is in
@@ -118,7 +141,7 @@ export async function cancelPlan(subId: string): Promise<Result> {
   const { data, error } = await adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", subId).eq("status", "active").select("user_id,amount_paise").maybeSingle();
   if (error) return { error: error.message };
   if (data) await logAction(me, "Cancelled plan", { memberId: data.user_id, detail: inr(data.amount_paise) });
-  return done("Plan deleted");
+  return { ...done("Plan deleted"), wa: data ? await cancelWa(subId, data.user_id, "Membership Cancelled", "Your membership has been cancelled.") : undefined };
 }
 
 /** Desk: drop an unpaid order (staff: their branch's). */
@@ -128,7 +151,7 @@ export async function cancelSub(subId: string): Promise<Result> {
   const { data, error } = await adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", subId).eq("status", "pending").select("user_id,amount_paise").maybeSingle();
   if (error) return { error: error.message };
   if (data) await logAction(me, "Cancelled order", { memberId: data.user_id, detail: inr(data.amount_paise) });
-  return done("Cancelled");
+  return { ...done("Cancelled"), wa: data ? await cancelWa(subId, data.user_id, "Order Cancelled", "Your membership order has been cancelled — no payment is due.") : undefined };
 }
 
 /** The start date the desk picked: blank = automatic (today, or the day after their current plan ends). Up to 3 months
@@ -226,13 +249,17 @@ async function addMemberRun(_: Result, form: FormData): Promise<Result> {
     if (uploaded && "path" in uploaded) after(() => removePhoto(uploaded.path));
   } else if (photoSet?.data) after(() => removePhoto(photoSet.data as string)); // the photo it replaced
   const planError = sold && "error" in sold ? sold.error : undefined;
+  const plans = sold && !("error" in sold) ? sold : [];
+  // a new account's sign-in details go in this message (the desk screen no longer shows the password or a QR)
+  const account = password ? accountText({ phone: read.details.phone, email, password, loginUrl }) : "";
+  const wa = await saleWa(id, plans, "Membership Confirmed", "Welcome to the family — your membership is active. 💪", account);
   // no revalidatePath here: re-rendering the whole member list made the desk wait for it. The form refreshes the list
   // in the background once the password screen is showing.
   return {
     ok: existing ? "Member already exists — updated." : "Account created",
     created: {
       name: s(form, "full_name"), email, phone: read.details.phone, password, loginUrl,
-      plans: sold && !("error" in sold) ? sold : [], planError,
+      plans, planError, wa,
       saveError: problems.length ? `The account was made, but its ${problems.join(" and ")}. Open the member → Edit to fix it — don't add them again.` : undefined,
     },
   };
@@ -255,7 +282,8 @@ async function renewMemberRun(_: Result, form: FormData): Promise<Result> {
     revalidatePath("/admin", "layout");
     redirect(`/pay/${qr.subId}`);
   }
-  return { ok: `Renewed · ${sold.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}` }; // the form refreshes the page
+  // the form refreshes the page; `wa` opens WhatsApp with the renewal message ready
+  return { ok: `Renewed · ${sold.map((x) => `${x.label}${x.endsOn ? ` till ${prettyDay(x.endsOn)}` : ""}`).join(" + ")}`, wa: await saleWa(userId, sold, "Membership Renewed", "Thank you for renewing — your membership is active. 💪") };
 }
 
 export type EditableSub = { id: string; starts_on: string; ends_on: string; amount_paise: number; trainer_id: string | null; plans: Plan };
@@ -306,20 +334,21 @@ export async function editPlan(_: Result, form: FormData): Promise<Result> {
     sub.amount_paise !== amount && `${inr(sub.amount_paise)} → ${inr(amount)}`,
   ].filter(Boolean).join(" · ");
   await logAction(me, "Edited plan", { memberId: sub.user_id, branchId: sub.branch_id, detail: changes || "trainer" });
-  return done(`Plan saved · ${prettyDay(picked.start)} – ${prettyDay(ends)}`);
+  const wa = await memberWa(sub.user_id, plan, ends, "Membership Updated", "Your membership details have been updated. 💪");
+  return { ...done(`Plan saved · ${prettyDay(picked.start)} – ${prettyDay(ends)}`), wa };
 }
 
 /** Owner only. Deletes the member's account, plans, visits and photo. Staff and admin accounts can't be deleted here. */
 export async function deleteMember(id: string): Promise<Result> {
   const { supabase, profile: me } = await requireAdmin();
-  const { data: m } = await supabase.from("profiles").select("role,photo_path,full_name").eq("id", id).maybeSingle();
+  const { data: m } = await supabase.from("profiles").select("role,photo_path,full_name,phone").eq("id", id).maybeSingle();
   if (!m) return { error: "Member not found." };
   if (m.role !== "member") return { error: "Remove their desk access on the Team page first." };
   const { error } = await adminDb().auth.admin.deleteUser(id); // cascades to profile, plans, check-ins
   if (error) return { error: error.message };
   await removePhoto(m.photo_path);
   await logAction(me, "Deleted member", { memberName: m.full_name });
-  return done("Member deleted");
+  return { ...done("Member deleted"), wa: m.phone ? waLink(waNumber(m.phone), cancelText(m.full_name ?? "", null, "Account Removed", "Your Stars Gym account and membership have been removed.")) : undefined };
 }
 
 type SaleItem = { planId: string; price: number | null; admission: number | null; trainerId: string | null; addOn: boolean };
@@ -428,7 +457,7 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
   if (proof.error) return { error: proof.error };
 
   // 1. the orders, unpaid
-  type Made = { id: string; item: SaleItem; fee: number; adm: number; standard: number; total: number; discounted: boolean; label: string; method?: string; cashPart?: number | null };
+  type Made = { plan: SoldPlan["plan"]; id: string; item: SaleItem; fee: number; adm: number; standard: number; total: number; discounted: boolean; label: string; method?: string; cashPart?: number | null };
   const made: Made[] = [];
   const dropAll = () => Promise.all(made.map((m) => adminDb().from("subscriptions").update({ status: "cancelled" }).eq("id", m.id).eq("status", "pending")));
   for (const i of items) {
@@ -449,7 +478,7 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
     const adm = fee > 0 ? (i.admission !== null ? Math.round(i.admission * 100) : fee) : 0;
     const total = planPart + adm;
     const discounted = total !== standard || adm !== fee;
-    made.push({ id: sub.id as string, item: i, fee, adm, standard, total, discounted, label: plan ? `${planName(plan as Plan)}${i.addOn ? " (add-on)" : ""}` : "Plan" });
+    made.push({ plan: plan as SoldPlan["plan"], id: sub.id as string, item: i, fee, adm, standard, total, discounted, label: plan ? `${planName(plan as Plan)}${i.addOn ? " (add-on)" : ""}` : "Plan" });
   }
 
   // 2. who pays what
@@ -488,7 +517,7 @@ async function sellPlans(supabase: Db, me: Profile, userId: string, branchId: st
   const out: SoldPlan[] = [];
   for (const m of made) {
     const what = `${m.label} · ${inr(m.total)}${m.discounted ? ` (standard ${inr(m.standard)})` : ""}`;
-    const sold = { label: m.label, amount: m.total, subId: m.id, endsOn: null };
+    const sold = { label: m.label, amount: m.total, subId: m.id, endsOn: null, plan: m.plan };
     logSoon(me, pay === "qr" ? "Created order" : "Sold plan", { memberId: userId, branchId, detail: `${what} · ${m.method === "cash" ? "cash" : m.cashPart ? "cash + UPI" : "UPI"}` });
     if (pay === "qr") {
       out.push({ ...sold, state: "pay" });

@@ -447,28 +447,45 @@ export function videoEmbed(url: string | null) {
   return null;
 }
 
+const planLabel = (plan: Pick<Plan, "track" | "duration_days">) => {
+  const d = plan.duration_days;
+  return `${d === 365 ? "1 Year" : d >= 30 && d % 30 === 0 ? `${d / 30} Month${d === 30 ? "" : "s"}` : `${d} Days`} ${TRACKS[plan.track]}`;
+};
+
+/** Same layout as the reminder, for a plan or order the desk cancelled / an account it removed (`plan` null: the account). */
+export const cancelText = (name: string, plan: Pick<Plan, "track" | "duration_days"> | null | undefined, title: string, note: string) =>
+  [`🏋️ *STARS GYM ${title}*`, "", `Hi *${name || "there"}*,`, ...(plan ? ["", `📋 Plan: *${planLabel(plan)}*`] : []), "", note, "", "Contact us for any questions.", "- STARS GYM Management"].join("\n");
+
+/** The new member's sign-in details, sent in the message (the desk screen doesn't show them). */
+export const accountText = (a: { phone: string; email: string; password: string; loginUrl: string | null }) =>
+  ["🔐 *Your account*", `📱 Sign in with: *${a.email || a.phone}*`, `🔑 Temporary password: *${a.password}*`, ...(a.loginUrl ? [`🔗 One-tap sign in: ${a.loginUrl}`] : []), "You'll be asked to set your own password when you sign in."].join("\n");
+
 /** The desk's WhatsApp renewal reminder (the gym's own wording; *bold* is WhatsApp's). "3 Months Strength", "16/10/2026". */
-export function reminderText(name: string, plan: Pick<Plan, "track" | "duration_days"> | null | undefined, endsOn: string, today = gymDate()) {
+export function reminderText(name: string, plan: Pick<Plan, "track" | "duration_days"> | null | undefined, endsOn: string, today = gymDate(), opts: { title?: string; note?: string } = {}) {
   const days = Math.round((Date.parse(endsOn) - Date.parse(today)) / 864e5);
   const left = days > 1 ? `${days} days remaining` : days === 1 ? "1 day remaining" : days === 0 ? "Expires today" : `Expired ${days === -1 ? "yesterday" : `${-days} days ago`}`;
-  const d = plan?.duration_days ?? 0;
-  const length = d === 365 ? "1 Year" : d >= 30 && d % 30 === 0 ? `${d / 30} Month${d === 30 ? "" : "s"}` : `${d} Days`;
   const [y, m, day] = endsOn.split("-");
   return [
-    "🏋️ *STARS GYM Membership Reminder*",
+    `🏋️ *STARS GYM ${opts.title ?? "Membership Reminder"}*`,
     "",
     `Hi *${name || "there"}*,`,
     `⏰ *${left}*`,
     "",
-    ...(plan ? [`📋 Plan: *${length} ${TRACKS[plan.track]}*`] : []),
+    ...(plan ? [`📋 Plan: *${planLabel(plan)}*`] : []),
     `📅 Expiry: *${day}/${m}/${y}*`,
     "",
-    "Please renew your membership to continue your fitness journey without interruption. 💪",
+    opts.note ?? "Please renew your membership to continue your fitness journey without interruption. 💪",
     "",
-    "Contact us to renew today!",
+    opts.note ? "See you at the gym!" : "Contact us to renew today!",
     "- STARS GYM Management",
   ].join("\n");
 }
+
+/** 10-digit Indian numbers get the country code for wa.me links. */
+export const waNumber = (phone: string | null) => {
+  const d = (phone ?? "").replace(/\D/g, "");
+  return d.length === 10 ? `91${d}` : d;
+};
 
 export const waLink = (digits: string, text = "Hi Stars Gym!") => `https://wa.me/${digits.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
 
