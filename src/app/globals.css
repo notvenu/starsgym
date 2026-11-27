@@ -283,3 +283,17 @@ html[data-busy]::before { content: ""; position: fixed; z-index: 100; top: 0; le
   details::details-content { block-size: 0; overflow: clip; transition: block-size 0.3s var(--ease-lift), content-visibility 0.3s allow-discrete; }
   details[open]::details-content { block-size: auto; }
 }
+
+
+/* ── Admin panel only: bigger, brighter, plainer text. The owner's team read this on a counter in daylight, and small grey
+   capitals on black were hard to see. Scoped to <div data-admin>, so the public website and the member app keep their look. */
+html:has([data-admin]) { font-size: 112.5%; } /* every rem size in the panel grows 12%; the user's own font-size setting still applies on top */
+[data-admin] {
+  --color-ash: #d0d0d0;   /* secondary text, was #a3a3a3 */
+  --color-faint: #b4b4b4; /* hints and placeholders, was #8a8a8a */
+  --color-body: #eaeaea;
+}
+[data-admin] .label { text-transform: none; letter-spacing: 0.01em; font-size: 0.9375rem; color: var(--color-body); }
+[data-admin] :is(.text-xs, .text-\[11px\], .text-\[10px\]) { font-size: 0.8125rem; }
+/* tiles and menu groups told apart by style, not by rewording: a bold label, a coloured edge (red = needs action), and group headings you can read */
+[data-admin] aside p.font-label, [data-admin] dialog p.font-label { color: var(--color-body); font-size: 0.9375rem; letter-spacing: 0.12em; }

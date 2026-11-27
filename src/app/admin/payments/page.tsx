@@ -30,7 +30,7 @@ export default async function PaymentsPage() {
 
   return (
     <>
-      <PageHeader title="Payments" />
+      <PageHeader title="Payments" intro="A member's plan only starts once you confirm their payment here. Check the money first, then mark it paid." />
 
       {asks && asks.count > 0 && (
         <Panel title={`Discount requests · ${asks.count}`} intro="Staff want to sell below the standard price." flush>

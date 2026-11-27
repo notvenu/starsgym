@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 import { SiteNav } from "@/components/site";
 import { adminDb, requireUser } from "@/lib/supabase";
-import { discountOf, orderUpi, inr, planName, upiLink, type Plan } from "@/lib/gym";
+import { discountOf, branchUpi, inr, planName, upiLink, type Plan } from "@/lib/gym";
 import { getPass } from "../../pass/[subId]/data";
 import { Ticket } from "../../pass/[subId]/ticket";
 import { PassDialog } from "../../pass/[subId]/ui";
@@ -29,9 +29,7 @@ export default async function PayPage({ params }: PageProps<"/pay/[subId]">) {
   const plan = sub.plans as unknown as Plan;
   const owner = (sub.profiles as unknown as { full_name: string } | null)?.full_name;
   const ref = sub.id.slice(0, 8).toUpperCase();
-  // a PT order goes to its trainer's UPI when they have one, else the order's branch's own account (then the gym-wide one)
-  const { data: trainer } = sub.trainer_id ? await adminDb().from("site_items").select("*").eq("id", sub.trainer_id).maybeSingle() : { data: null };
-  const upi = orderUpi(sub.branches as { upi_id?: string | null } | null, trainer);
+  const upi = branchUpi(sub.branches as { upi_id?: string | null } | null); // the order's branch's own account, else the gym-wide one
   const link = sub.status === "pending" && upi ? upiLink(sub.amount_paise, ref, upi) : null;
   const qr = link ? await QRCode.toDataURL(link, { margin: 1, width: 560, color: { dark: "#0a0a0a", light: "#f4f2ee" } }) : null;
   const pass = sub.status === "active" ? await getPass(supabase, sub.id) : null;

@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
 import { clearDesk } from "@/app/admin/data";
 import { adminDb, requireAdmin, requireStaff } from "@/lib/supabase";
 import { logAction } from "@/lib/log";
 import { reelEmbed, videoEmbed, type ItemKind } from "@/lib/gym";
-import { sitePhoto } from "./upload";
+import { dropPhoto, sitePhoto } from "./upload";
 
 export type Result = { error?: string; ok?: string } | undefined;
 const s = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -31,7 +32,17 @@ export async function saveSettings(_: Result, form: FormData): Promise<Result> {
 }
 
 /** Create or update a trainer / client story / gallery item / reel. A new photo replaces the old one. */
-export async function saveItem(_: Result, form: FormData): Promise<Result> {
+export async function saveItem(prev: Result, form: FormData): Promise<Result> {
+  try {
+    return await saveItemRun(prev, form);
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[content] save failed:", e);
+    return { error: `Couldn't save${e instanceof Error && e.message ? ` (${e.message.slice(0, 160)})` : ""}. Try again.` };
+  }
+}
+
+async function saveItemRun(_: Result, form: FormData): Promise<Result> {
   const { supabase } = await requireAdmin();
   const kind = s(form, "kind") as ItemKind;
   if (!KINDS.includes(kind)) return { error: "Unknown section." };
@@ -40,8 +51,8 @@ export async function saveItem(_: Result, form: FormData): Promise<Result> {
   if (kind === "reel" && !reelEmbed(url)) return { error: "Paste an Instagram reel link, e.g. https://www.instagram.com/reel/…" };
   if (kind === "gallery" && url && !videoEmbed(url)) return { error: "Video links must be YouTube or a direct .mp4 / .webm file." };
 
-  const before = await sitePhoto(supabase, form, kind, "photo", "image_url");
-  const after = await sitePhoto(supabase, form, kind, "after_photo", "after_image_url");
+  const before = await sitePhoto(supabase, form, kind, "photo");
+  const after = await sitePhoto(supabase, form, kind, "after_photo");
   if (before.error || after.error) return { error: before.error ?? after.error };
   const image_path = before.path;
   const trainer_id = s(form, "trainer_id");
@@ -63,7 +74,11 @@ export async function saveItem(_: Result, form: FormData): Promise<Result> {
     ...(kind === "client" && { duration: s(form, "duration"), trainer_id: trainer_id || null }),
   };
   const { error } = id ? await supabase.from("site_items").update(row).eq("id", id) : await supabase.from("site_items").insert(row);
-  return error ? { error: error.message } : refresh(id ? "Saved" : "Added");
+  if (error) {
+    await Promise.all([dropPhoto(supabase, before.path), dropPhoto(supabase, after.path)]); // the photos went up for nothing
+    return { error: error.message };
+  }
+  return refresh(id ? "Saved" : "Added");
 }
 
 export async function setItemActive(id: string, active: boolean): Promise<Result> {

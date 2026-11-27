@@ -126,7 +126,7 @@ export default async function MembersPage({ searchParams }: PageProps<"/admin/me
 
   return (
     <>
-      <PageHeader title="Members">
+      <PageHeader title="Members" intro="Everyone with an account. Tap a name to open them, or use + New member to sign someone up.">
         {isOwner && <a href="/admin/members/export" download className="btn-ghost">Download CSV</a>}
         <AdminModal label="+ New member" title="New member">
           <AddMemberForm branches={branchList} plans={planList} offers={offerList} trainers={trainers} admissionPaise={fee} markup={ref.markupPct} />

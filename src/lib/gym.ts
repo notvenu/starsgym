@@ -35,8 +35,6 @@ export const branchPath = (b: Pick<Branch, "name">) => `/branches/${branchSlug(b
 
 /** The UPI ID payments for this branch go to: its own, or the gym-wide one. */
 export const branchUpi = (b?: { upi_id?: string | null } | null) => b?.upi_id?.trim() || process.env.NEXT_PUBLIC_UPI_ID || "";
-/** Who an order is paid to: a PT order's trainer when they've set a UPI ID, else the branch (then the gym-wide one). */
-export const orderUpi = (b?: { upi_id?: string | null } | null, trainer?: { upi_id?: string | null } | null) => trainer?.upi_id?.trim() || branchUpi(b);
 export const UPI_ID = /^[a-z0-9._-]{2,256}@[a-z][a-z0-9.-]{1,63}$/;
 
 export type Spot = { lat: number; lng: number; accuracy: number };
@@ -402,7 +400,6 @@ export type SiteItem = {
   branch_id: string | null; // trainers: their branch, null = both (0014)
   profile_id: string | null; // trainers who also have desk access (0014)
   pt_fee_paise?: number | null; // trainers: their own PT fee per month, set by the owner; null = the standard PT price
-  upi_id?: string | null; // trainers: PT orders they're picked for are paid here; null = the branch's UPI
   url: string | null;
   sort: number;
   active: boolean;

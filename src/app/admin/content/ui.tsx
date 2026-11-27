@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Field } from "@/components/client";
-import { confirmDialog, ResultToast, toastResult, keepFields } from "@/components/feedback";
+import { confirmDialog, ResultToast, safely, toastResult, keepFields } from "@/components/feedback";
 import { itemImage, type ItemKind, type Settings, type SiteItem } from "@/lib/gym";
 import { deleteItem, markEnquiry, saveItem, saveSettings, setItemActive, type Result } from "./actions";
 
@@ -50,7 +50,7 @@ const FIELDS: Record<ItemKind, { title?: string; subtitle?: string; body?: strin
 export function ItemForm({ kind, item, trainers = [], onDone }: { kind: ItemKind; item?: SiteItem; trainers?: SiteItem[]; onDone?: () => void }) {
   const f = FIELDS[kind];
   const [state, action, pending] = useActionState(async (prev: Result, form: FormData) => {
-    const res = await saveItem(prev, form);
+    const res = await safely(() => saveItem(prev, form));
     if (res?.ok) {
       toastResult(res); // shown here: a form that closes on success takes its own message with it
       onDone?.();
@@ -85,8 +85,8 @@ export function ItemForm({ kind, item, trainers = [], onDone }: { kind: ItemKind
           <textarea name="body" rows={3} defaultValue={item?.body} className="field py-3" />
         </label>
       )}
-      {f.photo && <PhotoInput label={f.photo} file="photo" url="image_url" current={item?.image_path ?? null} />}
-      {f.after && <PhotoInput label="After photo" file="after_photo" url="after_image_url" current={item?.after_image_path ?? null} />}
+      {f.photo && <PhotoInput label={f.photo} file="photo" current={item?.image_path ?? null} />}
+      {f.after && <PhotoInput label="After photo" file="after_photo" current={item?.after_image_path ?? null} />}
       <div className="flex items-center gap-4">
         <button disabled={pending} className="btn-red">{pending ? "Saving…" : item ? "Save" : "Add"}</button>
         <Status state={state} />
@@ -95,10 +95,22 @@ export function ItemForm({ kind, item, trainers = [], onDone }: { kind: ItemKind
   );
 }
 
-export function PhotoInput({ label, file, url, current }: { label: string; file: string; url: string; current: string | null }) {
+const OK_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_MB = 5;
+
+/** Says what's wrong with a picked photo right away, instead of after the save has failed. */
+function photoProblem(f: File) {
+  if (!OK_TYPES.includes(f.type)) return `“${f.name}” isn't a JPG, PNG or WebP photo${f.type ? ` (it's ${f.type})` : ""}. Pick a different one.`;
+  if (f.size > MAX_MB * 1048576) return `“${f.name}” is ${(f.size / 1048576).toFixed(1)} MB. Photos must be under ${MAX_MB} MB — pick a smaller one.`;
+  return null;
+}
+
+export function PhotoInput({ label, file, current }: { label: string; file: string; current: string | null }) {
   const src = itemImage(current);
+  const [picked, setPicked] = useState<{ name: string; mb: string } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
   return (
-    <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[auto_1fr_1fr]">
+    <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-[auto_1fr]">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={`Current ${label.toLowerCase()}`} className="size-11 rounded object-cover" />
@@ -107,9 +119,18 @@ export function PhotoInput({ label, file, url, current }: { label: string; file:
       )}
       <label className="flex flex-col gap-1.5">
         <span className="label">{label} (JPG/PNG/WebP, 5 MB)</span>
-        <input type="file" name={file} accept="image/jpeg,image/png,image/webp" className="field py-2.5 file:mr-3 file:rounded file:border-0 file:bg-steel file:px-3 file:py-1 file:text-chalk" />
+        <input type="file" name={file} accept="image/jpeg,image/png,image/webp" aria-invalid={!!problem}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            const bad = f ? photoProblem(f) : null;
+            if (bad) e.target.value = ""; // never send a photo we already know is refused
+            setProblem(bad);
+            setPicked(f && !bad ? { name: f.name, mb: (f.size / 1048576).toFixed(1) } : null);
+          }}
+          className="field py-2.5 file:mr-3 file:rounded file:border-0 file:bg-steel file:px-3 file:py-1 file:text-chalk" />
+        {problem && <span role="alert" className="text-sm font-semibold text-redtext">{problem}</span>}
+        {picked && <span className="truncate text-xs text-ash">Ready: {picked.name} ({picked.mb} MB)</span>}
       </label>
-      <Field label="…or photo URL" name={url} type="url" placeholder="https://" />
     </div>
   );
 }

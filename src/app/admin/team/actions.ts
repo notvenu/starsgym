@@ -2,11 +2,11 @@
 
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
 import { clearDesk } from "@/app/admin/data";
 import { adminDb, requireAdmin } from "@/lib/supabase";
-import { sitePhoto } from "../content/upload";
+import { dropPhoto, sitePhoto } from "../content/upload";
 import { logAction } from "@/lib/log";
-import { UPI_ID } from "@/lib/gym";
 
 export type Result = { error?: string; ok?: string; password?: string } | undefined;
 /** A one-time password for a desk account, shown to the owner once; they're asked to change it at first sign-in. */
@@ -19,7 +19,17 @@ const UUID = /^[0-9a-f-]{36}$/i;
  * desk access (none / staff / admin, a sign-in account) and a trainer card on the website — share one name and branch,
  * so a trainer who also runs the desk is one person, not two records to keep in step.
  */
-export async function saveTeam(_: Result, form: FormData): Promise<Result> {
+export async function saveTeam(prev: Result, form: FormData): Promise<Result> {
+  try {
+    return await saveTeamRun(prev, form);
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[team] save failed:", e);
+    return { error: `Couldn't save${e instanceof Error && e.message ? ` (${e.message.slice(0, 160)})` : ""}. Check the Team list before trying again — part of it may have saved.` };
+  }
+}
+
+async function saveTeamRun(_: Result, form: FormData): Promise<Result> {
   const { supabase, profile: me } = await requireAdmin();
   const name = s(form, "name");
   const branch = s(form, "branch");
@@ -39,8 +49,15 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
   if (trainer && url && !url.startsWith("https://")) return { error: "The Instagram link must start with https://" };
   const ptFee = s(form, "pt_fee") === "" ? null : Math.round(Number(s(form, "pt_fee")) * 100);
   if (ptFee !== null && !(ptFee >= 0)) return { error: "The PT fee must be zero or more." };
-  const upi = s(form, "upi_id").toLowerCase();
-  if (trainer && upi && !UPI_ID.test(upi)) return { error: "That UPI ID doesn't look right — like name@okaxis." };
+
+  // the photo goes up first: if it can't, nothing else has been created yet (no half-added person)
+  const photo = trainer ? await sitePhoto(supabase, form, "trainer", "photo") : {};
+  if (photo.error) return { error: photo.error };
+  let made = false; // a sign-in account was created by this save
+  const fail = async (error: string): Promise<Result> => {
+    await dropPhoto(supabase, photo.path);
+    return { error: made ? `The sign-in account was created, but the rest didn't save: ${error} Open them from the list and save again.` : error };
+  };
 
   // ── desk access. Service key: owner-only path, and roles aren't editable through anyone's own session.
   const admin = adminDb();
@@ -48,35 +65,34 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
     if (access !== "none") {
       if (!profileId) {
         const email = s(form, "email").toLowerCase();
-        if (!/^\S+@\S+\.\S+$/.test(email)) return { error: "Enter their email — it's how they sign in." };
+        if (!/^\S+@\S+\.\S+$/.test(email)) return fail("Enter their email — it's how they sign in.");
         const { data: existing } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
-        if (existing?.id === me.id) return { error: "That's your own account." };
+        if (existing?.id === me.id) return fail("That's your own account.");
         if (existing) profileId = existing.id as string; // already a member: they keep their own password
         else {
           // the owner typed it in the form, so it's not a temporary one to replace at first sign-in
           const chosen = String(form.get("password") ?? "");
-          if (chosen.length < 8) return { error: "Set a password of at least 8 characters." };
+          if (chosen.length < 8) return fail("Set a password of at least 8 characters.");
           const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true, password: chosen, user_metadata: { full_name: name } });
-          if (error) return { error: error.message };
+          if (error) return fail(error.message);
           profileId = data.user.id;
+          made = true;
         }
       }
       const { error } = await admin
         .from("profiles")
         .update({ role: access, full_name: name, all_branches: access === "staff" && all, ...(access === "staff" && !all && { home_branch_id: branch }) })
         .eq("id", profileId);
-      if (error) return { error: /all_branches/.test(error.message) ? "Run supabase/migrations/0012_staff_all_branches.sql first." : error.message };
+      if (error) return fail(/all_branches/.test(error.message) ? "Run supabase/migrations/0012_staff_all_branches.sql first." : error.message);
     } else if (profileId) {
       // desk access off: back to a regular member account (membership and history stay)
       const { error } = await admin.from("profiles").update({ role: "member", all_branches: false }).eq("id", profileId).neq("role", "member");
-      if (error) return { error: error.message };
+      if (error) return fail(error.message);
     }
   }
 
   // ── trainer card on the website
   if (trainer) {
-    const photo = await sitePhoto(supabase, form, "trainer", "photo", "image_url");
-    if (photo.error) return { error: photo.error };
     const row = {
       kind: "trainer",
       title: name,
@@ -88,19 +104,17 @@ export async function saveTeam(_: Result, form: FormData): Promise<Result> {
       profile_id: profileId,
       active: true,
       pt_fee_paise: ptFee || null, // 0 or blank: the standard PT price
-      upi_id: upi || null, // blank: PT orders are paid to the branch
       ...(photo.path && { image_path: photo.path }),
     };
     const { error } = itemId ? await supabase.from("site_items").update(row).eq("id", itemId) : await supabase.from("site_items").insert(row);
     if (error)
-      return {
-        error: /pt_fee_paise/.test(error.message) ? "Add the PT fee column first: alter table site_items add column pt_fee_paise integer check (pt_fee_paise >= 0);"
-          : /upi_id/.test(error.message) ? "Add the trainer UPI column first: alter table site_items add column upi_id text;"
+      return fail(
+        /pt_fee_paise/.test(error.message) ? "Add the PT fee column first: alter table site_items add column pt_fee_paise integer check (pt_fee_paise >= 0);"
           : /branch_id|profile_id/.test(error.message) ? "Run supabase/migrations/0014_team_insights.sql first." : error.message,
-      };
+      );
   } else if (itemId) {
     const { error } = await supabase.from("site_items").update({ active: false }).eq("id", itemId); // hidden, not deleted
-    if (error) return { error: error.message };
+    if (error) return fail(error.message);
   }
 
   revalidatePath("/", "layout"); // the website's trainer pages and the admin

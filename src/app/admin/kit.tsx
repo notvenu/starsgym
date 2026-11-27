@@ -40,10 +40,10 @@ export function Stat({ label, value, href, tone }: { label: string; value: strin
   const body = (
     <>
       <span className={`truncate font-display text-[clamp(28px,7vw,40px)] leading-none lg:text-[clamp(26px,2.4vw,40px)] ${tone === "red" ? "text-redtext" : ""}`}>{value}</span>
-      <span className="label">{label}</span>
+      <span className="label !font-extrabold !text-chalk">{label}</span>
     </>
   );
-  const cls = "flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-carbon p-4 sm:p-5";
+  const cls = `flex min-w-0 flex-col gap-2 rounded-lg border border-l-4 border-line bg-carbon p-4 sm:p-5 ${tone === "red" ? "border-l-red bg-redwash" : "border-l-strong"}`;
   return href ? <Link href={href} className={`${cls} transition-colors hover:border-red`}>{body}</Link> : <div className={cls}>{body}</div>;
 }
 

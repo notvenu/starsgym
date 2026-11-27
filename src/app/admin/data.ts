@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminDb } from "@/lib/supabase";
 import { unstable_cache, revalidateTag } from "next/cache";
-import { inr, markupOf, orderUpi, planName, type Branch, type Offer, type Plan } from "@/lib/gym";
+import { branchUpi, inr, markupOf, planName, type Branch, type Offer, type Plan } from "@/lib/gym";
 
 type PendingSub = { branches: { upi_id?: string | null } | null; trainer_id: string | null; id: string; amount_paise: number; method: string; created_at: string; approval: string | null; standard_paise: number | null; plans: Plan; profiles: { full_name: string; email: string | null }; requester: { full_name: string } | null };
 
@@ -16,17 +16,13 @@ export async function getPending(supabase: SupabaseClient, limit = 100, branchId
     .limit(limit);
   const scoped = onlyApprovals ? q.eq("approval", "pending") : q;
   const { data, count } = await (branchId ? scoped.eq("branch_id", branchId) : scoped);
-  // PT orders are paid to the trainer's own UPI when they have one — the screenshot check matches against that
-  const trainerIds = [...new Set(((data ?? []) as unknown as PendingSub[]).map((s) => s.trainer_id).filter(Boolean))] as string[];
-  const { data: trainers } = trainerIds.length ? await supabase.from("site_items").select("*").in("id", trainerIds) : { data: [] };
-  const trainerOf = new Map((trainers ?? []).map((t) => [t.id as string, t as { upi_id?: string | null }]));
   const rows = ((data ?? []) as unknown as PendingSub[]).map((s) => ({
     id: s.id,
     title: `${s.profiles.full_name || s.profiles.email} · ${planName(s.plans)}`,
     approval: s.approval,
     method: s.method,
     amountPaise: s.amount_paise,
-    upiId: orderUpi(s.branches, s.trainer_id ? trainerOf.get(s.trainer_id) : null),
+    upiId: branchUpi(s.branches),
     createdAt: s.created_at,
     ask: s.approval === "pending" ? `${s.requester?.full_name || "Staff"} asked for ${inr(s.amount_paise)} · standard ${inr(s.standard_paise ?? s.amount_paise)}` : null,
     meta: `${inr(s.amount_paise)} · ${s.method === "razorpay" ? "online (unconfirmed)" : s.method === "upi_qr" ? "UPI at desk" : s.method} · REF ${s.id.slice(0, 8).toUpperCase()} · ${new Date(s.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" })}`,

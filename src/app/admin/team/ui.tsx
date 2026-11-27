@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Field } from "@/components/client";
-import { confirmDialog, ResultToast, toastResult, keepFields } from "@/components/feedback";
+import { confirmDialog, ResultToast, safely, toastResult, keepFields } from "@/components/feedback";
 import type { Branch, SiteItem } from "@/lib/gym";
 import { deleteItem } from "../content/actions";
 import { PhotoInput } from "../content/ui";
@@ -44,7 +44,7 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
   const [adminCard, setAdminCard] = useState(!!person?.item?.active); // an admin who also coaches
   const [pending, start] = useTransition();
   const [state, action, saving] = useActionState(async (prev: Result, form: FormData) => {
-    const res = await saveTeam(prev, form);
+    const res = await safely(() => saveTeam(prev, form));
     if (res?.password) await showPassword(res.password);
     if (res?.ok) {
       toastResult(res); // shown here: a form that closes on success takes its own message with it
@@ -114,12 +114,7 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
             </span>
             <span className="text-xs text-ash">The desk charges this × months when they&apos;re picked for PT. Blank = the standard price from Pricing.</span>
           </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label">Their UPI ID (optional)</span>
-            <input name="upi_id" defaultValue={item?.upi_id ?? ""} placeholder="name@okaxis" autoComplete="off" spellCheck={false} className="field" />
-            <span className="text-xs text-ash">PT orders with them as trainer show a QR for this ID, so the PT fee goes straight to them. Blank = the branch&apos;s UPI.</span>
-          </label>
-          <PhotoInput label="Photo" file="photo" url="image_url" current={item?.image_path ?? null} />
+          <PhotoInput label="Photo" file="photo" current={item?.image_path ?? null} />
           <details className="group rounded-lg border border-line">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 text-sm font-semibold text-ash">
               More for the website <span className="transition-transform group-open:rotate-180" aria-hidden="true">▾</span>
@@ -155,6 +150,19 @@ export function TeamForm({ person, branches, onDone }: { person?: Person; branch
         <ResultToast state={state} />
       </div>
     </form>
+  );
+}
+
+/** "+ Add person": a sheet that closes on success (AdminModal can't — it never hears from the form) and remounts the form blank each time. */
+export function AddPerson({ branches }: { branches: Branch[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="btn-red">+ Add person</button>
+      <Sheet title="Add to the team" open={open} onClose={() => setOpen(false)}>
+        {open && <TeamForm branches={branches} onDone={() => setOpen(false)} />}
+      </Sheet>
+    </>
   );
 }
 

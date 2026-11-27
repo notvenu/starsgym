@@ -34,6 +34,20 @@ export function toastResult(r: ActionResult) {
   else if (r?.message) toast(r.message);
 }
 
+/**
+ * Runs a server action and turns a failure that never came back as a result (too-large upload, dropped connection,
+ * server crash) into { error }, so the form shows why instead of silently doing nothing.
+ */
+export async function safely<T extends { error?: string } | undefined>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    console.error("[server action failed]", e);
+    return { error: `Nothing was saved: the server couldn't be reached or refused the request${/body|exceed|large|413/i.test(msg) ? " (the files are too big, try a smaller photo)" : navigator.onLine ? "" : " (you're offline)"}. Try again.` } as T;
+  }
+}
+
 /** Toasts each new result from useActionState. */
 export function useResultToast(state: ActionResult) {
   useEffect(() => toastResult(state), [state]);

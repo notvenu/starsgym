@@ -8,6 +8,7 @@ import { deskRef, trainersFor } from "./data";
 import { loadFollowUps, recentNotes, wonBackThisMonth } from "./follow-ups/data";
 import { FollowUpQueue, type FollowItem } from "./follow-ups/queue";
 import { Reveal } from "./more";
+import { myTrainerIds } from "./personal-training/access";
 import { ScanButton } from "@/components/scanner";
 import { NotificationToggle } from "@/components/push";
 
@@ -60,15 +61,20 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
     countsP,
     supabase.from("holidays").select("*").gte("day", today).order("day").limit(3),
     supabase.from("enquiries").select("id", { count: "exact", head: true }).eq("handled", false),
-    // orders waiting for the desk to take the money / check the UPI screenshot
-    only(supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending")),
+    // running personal-training plans: all of them for the owner, a trainer's own clients for a trainer
+    (async () => {
+      const mine = isOwner ? [] : await myTrainerIds(profile.id);
+      let q = only(supabase.from("subscriptions").select("id,plans!inner(track)", { count: "exact", head: true }).eq("status", "active").eq("plans.track", "personal_training").gte("ends_on", today));
+      if (mine.length) q = q.in("trainer_id", mine);
+      return { count: (await q).count ?? 0, link: isOwner || mine.length > 0 }; // staff who don't coach have no PT page to open
+    })(),
     loadFollowUps(view, 60),
     wonBackThisMonth(view),
   ]);
 
   // the lists the page draws. Each row's plan history comes filtered to just the plans that decide the question (an
   // embedded filter), not the member's whole history: e.g. for "lapsed", only plans that still run today or later.
-  const [checkins, expiring, requests, ended, joined, notes] = await Promise.all([
+  const [checkins, expiring, requests, ended, joined, notes, bought] = await Promise.all([
     only(supabase.from("checkins").select("created_at,session,branch_id,user_id,profiles(full_name,photo_path)").eq("day", today)).order("created_at", { ascending: false }).limit(200),
     only(supabase
       .from("subscriptions")
@@ -104,6 +110,17 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       .order("starts_on", { ascending: false })
       .limit(300),
     recentNotes(), // who the desk has already followed up — they sort to the bottom
+    // renewals: paid plans bought in the last 7 days by someone who had a plan before (same rule as the headline count)
+    only(supabase
+      .from("subscriptions")
+      .select("id,user_id,starts_on,ends_on,paid_at,plans!inner(*),profiles!subscriptions_user_id_fkey(full_name,phone,photo_path,home_branch_id,history:subscriptions!subscriptions_user_id_fkey(status,starts_on,ends_on,paid_at))")
+      .eq("status", "active")
+      .gte("paid_at", weekFrom)
+      .gt("plans.duration_days", 1)
+      .neq("plans.track", "personal_training")
+      .eq("profiles.history.status", "active"))
+      .order("paid_at", { ascending: false })
+      .limit(300),
   ]);
   const visits = (checkins.data ?? []) as unknown as Visit[];
   // contacted: a follow-up in the last week (expiring), or since their plan ended (expired) — they go to the bottom
@@ -117,6 +134,9 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   // each row carries just the matching part of the member's plan history (same query, no second round trip)
   const had = (h: Past[] | undefined, test: (p: Past) => boolean) => (h ?? []).some((p) => p.status === "active" && test(p));
   const joiners = startedRows.filter((j, i) => !had(j.profiles?.history, (p) => !!p.starts_on && p.starts_on < newSince) && startedRows.findIndex((x) => x.user_id === j.user_id) === i);
+  // renewed: bought this week, and had a plan from before this week (imported plans have no paid_at)
+  const boughtRows = (bought.data ?? []) as unknown as (Joiner & { paid_at: string })[];
+  const renewed = boughtRows.filter((r, i) => had(r.profiles?.history, (p) => !p.paid_at || Date.parse(p.paid_at) < Date.parse(weekFrom)) && boughtRows.findIndex((x) => x.user_id === r.user_id) === i);
   const lapsed = last(endedRows.filter((e, i) => !had(e.profiles?.history, (p) => !!p.ends_on && p.ends_on >= today) && endedRows.findIndex((x) => x.user_id === e.user_id) === i), (e) => !!contactOf(e, e.ends_on));
   type Req = { id: string; user_id: string; full_name: string | null; gender: string | null; home_branch_id: string | null; photo_path: string | null; note: string | null;
     phone?: string | null; email?: string | null;
@@ -124,11 +144,11 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
   const queue = (requests.data ?? []) as unknown as Req[];
   // an overview, not the full lists: the first few of each (with a link to all) keeps the page quick to open on a phone
   // the renewal lists show 10 at a time as you scroll (<Reveal>), so every row's photo is signed up front (one request)
-  const shown = { visits: visits.slice(0, 12), ending, lapsed, joiners: joiners.slice(0, 30) }; // a week of new joiners is short: show them all
+  const shown = { visits: visits.slice(0, 12), ending, lapsed, joiners: joiners.slice(0, 30), renewed: renewed.slice(0, 30) }; // a week of new joiners is short: show them all
   // photos are signed as soon as the lists are in, while the numbers and the rest finish
-  const [[ref, { members, collected, renewals }, holidays, enquiries, toConfirm, followUps, wonBack], photos] = await Promise.all([
+  const [[ref, { members, collected }, holidays, enquiries, pt, followUps, wonBack], photos] = await Promise.all([
     restP,
-    photoUrls([...shown.visits.map((v) => v.profiles?.photo_path), ...shown.ending.map((e) => e.profiles?.photo_path), ...shown.lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path]), ...shown.joiners.map((j) => j.profiles?.photo_path)]),
+    photoUrls([...shown.visits.map((v) => v.profiles?.photo_path), ...shown.ending.map((e) => e.profiles?.photo_path), ...shown.lapsed.map((e) => e.profiles?.photo_path), ...queue.flatMap((r) => [r.photo_path, r.profiles?.photo_path]), ...shown.joiners.map((j) => j.profiles?.photo_path), ...shown.renewed.map((j) => j.profiles?.photo_path)]),
   ]);
   const b = ref.branches.filter((x) => x.active);
   const deskBranches = b.filter((x) => !branchId || x.id === branchId); // staff: just theirs
@@ -197,11 +217,11 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
       <NotificationToggle nudge />
 
       {/* phones: an odd last tile spans the row */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-5 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2">
+      <div data-tour="stats" className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-5 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2">
         <Stat label="Active members" value={members} href="/admin/members?show=active" />
         <Stat label="Check-ins today" value={visits.length} href="#today" />
         <Stat label="New joiners · 7 days" value={joiners.length} href="#joiners" />
-        <Stat label="Renewed · 7 days" value={renewals} />
+        <Stat label="Renewed · 7 days" value={renewed.length} href="#renewed" />
         <Stat label="Expiring in 7 days" value={ending.length} href="#expiring" tone={ending.length ? "red" : undefined} />
         <Stat label="Expired · not renewed" value={lapsed.length} href="#expired" tone={lapsed.length ? "red" : undefined} />
         {/* the month's takings are the owner's */}
@@ -210,7 +230,7 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
           : <Stat label="New enquiries" value={enquiries.count ?? 0} href="/admin/enquiries" tone={enquiries.count ? "red" : undefined} />}
         <Stat label="Won back · this month" value={wonBack} href="/admin/follow-ups?show=done" />
         <Stat label="Lapsed · not contacted" value={followUps.untouched} href="/admin/follow-ups" tone={followUps.untouched ? "red" : undefined} />
-        <Stat label="Payments to confirm" value={toConfirm.count ?? 0} href="/admin/payments" tone={toConfirm.count ? "red" : undefined} />
+        <Stat label="PT" value={pt.count} href={pt.link ? "/admin/personal-training" : undefined} />
       </div>
 
       {queue.length > 0 && (
@@ -303,6 +323,28 @@ export default async function Overview({ searchParams }: PageProps<"/admin">) {
           </ul>
         ) : (
           <Empty>Nobody new in the last 7 days.</Empty>
+        )}
+      </Panel>
+
+      <Panel id="renewed" title={`Renewed · ${renewed.length}`} intro="Bought a new plan this week." flush>
+        {renewed.length ? (
+          <ul className="divide-y divide-line">
+            {shown.renewed.map((j) => (
+              <li key={j.id}>
+                <Link href={`/admin/members/${j.user_id}`} className="flex items-center gap-4 px-5 py-3 transition-colors hover:bg-steel/60">
+                  <Avatar src={pic(j.profiles?.photo_path)} name={j.profiles?.full_name || "?"} size="size-12" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-bold">{j.profiles?.full_name || "—"}</span>
+                    <span className="block truncate text-sm text-ash">{[j.profiles?.phone, branchName(j.profiles?.home_branch_id ?? "")].filter(Boolean).join(" · ")}</span>
+                    <span className="block truncate text-sm text-ash">{planName(j.plans)}{j.ends_on && ` · till ${prettyDay(j.ends_on)}`}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-ash">{gymDate(new Date(j.paid_at)) === today ? "Today" : prettyDay(gymDate(new Date(j.paid_at)))}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty>Nobody renewed in the last 7 days.</Empty>
         )}
       </Panel>
 

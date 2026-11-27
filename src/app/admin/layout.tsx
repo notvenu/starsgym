@@ -3,8 +3,9 @@ import { Logo } from "@/components/site";
 import { requireStaff } from "@/lib/supabase";
 import { AccountPrompt } from "@/components/account-prompt";
 import { BranchSwitch } from "./ui";
+import { myTrainerIds } from "./personal-training/access";
+import { AdminDemo } from "./demo";
 import { deskRef, openEnquiries } from "./data";
-import { untouchedCount } from "./follow-ups/data";
 import { ScanButton } from "@/components/scanner";
 import { signOut } from "../login/actions";
 import { AdminMobileNav, AdminNav, type NavGroup } from "./nav";
@@ -16,12 +17,12 @@ export const metadata = { title: "Admin — Stars Gym" };
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const { supabase, profile, isOwner, view, canSwitch, branchId } = await requireStaff();
   const pendingCount = supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("status", "pending");
-  const [pending, enquiries, ref, requests, lapsed] = await Promise.all([
+  const [pending, enquiries, ref, requests, coaches] = await Promise.all([
     view ? pendingCount.eq("branch_id", view) : pendingCount, // staff: their branch (RLS)
     openEnquiries(branchId, view), // staff: their branch's (and any-branch) enquiries
     deskRef(),
     supabase.from("profile_requests").select("id", { count: "exact", head: true }).eq("status", "pending"), // RLS: what this desk can see
-    untouchedCount(view), // lapsed members nobody has contacted yet (cached a minute)
+    isOwner ? [] : myTrainerIds(profile.id), // desk staff who are also trainers get the Personal training page
   ]);
   const branchName = ref.branches.find((x) => x.id === view)?.name;
   const branchList = canSwitch ? ref.branches.filter((x) => x.active) : null;
@@ -30,13 +31,13 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const desk: NavGroup = {
     label: "Front desk",
     items: [
-      { href: "/admin", label: "Overview", icon: "overview", badge: requests.count ?? 0 },
-      { href: "/admin/members", label: "Members", icon: "members" },
-      { href: "/admin/payments", label: "Payments", icon: "payments", badge: pending.count ?? 0 },
-      { href: "/admin/follow-ups", label: "Follow-ups", icon: "phone", badge: lapsed },
-      { href: "/admin/checkins", label: "Check-ins", icon: "scan" },
-      { href: "/admin/summary", label: "Daily summary", icon: "summary" },
-      { href: "/admin/enquiries", label: "Enquiries", icon: "enquiries", badge: enquiries.count ?? 0 },
+      { href: "/admin", label: "Overview", hint: "Today at a glance", icon: "overview", badge: requests.count ?? 0 },
+      { href: "/admin/members", label: "Members", hint: "Sign up, renew, edit", icon: "members" },
+      { href: "/admin/payments", label: "Payments", hint: "Confirm money received", icon: "payments", badge: pending.count ?? 0 },
+      { href: "/admin/follow-ups", label: "Follow-ups", hint: "Call members who left", icon: "phone" },
+      { href: "/admin/checkins", label: "Check-ins", hint: "Who came in today", icon: "scan" },
+      { href: "/admin/summary", label: "Daily summary", hint: "Today's totals", icon: "summary" },
+      { href: "/admin/enquiries", label: "Enquiries", hint: "Messages from the website", icon: "enquiries", badge: enquiries.count ?? 0 },
     ],
   };
   // related pages share one item, with tabs on the page (kit.tsx Tabs)
@@ -46,18 +47,20 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       ? {
           label: "Manage",
           items: [
-            { href: "/admin/pricing", label: "Pricing & offers", icon: "pricing", match: ["/admin/offers"] },
-            { href: "/admin/branches", label: "Branches & holidays", icon: "branches" },
-            { href: "/admin/team", label: "Team", icon: "staff" },
-            { href: "/admin/content/client", label: "Website", icon: "gallery", match: ["/admin/content", "/admin/settings"] },
-            { href: "/admin/analytics", label: "Reports", icon: "analytics", match: ["/admin/log"] },
+            { href: "/admin/pricing", label: "Pricing & offers", hint: "Plan prices, discounts", icon: "pricing", match: ["/admin/offers"] },
+            { href: "/admin/branches", label: "Branches & holidays", hint: "Timings, closed days", icon: "branches" },
+            { href: "/admin/team", label: "Team", hint: "Staff and trainers", icon: "staff" },
+            { href: "/admin/personal-training", label: "Personal training", hint: "PT clients, sessions, notes", icon: "training" },
+            { href: "/admin/content/client", label: "Website", hint: "Photos and links on the site", icon: "gallery", match: ["/admin/content", "/admin/settings"] },
+            { href: "/admin/analytics", label: "Reports", hint: "Money, visits, staff log", icon: "analytics", match: ["/admin/log"] },
           ],
         }
       : {
           label: "More",
           items: [
-            { href: "/admin/offers", label: "Offers", icon: "plans" },
-            { href: "/admin/branches", label: "Holidays", icon: "branches" },
+            ...(coaches.length ? [{ href: "/admin/personal-training", label: "My PT clients", hint: "Schedules, sessions, notes", icon: "training" as const }] : []),
+            { href: "/admin/offers", label: "Offers", hint: "Current discounts", icon: "plans" },
+            { href: "/admin/branches", label: "Holidays", hint: "Days the gym is closed", icon: "branches" },
           ],
         },
   ];
@@ -76,8 +79,9 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   );
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[260px_1fr]">
+    <div data-admin className="min-h-dvh lg:grid lg:grid-cols-[280px_1fr]">
       <AccountPrompt />
+      <AdminDemo userId={profile.id} />
       <AdminMobileNav groups={groups} logo={<Logo size={40} />} footer={footer} switcher={switcher} />
       <aside className="border-r border-line bg-panel max-lg:hidden lg:sticky lg:top-0 lg:h-dvh lg:overflow-y-auto">
         <div className="flex min-h-full flex-col gap-6 px-4 py-6">

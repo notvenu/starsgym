@@ -7,7 +7,8 @@ import { ScanButton } from "@/components/scanner";
 import { LinkPending } from "@/components/client";
 
 // match: other pages that belong to this item (its tabs), so it stays lit on them
-type Item = { href: string; label: string; icon: keyof typeof ICONS; badge?: number; match?: string[] };
+// hint: one plain line under the name saying what the page is for
+type Item = { href: string; label: string; hint?: string; icon: keyof typeof ICONS; badge?: number; match?: string[] };
 export type NavGroup = { label: string; items: Item[] };
 
 // stroke icon paths (24×24). Server files pass the key — objects exported from a client module don't reach the server.
@@ -23,6 +24,7 @@ const ICONS = {
   gallery: "M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21",
   enquiries: "M4 4h16v12H5.2L4 17.2zM8 9h8M8 12h5",
   staff: "M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6zM9 12l2 2 4-4",
+  training: "M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12",
   menu: "M4 6h16M4 12h16M4 18h16",
   scan: "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16",
   close: "M6 6l12 12M18 6L6 18",
@@ -56,11 +58,14 @@ export function AdminNav({ groups }: { groups: NavGroup[] }) {
                   key={it.href}
                   href={it.href}
                   aria-current={active ? "page" : undefined}
-                  className={`relative flex min-h-10 items-center gap-3 rounded px-3 text-[15px] font-semibold transition-colors ${active ? "bg-steel text-chalk" : "text-ash hover:bg-steel/60 hover:text-chalk"}`}
+                  className={`relative flex min-h-12 items-center gap-3 rounded px-3 py-1.5 text-base font-semibold transition-colors ${active ? "bg-steel text-chalk" : "text-ash hover:bg-steel/60 hover:text-chalk"}`}
                 >
                   {active && <span className="absolute inset-y-2 left-0 w-0.5 rounded bg-red [view-transition-name:side-mark]" />}
                   <LinkPending className={active ? "text-redtext" : ""}><Icon d={ICONS[it.icon]} /></LinkPending>
-                  <span className="flex-1">{it.label}</span>
+                  <span className="flex-1 leading-tight">
+                    {it.label}
+                    {it.hint && <span className="block text-[13px] font-normal text-faint">{it.hint}</span>}
+                  </span>
                   {!!it.badge && <span className="rounded-full bg-red px-2 py-0.5 text-xs font-bold text-white">{it.badge}</span>}
                 </Link>
               );
@@ -148,9 +153,12 @@ export function AdminMobileNav({ groups, logo, footer, switcher }: { groups: Nav
                   const active = lit(path, it);
                   return (
                     <Link key={it.href} href={it.href} aria-current={active ? "page" : undefined}
-                      className={`flex min-h-12 items-center gap-2.5 rounded-lg border px-3 text-sm font-semibold ${active ? "border-red bg-redwash text-chalk" : "border-line text-body"}`}>
+                      className={`flex min-h-14 items-center gap-2.5 rounded-lg border px-3 py-1.5 text-[15px] font-semibold ${active ? "border-red bg-redwash text-chalk" : "border-line text-body"}`}>
                       <LinkPending className={active ? "text-redtext" : "text-ash"}><Icon d={ICONS[it.icon]} /></LinkPending>
-                      <span className="min-w-0 flex-1 leading-tight">{it.label}</span>
+                      <span className="min-w-0 flex-1 leading-tight">
+                        {it.label}
+                        {it.hint && <span className="block text-xs font-normal text-faint">{it.hint}</span>}
+                      </span>
                       {!!it.badge && <span className="rounded-full bg-red px-1.5 text-xs font-bold text-white">{it.badge}</span>}
                     </Link>
                   );

@@ -857,7 +857,7 @@ export async function assignTrainer(subId: string, trainerId: string): Promise<R
   const { data: sub, error } = await adminDb().from("subscriptions").update({ trainer_id: trainerId || null }).eq("id", subId).select("user_id").maybeSingle();
   if (error) return { error: error.message };
   await logAction(me, "Assigned PT trainer", { memberId: sub?.user_id ?? null });
-  revalidatePath("/admin/team");
+  revalidatePath("/admin/personal-training");
   return { ok: "Trainer updated" };
 }
 

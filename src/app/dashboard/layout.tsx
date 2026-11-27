@@ -4,6 +4,7 @@ import { requireUser, signedIn } from "@/lib/supabase";
 import { AccountPrompt } from "@/components/account-prompt";
 import { signOut } from "../login/actions";
 import { BottomTabs, HeaderTabs } from "./tabs";
+import { MemberDemo } from "./demo";
 
 /**
  * The member app: header and tab bar stay put while the tabs (home, workouts, body, photos, insights) swap underneath,
@@ -25,6 +26,7 @@ export default async function MemberLayout({ children }: LayoutProps<"/dashboard
       </Nav>
       {children}
       <BottomTabs />
+      <MemberDemo userId={profile.id} />
     </main>
   );
 }
